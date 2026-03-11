@@ -1,0 +1,12 @@
+setuptools>=69.0.0,<82
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+sqlmodel>=0.0.16
+asyncpg>=0.29.0
+alembic>=1.13.1
+pydantic-settings>=2.2.1
+fastapi-users[sqlalchemy]>=12.1.2
+sse-starlette>=2.0.0
+passlib[bcrypt]>=1.7.4
+bcrypt==4.0.1
+python-multipart==0.0.7

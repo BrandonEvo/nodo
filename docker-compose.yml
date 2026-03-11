@@ -1,0 +1,38 @@
+networks:
+  nodo_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: nodo_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nodo_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nodo_secure_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-nodo_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nodo_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nodo_admin} -d ${POSTGRES_DB:-nodo_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nodo_backend
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-nodo_admin}:${POSTGRES_PASSWORD:-nodo_secure_pass}@db:5432/${POSTGRES_DB:-nodo_db}
+      - SECRET_KEY=${SECRET_KEY}
+    networks:
+      - nodo_network
+    depends_on:
+      db:
+        condition: service_healthy

@@ -1,0 +1,23 @@
+# Entorno y Secretos
+.env
+.env.*
+*.pem
+*.key
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+backend/.venv/
+alembic.ini
+
+# Node / React (Frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/.eslintcache
+npm-debug.log
+
+# Docker y Sistema Operativo
+.DS_Store
+Thumbs.db

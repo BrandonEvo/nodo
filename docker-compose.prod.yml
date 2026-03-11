@@ -1,0 +1,25 @@
+services:
+  backend:
+    restart: always
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+
+  proxy:
+    image: nginx:1.25-alpine
+    container_name: nodo_proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    networks:
+      - nodo_network
+    depends_on:
+      backend:
+        condition: service_healthy

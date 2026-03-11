@@ -1,0 +1,51 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+from typing import List
+from passlib.context import CryptContext
+
+# Ajusta las importaciones según tu estructura
+from db.session import get_async_session
+from models.models import User, Tenant
+from schemas import UserCreate, UserResponse
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+router = APIRouter(prefix="/users", tags=["Usuarios"])
+
+@router.get("/", response_model=List[UserResponse])
+async def list_users(session: AsyncSession = Depends(get_async_session)):
+    """Devuelve todos los usuarios del sistema."""
+    result = await session.execute(select(User))
+    return result.scalars().all()
+
+@router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def create_user(user_in: UserCreate, session: AsyncSession = Depends(get_async_session)):
+    """Crea un nuevo usuario asegurando que el Tenant exista."""
+    
+    # 1. Validar que el email no exista
+    stmt = select(User).where(User.email == user_in.email)
+    result = await session.execute(stmt)
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="El email ya está registrado.")
+        
+    # 2. Validar que el Tenant exista
+    stmt_tenant = select(Tenant).where(Tenant.id == user_in.tenant_id)
+    result_tenant = await session.execute(stmt_tenant)
+    if not result_tenant.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="El Tenant especificado no existe.")
+
+    # 3. Encriptar contraseña e instanciar
+    hashed_pwd = pwd_context.hash(user_in.password)
+    db_user = User(
+        email=user_in.email,
+        hashed_password=hashed_pwd,
+        tenant_id=user_in.tenant_id,
+        is_superuser=user_in.is_superuser
+    )
+    
+    # 4. Guardar en PostgreSQL
+    session.add(db_user)
+    await session.commit()
+    await session.refresh(db_user)
+    
+    return db_user
