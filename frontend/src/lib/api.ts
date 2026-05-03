@@ -7,6 +7,7 @@ import axios from 'axios';
 const base = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const api = axios.create({
   baseURL: base.endsWith('/api') ? base.replace(/\/api\/?$/, '') : base,
+  withCredentials: true,
 });
 
 // Interceptor para inyectar el token automáticamente si existe

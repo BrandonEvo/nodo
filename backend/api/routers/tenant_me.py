@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from db.session import get_session
-from models.models import User, Role, Tenant
+from models import User, Role, Tenant, TenantMember
 from models.schemas import UserRead, RoleRead, RoleCreate, RoleUpdate
 
 
@@ -32,7 +32,14 @@ def create_tenant_me_router(
         current_user: User = Depends(current_user_active),
     ):
         """Devuelve el tenant del usuario actual (para selector de org en frontend)."""
-        result = await session.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
+        mem_result = await session.execute(
+            select(TenantMember).where(TenantMember.user_id == current_user.id)
+        )
+        member = mem_result.scalars().first()
+        if not member:
+            raise HTTPException(status_code=404, detail="User has no tenant")
+            
+        result = await session.execute(select(Tenant).where(Tenant.id == member.tenant_id))
         tenant = result.scalar_one_or_none()
         if not tenant:
             raise HTTPException(status_code=404, detail="Tenant no encontrado")

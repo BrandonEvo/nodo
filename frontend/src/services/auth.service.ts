@@ -9,6 +9,8 @@ export interface UserMe {
   tenant_id: string;
   is_tenant_admin?: boolean;
   role_id?: string | null;
+  full_name?: string | null;
+  picture?: string | null;
 }
 
 export const authService = {
@@ -31,4 +33,9 @@ export const authService = {
     const { data } = await api.get<UserMe>('/api/users/me');
     return data;
   },
+
+  async registerWorkspace(data: { tenant_name: string; email: string; password: string }) {
+    const response = await api.post('/api/auth/register-workspace', data);
+    return response.data;
+  }
 };

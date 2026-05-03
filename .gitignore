@@ -1,8 +1,10 @@
 # Entorno y Secretos
 .env
 .env.*
+!.env.example
 *.pem
 *.key
+superadmin_secrets.json
 
 # Python / FastAPI
 __pycache__/

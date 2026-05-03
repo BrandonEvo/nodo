@@ -1,28 +1,31 @@
 import uuid
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime
+from pydantic import BaseModel
 from fastapi_users import schemas
 
-# --- Esquemas de Usuario ---
+# ==========================================
+# USERS (Identidad Global)
+# ==========================================
 class UserRead(schemas.BaseUser[uuid.UUID]):
-    tenant_id: uuid.UUID
     is_superuser: bool = False
-    role_id: Optional[uuid.UUID] = None
-    is_tenant_admin: bool = False
+    full_name: Optional[str] = None
+    picture: Optional[str] = None
 
 class UserCreate(schemas.BaseUserCreate):
-    tenant_id: uuid.UUID
+    pass 
 
 class UserUpdate(schemas.BaseUserUpdate):
     pass
 
-# --- Esquemas de Tenant (para Panel SuperAdmin) ---
-from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel
-
+# ==========================================
+# TENANTS (Facturación y Espacios)
+# ==========================================
 class TenantRead(BaseModel):
     id: uuid.UUID
     name: str
+    stripe_customer_id: Optional[str]
+    billing_status: str
     is_active: bool
     created_at: datetime
 
@@ -33,43 +36,99 @@ class TenantUpdate(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
 
-# Crear usuario bajo un tenant (solo email + password; tenant_id lo asigna el backend)
-class TenantUserCreate(BaseModel):
-    email: str
-    password: str
-
-# --- Módulos (SuperAdmin asigna según pago) ---
+# ==========================================
+# MODULES (Catálogo Global Unificado)
+# ==========================================
 class ModuleRead(BaseModel):
     id: uuid.UUID
     name: str
     code: str
     description: Optional[str] = None
+    is_premium: bool
     is_active: bool
 
 class ModuleCreate(BaseModel):
     name: str
     code: str
     description: Optional[str] = None
+    is_premium: bool = False
 
 class ModuleUpdate(BaseModel):
     name: Optional[str] = None
     code: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    is_premium: Optional[bool] = None
 
-# --- Roles (Admin tenant asigna a empleados) ---
+# ==========================================
+# IAM: ROLES (Plantillas de Permisos)
+# ==========================================
 class RoleRead(BaseModel):
     id: uuid.UUID
+    tenant_id: Optional[uuid.UUID]
     name: str
-    code: str
-    tenant_id: uuid.UUID
+    is_custom: bool
     is_active: bool
 
 class RoleCreate(BaseModel):
     name: str
-    code: str
 
 class RoleUpdate(BaseModel):
     name: Optional[str] = None
     code: Optional[str] = None
     is_active: Optional[bool] = None
+
+# ==========================================
+# IAM: TENANT MEMBERS (Membresías M:N)
+# ==========================================
+class TenantMemberRead(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    tenant_id: uuid.UUID
+    role_id: uuid.UUID
+    is_active: bool
+    assigned_at: datetime
+
+class TenantMemberCreate(BaseModel):
+    user_id: uuid.UUID
+    role_id: uuid.UUID
+
+# ==========================================
+# IAM: ROLE MODULE ACCESS (Permisos Granulares)
+# ==========================================
+class RoleModuleAccessRead(BaseModel):
+    id: uuid.UUID
+    role_id: uuid.UUID
+    module_id: uuid.UUID
+    can_read: bool
+    can_write: bool
+    can_delete: bool
+
+class RoleModuleAccessCreate(BaseModel):
+    module_id: uuid.UUID
+    can_read: bool = True
+    can_delete: bool = False
+
+# ==========================================
+# SUBSCRIPTION PLANS (Planes de Suscripción)
+# ==========================================
+class SubscriptionPlanRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    price: float
+    currency: str
+    is_active: bool
+    module_ids: List[uuid.UUID] = []
+
+class SubscriptionPlanCreate(BaseModel):
+    name: str
+    price: float = 0.0
+    currency: str = "GTQ"
+    module_ids: List[uuid.UUID] = []
+
+class SubscriptionPlanUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = None
+    currency: Optional[str] = None
+    is_active: Optional[bool] = None
+    module_ids: Optional[List[uuid.UUID]] = None

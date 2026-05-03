@@ -1,76 +1,75 @@
 import { useState, useEffect } from 'react'
-import { Login } from "./components/Login"
-import { OrgSelector } from "./components/OrgSelector"
-import { Launcher } from "./components/Launcher"
-import { AdminDashboard } from "./components/AdminDashboard"
-import { TenantAdminDashboard } from "./components/TenantAdminDashboard"
-import { tenantMeService } from "./services/tenantMe.service"
+import { Login } from '@/components/Login'
+import { AppShell } from '@/components/AppShell'
+import { authService } from '@/services/auth.service'
+import { tenantMeService } from '@/services/tenantMe.service'
+import { modulesService } from '@/services/modules.service'
+
+type AuthState = 'loading' | 'unauth' | 'auth';
 
 export default function App() {
-  const [session, setSession] = useState<{
-    token: string | null;
-    org: { id: string; name: string } | null;
-    isSuperAdmin: boolean;
-    isTenantAdmin: boolean;
-  }>({
-    token: localStorage.getItem('token'),
-    org: null,
-    isSuperAdmin: false,
-    isTenantAdmin: false,
-  })
-  const [loadingOrg, setLoadingOrg] = useState(false)
+  const [authState, setAuthState] = useState<AuthState>('loading');
+  const [userSession, setUserSession] = useState<any>(null);
+  const [activeModules, setActiveModules] = useState<any[]>([]);
+
+  const loadTenantModules = async (user: any) => {
+    try {
+      const tenant = await tenantMeService.getMyTenant();
+      const modules = await modulesService.getMyActiveModules(tenant.id);
+      setActiveModules(modules);
+    } catch (error) {
+      console.error("Error loading tenant modules:", error);
+    }
+  };
+
+  useEffect(() => {
+    const verifySession = async () => {
+      // Intentamos verificar la sesión siempre. 
+      // Si hay HttpOnly cookie, la petición tendrá éxito automáticamente.
+      try {
+        const user = await authService.me();
+        setUserSession(user);
+        await loadTenantModules(user);
+        setAuthState('auth');
+      } catch (error) {
+        localStorage.removeItem('token');
+        setAuthState('unauth');
+      }
+    };
+    verifySession();
+  }, []);
+
+  const handleLoginSuccess = async (token: string) => {
+    localStorage.setItem('token', token);
+    const user = await authService.me();
+    setUserSession(user);
+    await loadTenantModules(user);
+    setAuthState('auth');
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
-    setSession({ token: null, org: null, isSuperAdmin: false, isTenantAdmin: false });
+    setUserSession(null);
+    setAuthState('unauth');
   };
 
-  // Cargar tenant del usuario cuando no es SuperAdmin
-  useEffect(() => {
-    if (!session.token || session.isSuperAdmin || session.org) return
-    setLoadingOrg(true)
-    tenantMeService.getMyTenant()
-      .then((t) => setSession((s: typeof session) => ({ ...s, org: { id: t.id, name: t.name } })))
-      .catch(() => {})
-      .finally(() => setLoadingOrg(false))
-  }, [session.token, session.isSuperAdmin])
-
-  // Nivel 1: Login
-  if (!session.token) {
-    return (
-      <Login onLoginSuccess={(token, isAdmin, isTenantAdmin) =>
-        setSession({ ...session, token, isSuperAdmin: isAdmin, isTenantAdmin })} 
-      />
-    )
+  if (authState === 'loading') {
+    return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#69E7A8]"></div></div>;
   }
 
-  // Nivel 2: Super Admin
-  if (session.isSuperAdmin) {
-    return <AdminDashboard onLogout={handleLogout} />
+  if (authState === 'unauth') {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  // Nivel 3: Cargando tenant o selector de organización
-  if (!session.org) {
-    if (loadingOrg) return <div className="min-h-screen flex items-center justify-center text-white">Cargando...</div>
+  if (authState === 'auth') {
     return (
-      <OrgSelector 
-        onSelect={(org) => setSession({ ...session, org })} 
+      <AppShell
+        userSession={userSession}
+        activeModules={activeModules}
         onLogout={handleLogout}
       />
-    )
+    );
   }
 
-  // Nivel 4: Admin de empresa (roles y empleados)
-  if (session.isTenantAdmin) {
-    return <TenantAdminDashboard tenantName={session.org.name} onLogout={handleLogout} />
-  }
-
-  // Nivel 5: Launcher (resto de usuarios)
-  return (
-    <Launcher 
-      org={session.org} 
-      onSwitchOrg={() => setSession({ ...session, org: null })} 
-      onLogout={handleLogout}
-    />
-  )
+  return null;
 }
