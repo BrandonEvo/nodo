@@ -4,6 +4,7 @@ export interface Tenant {
   id: string;
   name: string;
   is_active: boolean;
+  plan_id: string | null;
   created_at: string;
 }
 
@@ -18,6 +19,7 @@ export interface TenantUser {
   is_superuser: boolean;
   is_verified: boolean;
   tenant_id: string;
+  member_type: string;
 }
 
 export const tenantsService = {
@@ -41,6 +43,11 @@ export const tenantsService = {
     return data;
   },
 
+  async setTenantPlan(id: string, planId: string): Promise<Tenant> {
+    const { data } = await api.put<Tenant>(`/api/tenants/${id}/plan`, { plan_id: planId });
+    return data;
+  },
+
   async hardDelete(id: string, password: string): Promise<void> {
     await api.post(`/api/tenants/${id}/hard-delete`, { password });
   },
@@ -50,8 +57,8 @@ export const tenantsService = {
     return data;
   },
 
-  // Se actualizó la firma para aceptar los nuevos campos del panel (is_superuser, is_active)
-  async createUser(tenantId: string, body: { email: string; password?: string; is_superuser?: boolean; is_active?: boolean }): Promise<TenantUser> {
+  // Se actualizó la firma para aceptar los nuevos campos del panel (is_superuser, is_active, member_type)
+  async createUser(tenantId: string, body: { email: string; password?: string; is_superuser?: boolean; is_active?: boolean; member_type?: string }): Promise<TenantUser> {
     const { data } = await api.post<TenantUser>(`/api/tenants/${tenantId}/users`, body);
     return data;
   },
@@ -72,27 +79,12 @@ export const tenantsService = {
     await api.post(`/api/tenants/${tenantId}/users/${userId}/hard-delete`, { password });
   },
 
-  // Gestión de Roles por Tenant (SuperAdmin)
-  async listRoles(tenantId: string): Promise<any[]> {
-    const { data } = await api.get<any[]>(`/api/tenants/${tenantId}/roles`);
+  async getUserModules(tenantId: string, userId: string): Promise<string[]> {
+    const { data } = await api.get<string[]>(`/api/tenants/${tenantId}/users/${userId}/modules`);
     return data;
   },
 
-  async createRole(tenantId: string, body: { name: string; code: string }): Promise<any> {
-    const { data } = await api.post<any>(`/api/tenants/${tenantId}/roles`, body);
-    return data;
-  },
-
-  async updateRole(tenantId: string, roleId: string, body: { name?: string; is_active?: boolean }): Promise<any> {
-    const { data } = await api.put<any>(`/api/tenants/${tenantId}/roles/${roleId}`, body);
-    return data;
-  },
-
-  async deleteRole(tenantId: string, roleId: string): Promise<void> {
-    await api.delete(`/api/tenants/${tenantId}/roles/${roleId}`);
-  },
-
-  async hardDeleteRole(tenantId: string, roleId: string, password: string): Promise<void> {
-    await api.post(`/api/tenants/${tenantId}/roles/${roleId}/hard-delete`, { password });
+  async updateUserModules(tenantId: string, userId: string, moduleIds: string[]): Promise<void> {
+    await api.put(`/api/tenants/${tenantId}/users/${userId}/modules`, moduleIds);
   }
 };

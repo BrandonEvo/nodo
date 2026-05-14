@@ -1,0 +1,1 @@
+export { RecetasApp } from './RecetasApp';

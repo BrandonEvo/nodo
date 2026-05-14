@@ -12,6 +12,7 @@ class Module(AuditBase, table=True):
     name: str = Field(max_length=255)
     description: Optional[str] = Field(default=None, max_length=1000)
     is_premium: bool = Field(default=False)
+    frontend_route: Optional[str] = Field(default=None, max_length=100)  # Ej: "calc", "pos"
 
     # Relación a las suscripciones activas de este módulo
     subscriptions: List["Subscription"] = Relationship(back_populates="module")

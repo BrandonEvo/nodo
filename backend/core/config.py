@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     SUPERADMIN_PASSWORD_HASH: str
     RESET_PASSWORD_SECRET: str
     VERIFICATION_TOKEN_SECRET: str
-    DEFAULT_SUPERADMIN_PASSWORD: str = "AdminNodo2026!"
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     GOOGLE_CLIENT_SECRET: str = ""
 

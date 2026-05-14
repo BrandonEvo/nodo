@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from db.session import get_session
-from models import User, Tenant, Role, TenantMember
+from models import User, Tenant, TenantMember
 from models.invitations import Invitation
 from core.auth import get_jwt_strategy
 
@@ -74,6 +74,9 @@ async def google_login(response: Response):
 async def google_callback(request: Request, code: str = None, state: str = None, db: AsyncSession = Depends(get_session)):
     """
     Maneja el retorno de Google, valida estado, obtiene tokens y aplica la lógica transaccional M:N.
+    Árbol de decisión de enrutamiento inteligente:
+    1. Usuario NO existe → checar invitaciones → crear como invitado o como orgánico.
+    2. Usuario SÍ existe → actualizar datos de Google.
     """
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing code or state")
@@ -119,6 +122,7 @@ async def google_callback(request: Request, code: str = None, state: str = None,
 
     # ==========================================
     # LÓGICA TRANSACCIONAL CONDICIONAL M:N
+    # (con Onboarding Inteligente)
     # ==========================================
     try:
         # 1. ¿Existe el correo en la tabla users?
@@ -126,15 +130,20 @@ async def google_callback(request: Request, code: str = None, state: str = None,
         user = result.scalars().first()
 
         if user:
-            # SÍ: Actualizar su foto/nombre de Google si es necesario (opcional)
+            # SÍ: Actualizar su foto/nombre de Google si es necesario
             user.full_name = full_name or user.full_name
             user.picture = picture or user.picture
             if not user.google_id:
                 user.google_id = google_id
             await db.commit()
         else:
-            # NO: Consultar invitaciones
-            inv_result = await db.execute(select(Invitation).where(Invitation.email == email, Invitation.is_accepted == False))
+            # NO: Consultar invitaciones pendientes
+            inv_result = await db.execute(
+                select(Invitation).where(
+                    Invitation.email == email,
+                    Invitation.status == "pending"
+                )
+            )
             invitation = inv_result.scalars().first()
 
             # Crear el usuario base
@@ -147,7 +156,9 @@ async def google_callback(request: Request, code: str = None, state: str = None,
                 picture=picture,
                 google_id=google_id,
                 is_verified=True,
-                is_superuser=False
+                is_superuser=False,
+                # El onboarding depende de si es invitado o es orgánico
+                onboarding_completed=True if invitation else False,
             )
             db.add(user)
             await db.flush() # Para obtener user.id
@@ -157,14 +168,14 @@ async def google_callback(request: Request, code: str = None, state: str = None,
                 member = TenantMember(
                     user_id=user.id,
                     tenant_id=invitation.tenant_id,
-                    role_id=invitation.role_id,
+                    member_type=invitation.member_type,
                     assigned_at=datetime.now(timezone.utc).replace(tzinfo=None)
                 )
                 db.add(member)
-                invitation.is_accepted = True
+                invitation.status = "accepted"
                 db.add(invitation)
             else:
-                # NO (Usuario orgánico): Crear Tenant y asignarlo como Admin
+                # NO (Usuario orgánico): Crear Tenant provisional y asignarlo como Propietario
                 new_tenant = Tenant(
                     name=f"Empresa de {full_name or email}",
                     billing_status="trialing"
@@ -172,19 +183,10 @@ async def google_callback(request: Request, code: str = None, state: str = None,
                 db.add(new_tenant)
                 await db.flush()
 
-                # Crear un rol de SuperAdmin para este Tenant
-                admin_role = Role(
-                    tenant_id=new_tenant.id,
-                    name="Super Administrador",
-                    is_custom=False
-                )
-                db.add(admin_role)
-                await db.flush()
-
                 member = TenantMember(
                     user_id=user.id,
                     tenant_id=new_tenant.id,
-                    role_id=admin_role.id,
+                    member_type="owner",
                     assigned_at=datetime.now(timezone.utc).replace(tzinfo=None)
                 )
                 db.add(member)

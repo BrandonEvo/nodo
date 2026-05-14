@@ -23,7 +23,13 @@ from models.schemas import UserRead, UserCreate, UserUpdate
 
 # --- Routers Refactorizados ---
 # Importamos el router de tenants que ya está adaptado a la arquitectura M:N
-from api.routers import tenants, roles, tenant_members, modules, tenant_modules, auth, plans
+from api.routers import tenants, tenant_members, modules, tenant_modules, auth, plans
+
+# --- Nuevos Routers (Onboarding + Invitaciones + Config) ---
+from api.routers import session as session_router
+from api.routers import invitations as invitations_router
+from api.routers import onboarding as onboarding_router
+from api.routers import platform_config as platform_config_router
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +140,12 @@ app.include_router(
     prefix="/api/auth",
 )
 
+# --- Sesión Enriquecida (Onboarding + Invitaciones) ---
+app.include_router(
+    session_router.router,
+    prefix="/api/auth",
+)
+
 # --- Google OAuth Router ---
 from api.routers import auth_google
 app.include_router(
@@ -151,7 +163,6 @@ app.include_router(
 # ==========================================
 # RUTAS DE NEGOCIO (M:N Architecture)
 # ==========================================
-# NOTA: Comentamos los routers viejos (modules) hasta refactorizarlos.
 current_user_active = fastapi_users.current_user(active=True)
 
 from api.routers.tenant_me import create_tenant_me_router
@@ -165,10 +176,6 @@ app.include_router(
 )
 
 # --- RUTAS DE EMPRESA (TENANT SCOPED) ---
-app.include_router(
-    roles.router,
-    prefix="/api/roles",
-)
 
 # --- RUTAS DE EMPRESA (TENANT SCOPED) ---
 app.include_router(
@@ -187,10 +194,26 @@ app.include_router(
     prefix="/api/plans",
 )
 
-
-
 # --- RUTAS DE EMPRESA (TENANT SCOPED) ---
 app.include_router(
     tenant_modules.router,
     prefix="/api/tenant-modules",
+)
+
+# ==========================================
+# ONBOARDING + INVITACIONES + CONFIG
+# ==========================================
+app.include_router(
+    invitations_router.router,
+    prefix="/api/invitations",
+)
+
+app.include_router(
+    onboarding_router.router,
+    prefix="/api/onboarding",
+)
+
+app.include_router(
+    platform_config_router.router,
+    prefix="/api/admin/config",
 )

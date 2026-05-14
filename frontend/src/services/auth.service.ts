@@ -1,18 +1,47 @@
 import api from '@/lib/api';
 
+// ==========================================
+// TIPOS
+// ==========================================
 export interface UserMe {
   id: string;
   email: string;
   is_active: boolean;
   is_superuser: boolean;
   is_verified: boolean;
-  tenant_id: string;
-  is_tenant_admin?: boolean;
-  role_id?: string | null;
   full_name?: string | null;
   picture?: string | null;
+  onboarding_completed: boolean;
 }
 
+export interface PendingInvitation {
+  id: string;
+  tenant_name: string;
+  member_type: string;
+  email: string;
+}
+
+export interface SessionData {
+  id: string;
+  email: string;
+  full_name?: string | null;
+  picture?: string | null;
+  is_superuser: boolean;
+  is_verified: boolean;
+  onboarding_completed: boolean;
+  tenant_id?: string | null;
+  tenant_name?: string | null;
+  tenant_logo_url?: string | null;
+  tenant_theme_color?: string | null;
+  member_type?: string | null;
+  is_tenant_admin: boolean;
+  has_pending_invites: boolean;
+  pending_invitations: PendingInvitation[];
+}
+
+// ==========================================
+// SERVICIO
+// ==========================================
 export const authService = {
   async login(email: string, pass: string) {
     const params = new URLSearchParams();
@@ -29,8 +58,15 @@ export const authService = {
     return data;
   },
 
+  /** Endpoint básico de fastapi-users */
   async me(): Promise<UserMe> {
     const { data } = await api.get<UserMe>('/api/users/me');
+    return data;
+  },
+
+  /** Endpoint enriquecido con datos M:N, onboarding e invitaciones */
+  async session(): Promise<SessionData> {
+    const { data } = await api.get<SessionData>('/api/auth/session');
     return data;
   },
 

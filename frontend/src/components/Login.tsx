@@ -24,7 +24,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
     try {
       const data = await authService.login(email, password)
       const user = await authService.me()
-      onLoginSuccess(data.access_token || '', user.is_superuser, user.is_tenant_admin ?? false)
+      onLoginSuccess(data.access_token || '', user.is_superuser, false)
     } catch (err) {
       alert("Error: Credenciales inválidas.")
     } finally {

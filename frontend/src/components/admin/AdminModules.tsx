@@ -14,6 +14,7 @@ export function AdminModules() {
   
   const [newModuleName, setNewModuleName] = useState("");
   const [newModuleCode, setNewModuleCode] = useState("");
+  const [newModuleRoute, setNewModuleRoute] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Hard Delete State
@@ -42,10 +43,12 @@ export function AdminModules() {
       setEditingModuleId(mod.id);
       setNewModuleName(mod.name);
       setNewModuleCode(mod.code);
+      setNewModuleRoute(mod.frontend_route ?? '');
     } else {
       setEditingModuleId(null);
       setNewModuleName("");
       setNewModuleCode("");
+      setNewModuleRoute("");
     }
     setIsFormOpen(true);
   };
@@ -55,6 +58,7 @@ export function AdminModules() {
     setEditingModuleId(null);
     setNewModuleName("");
     setNewModuleCode("");
+    setNewModuleRoute("");
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -65,12 +69,14 @@ export function AdminModules() {
       if (editingModuleId) {
         await modulesService.update(editingModuleId, {
           name: newModuleName.trim(),
-          code: newModuleCode.trim().toUpperCase()
+          code: newModuleCode.trim().toUpperCase(),
+          frontend_route: newModuleRoute.trim().toLowerCase() || null,
         });
       } else {
-        await modulesService.create({ 
-           name: newModuleName.trim(), 
-           code: newModuleCode.trim().toUpperCase() 
+        await modulesService.create({
+           name: newModuleName.trim(),
+           code: newModuleCode.trim().toUpperCase(),
+           frontend_route: newModuleRoute.trim().toLowerCase() || null,
         });
       }
       closeForm();
@@ -118,7 +124,7 @@ export function AdminModules() {
   };
 
   return (
-    <div className="bg-white rounded-[40px] p-10 shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden relative">
+    <div className="bg-white rounded-[40px] p-10 shadow-sm border border-slate-100 flex flex-col flex-1 overflow-hidden relative">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8 shrink-0">
         <div>
           <h2 className="text-2xl font-black text-[#111111] tracking-tight flex items-center gap-3">
@@ -244,6 +250,22 @@ export function AdminModules() {
                         disabled={saving || !!editingModuleId}
                       />
                       {editingModuleId && <p className="text-[10px] text-slate-400 pl-2 mt-1">El código del módulo es un identificador inmutable.</p>}
+                   </div>
+                   <div>
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Ruta de App Frontend</label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-mono select-none">apps/</span>
+                        <Input
+                          placeholder="ej: calc, pos, inventory"
+                          value={newModuleRoute}
+                          onChange={(e) => setNewModuleRoute(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ''))}
+                          className="h-12 rounded-2xl bg-slate-50 border-slate-200 pl-14 pr-5 focus-visible:ring-[#111111]/5 font-mono"
+                          disabled={saving}
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-400 pl-2 mt-1">
+                        {newModuleRoute ? `→ src/apps/${newModuleRoute}/` : 'Vacío = mostrar "Próximamente".'}
+                      </p>
                    </div>
 
                    <div className="mt-auto pt-8">

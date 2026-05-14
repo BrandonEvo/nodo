@@ -6,7 +6,7 @@ from sqlmodel import select
 from pydantic import BaseModel
 
 from db.session import get_session
-from models import Tenant, User, TenantMember, Role
+from models import Tenant, User, TenantMember
 from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -40,22 +40,14 @@ async def register_workspace(payload: WorkspaceRegisterRequest, session: AsyncSe
     await session.commit()
     await session.refresh(new_tenant)
 
-    # 3. Crear el Rol 'Propietario / Dueño' si no existe
-    role_query = select(Role).where(Role.tenant_id == new_tenant.id, Role.name == "Propietario")
-    db_role = (await session.execute(role_query)).scalar_one_or_none()
-    if not db_role:
-        db_role = Role(name="Propietario", is_custom=False, tenant_id=new_tenant.id)
-        session.add(db_role)
-        await session.commit()
-        await session.refresh(db_role)
-
-    # 4. Crear Usuario
+    # 4. Crear Usuario (Dueño orgánico — necesita completar onboarding)
     new_user = User(
         email=payload.email,
         hashed_password=pwd_context.hash(payload.password),
         is_active=True,
         is_superuser=False,
         is_verified=True, # Puede ser false si hay verificación de email
+        onboarding_completed=False,
     )
     session.add(new_user)
     await session.commit()
@@ -65,7 +57,7 @@ async def register_workspace(payload: WorkspaceRegisterRequest, session: AsyncSe
     new_member = TenantMember(
         user_id=new_user.id,
         tenant_id=new_tenant.id,
-        role_id=db_role.id
+        member_type="owner"
     )
     session.add(new_member)
     await session.commit()

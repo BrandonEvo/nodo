@@ -11,7 +11,7 @@ from alembic import context
 from sqlmodel import SQLModel
 from core.config import settings
 # Importamos los modelos para que SQLModel.metadata los registre en la migración
-from models import Tenant, User, Module, Role, TenantMember, RoleModuleAccess, AuditLog, Subscription
+from models import Tenant, User, Module, TenantMember, TenantMemberModuleAccess, AuditLog, Subscription
 
 config = context.config
 

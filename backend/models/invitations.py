@@ -1,7 +1,7 @@
+# Tabla: INVITATIONS
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, Relationship
 from .mixins import AuditBase
 
 class Invitation(AuditBase, table=True):
@@ -10,14 +10,16 @@ class Invitation(AuditBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     email: str = Field(max_length=255, index=True)
     tenant_id: uuid.UUID = Field(foreign_key="tenants.id", index=True)
-    role_id: uuid.UUID = Field(foreign_key="roles.id", index=True)
     
-    # Token temporal (puede ser un hash o UUID) para validar la invitación
+    member_type: str = Field(default="employee", max_length=50) # owner, admin, employee
+    
+    # Token temporal único para validar/compartir la invitación
     token: str = Field(max_length=255, unique=True, index=True)
     
-    is_accepted: bool = Field(default=False)
+    # Status workflow: pending → accepted | rejected | revoked
+    status: str = Field(default="pending", max_length=20, index=True)
+    
     expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     
-    # Relaciones (opcionales para la navegación)
+    # Relaciones (navegación)
     tenant: "Tenant" = Relationship()
-    role: "Role" = Relationship()

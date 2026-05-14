@@ -26,7 +26,7 @@ async def create_module(body: ModuleCreate, session: AsyncSession = Depends(get_
     existing = await session.execute(select(Module).where(Module.code == body.code))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Ya existe un módulo con ese código")
-    mod = Module(name=body.name, code=body.code.strip().upper(), description=body.description)
+    mod = Module(name=body.name, code=body.code.strip().upper(), description=body.description, frontend_route=body.frontend_route)
     session.add(mod)
     await session.commit()
     await session.refresh(mod)
@@ -42,9 +42,9 @@ async def update_module(module_id: uuid.UUID, body: ModuleUpdate, session: Async
     if body.code is not None: mod.code = body.code.strip().upper()
     if body.description is not None: mod.description = body.description
     if body.is_active is not None: mod.is_active = body.is_active
+    if body.frontend_route is not None: mod.frontend_route = body.frontend_route
     session.add(mod)
     await session.commit()
-    await session.refresh(mod)
     await session.refresh(mod)
     return mod
 
@@ -69,9 +69,9 @@ async def hard_delete_module(module_id: uuid.UUID, body: HardDeleteModuleRequest
     from models import PlanModule
     await session.execute(delete(PlanModule).where(PlanModule.module_id == module_id))
     
-    # Borrar vinculación en RoleModuleAccess
-    from models import RoleModuleAccess
-    await session.execute(delete(RoleModuleAccess).where(RoleModuleAccess.module_id == module_id))
+    # Borrar vinculación en TenantMemberModuleAccess
+    from models import TenantMemberModuleAccess
+    await session.execute(delete(TenantMemberModuleAccess).where(TenantMemberModuleAccess.module_id == module_id))
 
     await session.delete(mod)
     await session.commit()

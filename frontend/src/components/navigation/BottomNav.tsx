@@ -25,8 +25,8 @@ export function BottomNav({ activeTab, onTabChange, isSuperAdmin, isTenantAdmin 
 
   const isManagementActive = [
     'admin_tenants', 'admin_users', 'admin_roles',
-    'admin_modules', 'admin_subscriptions',
-    'mgmt_employees', 'mgmt_config',
+    'admin_modules', 'admin_subscriptions', 'admin_platform_config',
+    'mgmt_employees', 'mgmt_team', 'mgmt_config',
   ].includes(activeTab) && !isHomeActive;
 
   const isProfileActive = activeTab === 'profile';
@@ -44,7 +44,7 @@ export function BottomNav({ activeTab, onTabChange, isSuperAdmin, isTenantAdmin 
       label: 'Métricas',
       icon: BarChart3,
       active: isMetricsActive,
-      visible: true,
+      visible: isSuperAdmin || isTenantAdmin,
     },
     {
       id: managementTab,

@@ -1,31 +1,27 @@
 import api from '@/lib/api';
 
-export interface RoleRead {
+export interface TenantUser {
   id: string;
-  name: string;
-  code: string;
-  tenant_id: string;
+  tenant_member_id: string;
+  email: string;
+  full_name?: string | null;
+  picture?: string | null;
   is_active: boolean;
-}
-
-export interface RoleCreate {
-  name: string;
-  code: string;
+  is_superuser: boolean;
+  is_verified: boolean;
+  member_type: string;
+  is_tenant_admin: boolean;
+  module_ids: string[];
 }
 
 export const tenantMeService = {
-  async getMyTenant(): Promise<{ id: string; name: string }> {
-    const { data } = await api.get<{ id: string; name: string }>('/api/me/tenant/');
+  async getMyTenant(): Promise<{ id: string; name: string; logo_url?: string | null; theme_color?: string | null }> {
+    const { data } = await api.get<{ id: string; name: string; logo_url?: string | null; theme_color?: string | null }>('/api/me/tenant/');
     return data;
   },
 
-  async listRoles(): Promise<RoleRead[]> {
-    const { data } = await api.get<RoleRead[]>('/api/me/tenant/roles');
-    return data;
-  },
-
-  async createRole(body: RoleCreate): Promise<RoleRead> {
-    const { data } = await api.post<RoleRead>('/api/me/tenant/roles', body);
+  async updateConfig(payload: { name?: string; logo_url?: string; theme_color?: string }): Promise<any> {
+    const { data } = await api.put('/api/me/tenant/config', payload);
     return data;
   },
 
@@ -34,19 +30,8 @@ export const tenantMeService = {
     return data;
   },
 
-  async setUserRole(userId: string, roleId: string | null): Promise<{ id: string; role_id: string | null }> {
-    const { data } = await api.patch(`/api/me/tenant/users/${userId}/role`, { role_id: roleId });
+  async setUserModules(userId: string, moduleIds: string[]): Promise<{ id: string; module_ids: string[] }> {
+    const { data } = await api.put(`/api/me/tenant/users/${userId}/modules`, { module_ids: moduleIds });
     return data;
   },
 };
-
-export interface TenantUser {
-  id: string;
-  email: string;
-  is_active: boolean;
-  is_superuser: boolean;
-  is_verified: boolean;
-  tenant_id: string;
-  role_id: string | null;
-  is_tenant_admin: boolean;
-}

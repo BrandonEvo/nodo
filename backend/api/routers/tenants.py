@@ -6,7 +6,7 @@ from sqlmodel import select
 from pydantic import BaseModel
 
 from db.session import get_session
-from models import Tenant, User, TenantMember, Role
+from models import Tenant, User, TenantMember
 from models.schemas import TenantRead, TenantCreate, TenantUpdate
 from passlib.context import CryptContext
 
@@ -19,6 +19,7 @@ class TenantUserCreate(BaseModel):
     password: Optional[str] = None
     is_superuser: Optional[bool] = False
     is_active: Optional[bool] = True
+    member_type: Optional[str] = "employee"
 
 class TenantUserResponse(BaseModel):
     id: uuid.UUID
@@ -27,16 +28,7 @@ class TenantUserResponse(BaseModel):
     is_superuser: bool
     is_verified: bool
     tenant_id: uuid.UUID
-
-class RoleCreateSimple(BaseModel):
-    name: str
-
-class RoleResponseSimple(BaseModel):
-    id: uuid.UUID
-    name: str
-    is_custom: bool
-    is_active: bool
-    tenant_id: Optional[uuid.UUID]
+    member_type: Optional[str] = "employee"
 
 @router.post("/", response_model=TenantRead, status_code=status.HTTP_201_CREATED)
 async def create_tenant(tenant_in: TenantCreate, session: AsyncSession = Depends(get_session)):
@@ -67,6 +59,46 @@ async def update_tenant(tenant_id: uuid.UUID, tenant_in: TenantUpdate, session: 
     await session.refresh(tenant)
     return tenant
 
+class TenantPlanAssign(BaseModel):
+    plan_id: uuid.UUID
+
+@router.put("/{tenant_id}/plan", response_model=TenantRead)
+async def assign_tenant_plan(
+    tenant_id: uuid.UUID, 
+    body: TenantPlanAssign, 
+    session: AsyncSession = Depends(get_session)
+):
+    from sqlalchemy import delete
+    from models import Subscription, PlanModule, SubscriptionPlan
+    
+    tenant = await session.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant no encontrado")
+        
+    plan = await session.get(SubscriptionPlan, body.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+        
+    # 1. Borrar todas las suscripciones actuales del tenant
+    await session.execute(delete(Subscription).where(Subscription.tenant_id == tenant_id))
+    
+    # 2. Obtener modulos del plan
+    plan_modules = await session.execute(select(PlanModule).where(PlanModule.plan_id == body.plan_id))
+    module_ids = [pm.module_id for pm in plan_modules.scalars().all()]
+    
+    # 3. Asignar modulos al tenant
+    for mid in module_ids:
+        session.add(Subscription(tenant_id=tenant_id, module_id=mid))
+        
+    # 4. Guardar plan_id en el tenant
+    tenant.plan_id = body.plan_id
+    session.add(tenant)
+    
+    await session.commit()
+    await session.refresh(tenant)
+    return tenant
+
+
 class HardDeleteRequest(BaseModel):
     password: str
 
@@ -81,21 +113,23 @@ async def hard_delete_tenant(tenant_id: uuid.UUID, body: HardDeleteRequest, sess
         raise HTTPException(status_code=404, detail="Tenant no encontrado")
         
     # Cascadas explícitas de buenas prácticas para proteger la BBDD
-    from models import TenantMember, Role, Subscription, User
+    from models import TenantMember, Subscription, User, TenantMemberModuleAccess, Invitation
     from sqlalchemy import delete
     
+    # 0. Borramos invitaciones de la empresa
+    await session.execute(delete(Invitation).where(Invitation.tenant_id == tenant_id))
+
     # 1. Borramos suscripciones de la empresa
     await session.execute(delete(Subscription).where(Subscription.tenant_id == tenant_id))
     
-    # 2. Borramos las membresías de los usuarios a esta empresa
-    await session.execute(delete(TenantMember).where(TenantMember.tenant_id == tenant_id))
+    # 2. Borramos los permisos de los miembros de esta empresa
+    members_result = await session.execute(select(TenantMember.id).where(TenantMember.tenant_id == tenant_id))
+    member_ids = members_result.scalars().all()
+    if member_ids:
+        await session.execute(delete(TenantMemberModuleAccess).where(TenantMemberModuleAccess.tenant_member_id.in_(member_ids)))
     
-    # 3. Borramos los roles que pertenecen exclusivamente a esta empresa (y sus permisos)
-    from models import RoleModuleAccess
-    roles_result = await session.execute(select(Role).where(Role.tenant_id == tenant_id))
-    for r in roles_result.scalars().all():
-        await session.execute(delete(RoleModuleAccess).where(RoleModuleAccess.role_id == r.id))
-    await session.execute(delete(Role).where(Role.tenant_id == tenant_id))
+    # 3. Borramos las membresías de los usuarios a esta empresa
+    await session.execute(delete(TenantMember).where(TenantMember.tenant_id == tenant_id))
     
     # 4. Finalmente, borramos la empresa
     await session.delete(tenant)
@@ -114,7 +148,8 @@ async def list_tenant_users(tenant_id: uuid.UUID, session: AsyncSession = Depend
             is_active=user.is_active,
             is_superuser=user.is_superuser,
             is_verified=user.is_verified,
-            tenant_id=member.tenant_id
+            tenant_id=member.tenant_id,
+            member_type=member.member_type
         ))
     return users
 
@@ -154,18 +189,10 @@ async def create_tenant_user(tenant_id: uuid.UUID, user_in: TenantUserCreate, se
     member = (await session.execute(mem_query)).scalar_one_or_none()
     
     if not member:
-        # get any role for this tenant just to associate
-        role_query = select(Role).where(Role.tenant_id == tenant_id)
-        role = (await session.execute(role_query)).scalars().first()
-        # if no role exists for tenant, try global role
-        if not role:
-             role_query = select(Role).where(Role.tenant_id == None)
-             role = (await session.execute(role_query)).scalars().first()
-             
         new_member = TenantMember(
             user_id=existing_user.id,
             tenant_id=tenant_id,
-            role_id=role.id if role else uuid.uuid4() # Mock/fallback if completely empty DB (shouldn't happen with seed)
+            member_type=user_in.member_type or "employee"
         )
         session.add(new_member)
         await session.commit()
@@ -178,7 +205,8 @@ async def create_tenant_user(tenant_id: uuid.UUID, user_in: TenantUserCreate, se
         is_active=existing_user.is_active,
         is_superuser=existing_user.is_superuser,
         is_verified=existing_user.is_verified,
-        tenant_id=member.tenant_id
+        tenant_id=member.tenant_id,
+        member_type=member.member_type
     )
 
 class HardDeleteUserRequest(BaseModel):
@@ -196,10 +224,26 @@ async def hard_delete_tenant_user(tenant_id: uuid.UUID, user_id: uuid.UUID, body
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
         
     # Cascada manual de buenas prácticas para usuarios
-    from sqlalchemy import delete
-    from models import TenantMember
+    from sqlalchemy import delete, update
+    from models import TenantMember, TenantMemberModuleAccess, Invitation, Tenant, Subscription, Module
     
-    # Borramos sus membresías en esta o todas las empresas
+    # 1. Borramos sus invitaciones
+    await session.execute(delete(Invitation).where(Invitation.created_by == user_id))
+    
+    # 2. Desvinculamos registros de auditoría (created_by)
+    await session.execute(update(Tenant).where(Tenant.created_by == user_id).values(created_by=None))
+    await session.execute(update(Subscription).where(Subscription.created_by == user_id).values(created_by=None))
+    await session.execute(update(Module).where(Module.created_by == user_id).values(created_by=None))
+    await session.execute(update(TenantMember).where(TenantMember.created_by == user_id).values(created_by=None))
+    await session.execute(update(TenantMemberModuleAccess).where(TenantMemberModuleAccess.created_by == user_id).values(created_by=None))
+
+    # 3. Borramos sus accesos a módulos
+    members_result = await session.execute(select(TenantMember.id).where(TenantMember.user_id == user_id))
+    member_ids = members_result.scalars().all()
+    if member_ids:
+         await session.execute(delete(TenantMemberModuleAccess).where(TenantMemberModuleAccess.tenant_member_id.in_(member_ids)))
+
+    # 4. Borramos sus membresías en esta o todas las empresas
     await session.execute(delete(TenantMember).where(TenantMember.user_id == user_id))
     
     # Finalmente borramos al usuario (FastAPI users lo elimina limpiamente)
@@ -207,79 +251,32 @@ async def hard_delete_tenant_user(tenant_id: uuid.UUID, user_id: uuid.UUID, body
     await session.commit()
     return None
 
-@router.get("/{tenant_id}/roles", response_model=List[RoleResponseSimple])
-async def list_tenant_roles(tenant_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
-    query = select(Role).where(Role.tenant_id == tenant_id)
-    result = await session.execute(query)
+@router.get("/{tenant_id}/users/{user_id}/modules", response_model=List[uuid.UUID])
+async def get_tenant_user_modules(tenant_id: uuid.UUID, user_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    mem_query = select(TenantMember).where(TenantMember.user_id == user_id, TenantMember.tenant_id == tenant_id)
+    member = (await session.execute(mem_query)).scalar_one_or_none()
+    if not member:
+        return []
+    
+    from models import TenantMemberModuleAccess
+    mod_query = select(TenantMemberModuleAccess.module_id).where(TenantMemberModuleAccess.tenant_member_id == member.id)
+    result = await session.execute(mod_query)
     return result.scalars().all()
 
-@router.post("/{tenant_id}/roles", response_model=RoleResponseSimple, status_code=status.HTTP_201_CREATED)
-async def create_tenant_role(tenant_id: uuid.UUID, role_in: RoleCreateSimple, session: AsyncSession = Depends(get_session)):
-    tenant = await session.get(Tenant, tenant_id)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    new_role = Role(
-        name=role_in.name,
-        tenant_id=tenant_id,
-        is_custom=True
-    )
-    session.add(new_role)
-    await session.commit()
-    await session.refresh(new_role)
-    return new_role
-
-class RoleUpdateSimple(BaseModel):
-    name: Optional[str] = None
-    is_active: Optional[bool] = None
-
-@router.put("/{tenant_id}/roles/{role_id}", response_model=RoleResponseSimple)
-async def update_tenant_role(tenant_id: uuid.UUID, role_id: uuid.UUID, role_in: RoleUpdateSimple, session: AsyncSession = Depends(get_session)):
-    query = select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id)
-    role = (await session.execute(query)).scalar_one_or_none()
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found in this tenant")
-    
-    if role_in.name is not None:
-        role.name = role_in.name
-    if role_in.is_active is not None:
-        role.is_active = role_in.is_active
+@router.put("/{tenant_id}/users/{user_id}/modules", response_model=List[uuid.UUID])
+async def update_tenant_user_modules(tenant_id: uuid.UUID, user_id: uuid.UUID, module_ids: List[uuid.UUID], session: AsyncSession = Depends(get_session)):
+    mem_query = select(TenantMember).where(TenantMember.user_id == user_id, TenantMember.tenant_id == tenant_id)
+    member = (await session.execute(mem_query)).scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Membresía no encontrada")
         
-    session.add(role)
-    await session.commit()
-    await session.refresh(role)
-    return role
-
-@router.delete("/{tenant_id}/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tenant_role(tenant_id: uuid.UUID, role_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
-    query = select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id)
-    role = (await session.execute(query)).scalar_one_or_none()
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found in this tenant")
+    from sqlalchemy import delete
+    from models import TenantMemberModuleAccess
     
-    role.is_active = False
-    session.add(role)
-    await session.commit()
-    return None
-
-class HardDeleteRoleRequest(BaseModel):
-    password: str
-
-@router.post("/{tenant_id}/roles/{role_id}/hard-delete", status_code=status.HTTP_204_NO_CONTENT)
-async def hard_delete_tenant_role(tenant_id: uuid.UUID, role_id: uuid.UUID, body: HardDeleteRoleRequest, session: AsyncSession = Depends(get_session)):
-    from core.security_utils import verify_superadmin_password
-    if not verify_superadmin_password(body.password):
-        raise HTTPException(status_code=403, detail="Contraseña incorrecta")
-        
-    query = select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id)
-    role = (await session.execute(query)).scalar_one_or_none()
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found in this tenant")
+    await session.execute(delete(TenantMemberModuleAccess).where(TenantMemberModuleAccess.tenant_member_id == member.id))
     
-    from models import RoleModuleAccess
-    accesses = await session.execute(select(RoleModuleAccess).where(RoleModuleAccess.role_id == role_id))
-    for acc in accesses.scalars().all():
-        await session.delete(acc)
+    for mid in module_ids:
+        session.add(TenantMemberModuleAccess(tenant_member_id=member.id, module_id=mid))
         
-    await session.delete(role)
     await session.commit()
-    return None
+    return module_ids

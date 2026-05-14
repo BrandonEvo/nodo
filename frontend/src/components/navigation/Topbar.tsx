@@ -7,6 +7,7 @@ interface TopbarProps {
   realIsSuperAdmin: boolean;
   appViewMode: 'superadmin' | 'admin' | 'employee';
   onViewModeChange: (mode: 'superadmin' | 'admin' | 'employee') => void;
+  tenantColor?: string;
 }
 
 export function Topbar({
@@ -16,6 +17,7 @@ export function Topbar({
   realIsSuperAdmin,
   appViewMode,
   onViewModeChange,
+  tenantColor = '#69E7A8',
 }: TopbarProps) {
   return (
     <header
@@ -93,11 +95,17 @@ export function Topbar({
             <img
               src={userPicture}
               alt="Perfil"
-              className="w-10 h-10 rounded-xl object-cover shadow-sm ring-2 ring-gray-100 group-hover:ring-[#69E7A8]/40 transition-all duration-200"
+              className="w-10 h-10 rounded-xl object-cover shadow-sm ring-2 ring-gray-100 transition-all duration-200"
+              style={{ '--tw-ring-color': undefined } as any}
+              onMouseEnter={(e) => (e.currentTarget.style.boxShadow = `0 0 0 3px ${tenantColor}66`)}
+              onMouseLeave={(e) => (e.currentTarget.style.boxShadow = '0 0 0 2px #f3f4f6')}
               referrerPolicy="no-referrer"
             />
           ) : (
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#69E7A8] to-[#4BD48E] flex items-center justify-center text-[#111111] font-black text-lg shadow-sm group-hover:scale-105 transition-transform duration-200">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-sm group-hover:scale-105 transition-transform duration-200"
+              style={{ background: `linear-gradient(135deg, ${tenantColor}, ${tenantColor}cc)` }}
+            >
               {displayName.charAt(0).toUpperCase()}
             </div>
           )}
@@ -106,3 +114,4 @@ export function Topbar({
     </header>
   );
 }
+

@@ -6,12 +6,14 @@ export interface ModuleRead {
   code: string;
   description: string | null;
   is_active: boolean;
+  frontend_route: string | null;  // Slug de la app de frontend (ej: "calc")
 }
 
 export interface ModuleCreate {
   name: string;
   code: string;
   description?: string;
+  frontend_route?: string | null;
 }
 
 export const modulesService = {
@@ -25,7 +27,7 @@ export const modulesService = {
     return data;
   },
 
-  async update(id: string, body: Partial<ModuleCreate & { is_active: boolean }>): Promise<ModuleRead> {
+  async update(id: string, body: Partial<ModuleCreate & { is_active: boolean; frontend_route: string | null }>): Promise<ModuleRead> {
     const { data } = await api.patch<ModuleRead>(`/api/admin/modules/${id}`, body);
     return data;
   },

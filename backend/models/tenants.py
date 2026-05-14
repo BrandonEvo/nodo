@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 from sqlmodel import Field, Relationship
+from sqlalchemy import Column, Text
 from .mixins import AuditBase
 
 class Tenant(AuditBase, table=True):
@@ -11,15 +12,20 @@ class Tenant(AuditBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     name: str = Field(max_length=255, index=True)
     
+    # Apariencia y Branding
+    logo_url: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    theme_color: Optional[str] = Field(default="#69E7A8", max_length=50)
+
     # Control de Facturación (Stripe)
     stripe_customer_id: Optional[str] = Field(default=None, max_length=255, unique=True, index=True)
     billing_status: str = Field(default="trialing", max_length=50)
     trial_ends_at: Optional[datetime] = Field(default=None)
     current_period_end: Optional[datetime] = Field(default=None)
+    # Plan de suscripción asignado (opcional si es trial o free tier sin plan)
+    plan_id: Optional[uuid.UUID] = Field(default=None, foreign_key="subscription_plans.id", index=True)
 
     # Relaciones
     members: List["TenantMember"] = Relationship(back_populates="tenant")
-    roles: List["Role"] = Relationship(back_populates="tenant")
     subscriptions: List["Subscription"] = Relationship(back_populates="tenant")
 
 class Subscription(AuditBase, table=True):

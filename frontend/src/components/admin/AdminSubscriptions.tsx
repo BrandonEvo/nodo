@@ -138,7 +138,7 @@ export function AdminSubscriptions() {
   };
 
   return (
-    <div className="bg-white rounded-[40px] p-10 shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden relative">
+    <div className="bg-white rounded-[40px] p-10 shadow-sm border border-slate-100 flex flex-col flex-1 overflow-hidden relative">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8 shrink-0">
         <div>
           <h2 className="text-2xl font-black text-[#111111] tracking-tight flex items-center gap-3">

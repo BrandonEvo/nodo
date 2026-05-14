@@ -3,6 +3,7 @@ import { Plus, Users, Search, Edit2, Trash2, PowerOff, Shield, User as UserIcon,
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { tenantsService, type Tenant, type TenantUser } from "@/services/tenants.service";
+import { modulesService, type ModuleRead } from "@/services/modules.service";
 
 export function AdminUsers() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -17,9 +18,14 @@ export function AdminUsers() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [tenantId, setTenantId] = useState("");
+  const [roleId, setRoleId] = useState("");
   const [isSuperuser, setIsSuperuser] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Módulos
+  const [tenantModules, setTenantModules] = useState<ModuleRead[]>([]);
+  const [userModules, setUserModules] = useState<Set<string>>(new Set());
 
   // Hard Delete State
   const [hardDeletingUserId, setHardDeletingUserId] = useState<string | null>(null);
@@ -63,6 +69,25 @@ export function AdminUsers() {
     }
   }, [selectedTenant, tenants]);
 
+  // Cargar roles y módulos cuando se selecciona una empresa en el formulario
+  useEffect(() => {
+    if (!tenantId) {
+      setRoleId("");
+      setTenantModules([]);
+      setUserModules(new Set());
+    } else {
+      modulesService.listByTenant(tenantId).then(setTenantModules).catch(() => setTenantModules([]));
+
+      if (selectedUser && selectedUser.member_type === 'employee') {
+        tenantsService.getUserModules(tenantId, selectedUser.id)
+          .then(mods => setUserModules(new Set(mods)))
+          .catch(() => setUserModules(new Set()));
+      } else {
+        setUserModules(new Set());
+      }
+    }
+  }, [tenantId, selectedUser]);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !tenantId) return;
@@ -74,13 +99,21 @@ export function AdminUsers() {
         email: email.trim(),
         is_superuser: isSuperuser,
         is_active: isActive,
+        member_type: roleId, // roleId was renamed to member_type in state logic
       };
       if (password) payload.password = password;
 
+      let finalUserId = "";
       if (selectedUser) {
         await tenantsService.updateUser(selectedUser.id, payload);
+        finalUserId = selectedUser.id;
       } else {
-        await tenantsService.createUser(tenantId, payload);
+        const newUser = await tenantsService.createUser(tenantId, payload);
+        finalUserId = newUser.id;
+      }
+      
+      if (roleId === 'employee') {
+        await tenantsService.updateUserModules(tenantId, finalUserId, Array.from(userModules));
       }
       
       closeForm();
@@ -97,6 +130,7 @@ export function AdminUsers() {
     setEmail(u.email);
     setPassword("");
     setTenantId(u.tenant_id);
+    setRoleId(u.member_type || "employee");
     setIsSuperuser(u.is_superuser);
     setIsActive(u.is_active);
     setIsFormOpen(true);
@@ -144,6 +178,8 @@ export function AdminUsers() {
     setEmail("");
     setPassword("");
     setTenantId(selectedTenant !== "all" ? selectedTenant : "");
+    setRoleId("");
+    setUserModules(new Set());
     setIsSuperuser(false);
     setIsActive(true);
   };
@@ -153,7 +189,7 @@ export function AdminUsers() {
   }
 
   return (
-    <div className="bg-white rounded-[40px] p-10 shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden relative">
+    <div className="bg-white rounded-[40px] p-10 shadow-sm border border-slate-100 flex flex-col flex-1 overflow-hidden relative">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8 shrink-0">
         <div>
           <h2 className="text-2xl font-black text-[#111111] tracking-tight flex items-center gap-3">
@@ -228,9 +264,13 @@ export function AdminUsers() {
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${u.is_active === false ? 'bg-slate-300 text-slate-500' : 'bg-[#111111] text-white'}`}>
                           <Shield size={12} className={u.is_active === false ? "text-slate-400" : "text-[#69E7A8]"} /> SISTEMA SÚPER ADMIN
                         </span>
+                     ) : u.member_type === 'owner' ? (
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${u.is_active === false ? 'bg-amber-100/50 text-amber-600/50' : 'bg-amber-100 text-amber-700'}`}>
+                          PROPIETARIO
+                        </span>
                      ) : (
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${u.is_active === false ? 'bg-slate-200 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                          USUARIO ESTÁNDAR
+                          EMPLEADO
                         </span>
                      )}
                    </td>
@@ -246,28 +286,34 @@ export function AdminUsers() {
                      )}
                    </td>
                    <td className="py-4 text-right pr-4">
-                      <div className="flex justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                         <button onClick={() => openFormForEdit(u)} className="p-1.5 text-slate-400 hover:text-[#111111] hover:bg-slate-200 rounded-full transition" title="Editar">
-                            <Edit2 size={18} />
-                         </button>
-                         {u.is_active ? (
-                           <button onClick={() => handleDelete(u.id)} className="p-1.5 text-orange-400 hover:text-white hover:bg-orange-500 rounded-full transition" title="Desactivar">
-                              <PowerOff size={18} />
+                      {u.is_superuser ? (
+                        <div className="flex justify-end pr-2 text-slate-300" title="Cuenta protegida del sistema">
+                           <Shield size={18} />
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                           <button onClick={() => openFormForEdit(u)} className="p-1.5 text-slate-400 hover:text-[#111111] hover:bg-slate-200 rounded-full transition" title="Editar">
+                              <Edit2 size={18} />
                            </button>
-                         ) : (
-                           <>
-                             <button onClick={() => handleReactivate(u.id)} className="p-1.5 text-green-500 hover:text-white hover:bg-green-500 rounded-full transition bg-green-50" title="Reactivar">
+                           {u.is_active ? (
+                             <button onClick={() => handleDelete(u.id)} className="p-1.5 text-orange-400 hover:text-white hover:bg-orange-500 rounded-full transition" title="Desactivar">
                                 <PowerOff size={18} />
                              </button>
-                             <button onClick={() => {
-                                setHardDeletingUserId(u.id);
-                                setHardDeletingUserTenantId(u.tenant_id);
-                             }} className="p-1.5 text-red-500 hover:text-white hover:bg-red-600 rounded-full transition bg-red-50" title="Destruir Permanente">
-                                <Trash2 size={18} />
-                             </button>
-                           </>
-                         )}
-                      </div>
+                           ) : (
+                             <>
+                               <button onClick={() => handleReactivate(u.id)} className="p-1.5 text-green-500 hover:text-white hover:bg-green-500 rounded-full transition bg-green-50" title="Reactivar">
+                                  <PowerOff size={18} />
+                               </button>
+                               <button onClick={() => {
+                                  setHardDeletingUserId(u.id);
+                                  setHardDeletingUserTenantId(u.tenant_id);
+                               }} className="p-1.5 text-red-500 hover:text-white hover:bg-red-600 rounded-full transition bg-red-50" title="Destruir Permanente">
+                                  <Trash2 size={18} />
+                               </button>
+                             </>
+                           )}
+                        </div>
+                      )}
                    </td>
                  </tr>
                ))}
@@ -302,6 +348,21 @@ export function AdminUsers() {
                        {tenants.map(t => (
                           <option key={t.id} value={t.id}>{t.name}</option>
                        ))}
+                    </select>
+                 </div>
+                 
+                 <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Tipo de Miembro</label>
+                    <select 
+                      value={roleId}
+                      onChange={(e) => setRoleId(e.target.value)}
+                      className="w-full h-12 pl-4 pr-5 appearance-none rounded-2xl bg-slate-50 border border-slate-200 text-sm font-bold text-slate-700 outline-none focus-visible:ring-[#111111]/5"
+                      required
+                      disabled={!tenantId || selectedUser?.member_type === 'owner'}
+                    >
+                       <option value="" disabled>Selecciona un tipo...</option>
+                       {selectedUser?.member_type === 'owner' && <option value="owner">Propietario</option>}
+                       <option value="employee">Empleado (Acceso Limitado)</option>
                     </select>
                  </div>
                  
@@ -357,6 +418,39 @@ export function AdminUsers() {
                        </div>
                     </label>
                  </div>
+
+                 {roleId === 'employee' && tenantModules.length > 0 && (
+                     <div className="bg-slate-50 p-6 rounded-[24px] border border-slate-100 space-y-4">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Acceso a Módulos</label>
+                        {tenantModules.map(mod => (
+                            <label key={mod.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition-colors">
+                                <div className="flex items-center gap-3">
+                                   <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-500 flex items-center justify-center">
+                                      <Shield size={16} />
+                                   </div>
+                                   <div>
+                                      <p className="text-sm font-bold text-[#111111]">{mod.name}</p>
+                                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">{mod.code}</p>
+                                   </div>
+                                </div>
+                                <div className="relative inline-flex items-center cursor-pointer">
+                                   <input 
+                                     type="checkbox" 
+                                     className="sr-only peer"
+                                     checked={userModules.has(mod.id)}
+                                     onChange={(e) => {
+                                        const newSet = new Set(userModules);
+                                        if (e.target.checked) newSet.add(mod.id);
+                                        else newSet.delete(mod.id);
+                                        setUserModules(newSet);
+                                     }}
+                                   />
+                                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#69E7A8]"></div>
+                                </div>
+                            </label>
+                        ))}
+                     </div>
+                 )}
 
                  <div className="mt-auto pt-8">
                     <Button 

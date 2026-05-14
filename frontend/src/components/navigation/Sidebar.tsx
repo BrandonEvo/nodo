@@ -2,7 +2,8 @@ import { useState } from 'react';
 import {
   Home, Shield, Building2, Users, Package,
   ShoppingCart, Settings, LogOut, ChevronLeft,
-  ChevronRight, BarChart3, Briefcase, User,
+  ChevronRight, BarChart3, Briefcase, User, Send,
+  SlidersHorizontal, Warehouse, ChefHat, Store, Lock, BookOpen,
 } from 'lucide-react';
 
 export type TabId = string;
@@ -21,6 +22,9 @@ interface SidebarProps {
   isTenantAdmin: boolean;
   activeModules: any[];
   onLogout: () => void;
+  tenantColor?: string;
+  tenantLogo?: string | null;
+  tenantName?: string;
 }
 
 export function Sidebar({
@@ -30,8 +34,14 @@ export function Sidebar({
   isTenantAdmin,
   activeModules,
   onLogout,
+  tenantColor = '#69E7A8',
+  tenantLogo = null,
+  tenantName = 'NODO',
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+
+  // Use default NODO green for superadmin, tenant color for others
+  const accentColor = isSuperAdmin ? '#69E7A8' : tenantColor;
 
   // ── Build navigation based on role ──
   const buildNavItems = (): NavItem[] => {
@@ -44,13 +54,17 @@ export function Sidebar({
         { id: 'admin_roles', icon: Shield, label: 'Roles', section: 'Gestión' },
         { id: 'admin_modules', icon: Package, label: 'Módulos', section: 'Gestión' },
         { id: 'admin_subscriptions', icon: ShoppingCart, label: 'Suscripciones', section: 'Gestión' },
+        { id: 'admin_platform_config', icon: SlidersHorizontal, label: 'Configuración', section: 'Gestión' },
       ];
     }
 
     const items: NavItem[] = [
       { id: 'home', icon: Home, label: 'Inicio', section: 'Principal' },
-      { id: 'metrics', icon: BarChart3, label: 'Métricas', section: 'Principal' },
     ];
+
+    if (isTenantAdmin) {
+      items.push({ id: 'metrics', icon: BarChart3, label: 'Métricas', section: 'Principal' });
+    }
 
     // Module entries for tenant users
     activeModules.forEach((m: any) => {
@@ -58,6 +72,11 @@ export function Sidebar({
       if (m.code === 'POS') icon = ShoppingCart;
       else if (m.code === 'INVENTORY') icon = Package;
       else if (m.code === 'HR') icon = Users;
+      else if (m.code === 'BODEGA') icon = Warehouse;
+      else if (m.code === 'COCINA') icon = ChefHat;
+      else if (m.code === 'MOSTRADOR') icon = Store;
+      else if (m.code === 'CIERRE') icon = Lock;
+      else if (m.code === 'RECETAS') icon = BookOpen;
 
       items.push({
         id: m.code.toLowerCase(),
@@ -71,6 +90,7 @@ export function Sidebar({
     if (isTenantAdmin) {
       items.push(
         { id: 'mgmt_employees', icon: Briefcase, label: 'Empleados', section: 'Gestión' },
+        { id: 'mgmt_team', icon: Send, label: 'Invitaciones', section: 'Gestión' },
         { id: 'mgmt_config', icon: Settings, label: 'Configuración', section: 'Gestión' },
       );
     }
@@ -101,16 +121,26 @@ export function Sidebar({
       <div className={`flex items-center h-[72px] px-6 shrink-0 ${collapsed ? 'justify-center' : 'justify-between'}`}>
         {!collapsed && (
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-[#69E7A8] flex items-center justify-center">
-              <span className="text-[#111111] font-black text-lg italic">N</span>
-            </div>
-            <span className="text-lg font-black tracking-tighter">NODO</span>
+            {tenantLogo && !isSuperAdmin ? (
+              <img src={tenantLogo} alt={tenantName} className="w-9 h-9 rounded-xl object-contain bg-white/10 p-0.5" />
+            ) : (
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: accentColor }}>
+                <span className="text-[#111111] font-black text-lg italic">{isSuperAdmin ? 'N' : tenantName.charAt(0)}</span>
+              </div>
+            )}
+            <span className="text-lg font-black tracking-tighter">{isSuperAdmin ? 'NODO' : tenantName}</span>
           </div>
         )}
         {collapsed && (
-          <div className="w-9 h-9 rounded-xl bg-[#69E7A8] flex items-center justify-center">
-            <span className="text-[#111111] font-black text-lg italic">N</span>
-          </div>
+          <>
+            {tenantLogo && !isSuperAdmin ? (
+              <img src={tenantLogo} alt={tenantName} className="w-9 h-9 rounded-xl object-contain bg-white/10 p-0.5" />
+            ) : (
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: accentColor }}>
+                <span className="text-[#111111] font-black text-lg italic">{isSuperAdmin ? 'N' : tenantName.charAt(0)}</span>
+              </div>
+            )}
+          </>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
@@ -222,3 +252,4 @@ export function Sidebar({
 // Export the width constants for use by AppShell layout
 export const SIDEBAR_WIDTH = 272;
 export const SIDEBAR_COLLAPSED_WIDTH = 80;
+

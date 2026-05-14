@@ -1,0 +1,1 @@
+export { MostradorApp } from './MostradorApp';

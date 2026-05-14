@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Sidebar } from './navigation/Sidebar';
 import { Topbar } from './navigation/Topbar';
 import { BottomNav } from './navigation/BottomNav';
@@ -6,8 +6,15 @@ import { DashboardCanvas } from './dashboard/DashboardCanvas';
 
 interface AppShellProps {
     userSession: any;
-    activeModules?: string[];
+    activeModules?: any[];
     onLogout: () => void;
+}
+
+/** Convert hex to RGB object */
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+    const h = hex.replace('#', '');
+    const bigint = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+    return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
 }
 
 export function AppShell({ userSession, activeModules = [], onLogout }: AppShellProps) {
@@ -26,6 +33,19 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
     const displayName = userSession?.full_name || userSession?.email || "Usuario";
     const userPicture = userSession?.picture;
     const tenantName = userSession?.tenant_name || (isSuperAdmin ? "NODO CORE" : "Mi Empresa");
+    const tenantLogo = userSession?.tenant_logo_url || null;
+    const tenantColor = userSession?.tenant_theme_color || '#69E7A8';
+
+    // ── COMPUTE CSS CUSTOM PROPERTIES ──
+    const tenantCssVars = useMemo(() => {
+        const rgb = hexToRgb(tenantColor);
+        return {
+            '--tenant-color': tenantColor,
+            '--tenant-r': String(rgb.r),
+            '--tenant-g': String(rgb.g),
+            '--tenant-b': String(rgb.b),
+        } as React.CSSProperties;
+    }, [tenantColor]);
 
     // ── ACTIVE TAB STATE ──
     const getDefaultTab = () => {
@@ -45,7 +65,7 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
     }, [appViewMode]);
 
     return (
-        <div className="min-h-screen bg-[#f4f5f7]">
+        <div className="min-h-screen bg-[#f4f5f7]" style={tenantCssVars}>
             {/* ── DESKTOP SIDEBAR (hidden on mobile) ── */}
             <Sidebar
                 activeTab={activeTab}
@@ -54,6 +74,9 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                 isTenantAdmin={isTenantAdmin}
                 activeModules={activeModules}
                 onLogout={onLogout}
+                tenantColor={tenantColor}
+                tenantLogo={tenantLogo}
+                tenantName={tenantName}
             />
 
             {/* ── MAIN AREA (offset by sidebar on desktop) ── */}
@@ -66,14 +89,19 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                     realIsSuperAdmin={realIsSuperAdmin}
                     appViewMode={appViewMode}
                     onViewModeChange={setAppViewMode}
+                    tenantColor={tenantColor}
                 />
 
                 {/* ── MOBILE HEADER (visible only on mobile) ── */}
                 <header className="lg:hidden flex items-center justify-between px-5 h-16 bg-white/80 backdrop-blur-xl border-b border-gray-100/80 sticky top-0 z-30 pt-safe">
                     <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-[#69E7A8] flex items-center justify-center">
-                            <span className="text-[#111111] font-black text-sm italic">N</span>
-                        </div>
+                        {tenantLogo ? (
+                            <img src={tenantLogo} alt={tenantName} className="w-8 h-8 rounded-lg object-contain" />
+                        ) : (
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: tenantColor }}>
+                                <span className="text-white font-black text-sm">{tenantName.charAt(0)}</span>
+                            </div>
+                        )}
                         <div>
                             <p className="text-sm font-bold text-[#111111] leading-tight">{tenantName}</p>
                         </div>
@@ -82,7 +110,7 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                         {userPicture ? (
                             <img src={userPicture} alt="Avatar" className="w-8 h-8 rounded-lg object-cover" referrerPolicy="no-referrer" />
                         ) : (
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#69E7A8] to-[#4BD48E] flex items-center justify-center text-[#111111] font-black text-sm">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-black text-sm" style={{ background: `linear-gradient(135deg, ${tenantColor}, ${tenantColor}dd)` }}>
                                 {displayName.charAt(0).toUpperCase()}
                             </div>
                         )}
@@ -90,7 +118,7 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                 </header>
 
                 {/* ── CONTENT CANVAS ── */}
-                <main className="flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 pb-24 lg:pb-8 overflow-y-auto">
+                <main className="flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 pb-24 lg:pb-8 overflow-y-auto flex flex-col">
                     <DashboardCanvas
                         activeTab={activeTab}
                         setActiveTab={setActiveTab}
@@ -101,6 +129,8 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                         isTenantAdmin={isTenantAdmin}
                         activeModules={activeModules}
                         onLogout={onLogout}
+                        tenantLogo={tenantLogo}
+                        tenantColor={tenantColor}
                     />
                 </main>
             </div>

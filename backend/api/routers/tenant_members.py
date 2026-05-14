@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from api.deps import get_tenant_session
-from models import TenantMember, User, Role
+from models import TenantMember, User
 from models.schemas import TenantMemberRead, TenantMemberCreate
 
 router = APIRouter(tags=["Membresías (Asignar Empleados)"])
@@ -21,18 +21,11 @@ async def add_employee_to_tenant(
     if not user:
         raise HTTPException(status_code=404, detail="Usuario global no encontrado")
 
-    # 2. Validar que el Rol exista. 
-    # (Nota Enterprise: Como usamos get_tenant_session, si el rol es de OTRA empresa, 
-    # PostgreSQL lo ocultará por RLS y esto devolverá None automáticamente. ¡Magia de seguridad!)
-    role = await session.get(Role, member_in.role_id)
-    if not role:
-        raise HTTPException(status_code=404, detail="Rol no encontrado o acceso denegado")
-
     # 3. Crear el vínculo M:N
     db_member = TenantMember(
         user_id=member_in.user_id,
         tenant_id=x_tenant_id,
-        role_id=member_in.role_id
+        member_type=member_in.member_type
     )
     session.add(db_member)
     await session.commit()

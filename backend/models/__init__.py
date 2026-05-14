@@ -3,9 +3,10 @@ from .mixins import AuditBase
 from .core import Module
 from .users import User
 from .tenants import Tenant, Subscription, SubscriptionPlan, PlanModule
-from .iam import Role, TenantMember, RoleModuleAccess
+from .iam import TenantMember, TenantMemberModuleAccess
 from .audit import AuditLog
 from .invitations import Invitation
+from .platform_config import PlatformConfig
 
 # Esto expone los modelos para cuando llames a SQLModel.metadata.create_all() o desde env.py de Alembic
 __all__ = [
@@ -16,9 +17,9 @@ __all__ = [
     "Subscription",
     "SubscriptionPlan",
     "PlanModule",
-    "Role",
     "TenantMember",
-    "RoleModuleAccess",
+    "TenantMemberModuleAccess",
     "AuditLog",
-    "Invitation"
+    "Invitation",
+    "PlatformConfig",
 ]
