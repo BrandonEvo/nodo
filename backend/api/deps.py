@@ -1,11 +1,13 @@
 import uuid
-from fastapi import Header, Depends
+from fastapi import Header, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from fastapi_users import FastAPIUsers
+from sqlmodel import select
 
 from db.session import get_session
 from models import User
+from models.iam import TenantMember
 from core.auth import auth_backend
 from api.manager import get_user_manager
 
@@ -18,7 +20,26 @@ fastapi_users = FastAPIUsers[User, uuid.UUID](
 # 2. Dependencia para exigir usuario logueado
 current_active_user = fastapi_users.current_user(active=True)
 
-# 3. Middleware RLS
+# 3. Resuelve el tenant_id activo del usuario autenticado vía TenantMember
+async def get_current_tenant_id(
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+) -> uuid.UUID:
+    result = await session.execute(
+        select(TenantMember).where(
+            TenantMember.user_id == current_user.id,
+            TenantMember.is_active == True,
+        )
+    )
+    membership = result.scalars().first()
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sin membresía activa en ninguna empresa",
+        )
+    return membership.tenant_id
+
+# 4. Middleware RLS (legacy — mantiene compatibilidad con routers existentes)
 async def get_tenant_session(
     x_tenant_id: uuid.UUID = Header(..., description="ID de la empresa activa"),
     session: AsyncSession = Depends(get_session),

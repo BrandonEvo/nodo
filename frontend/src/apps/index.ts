@@ -39,6 +39,12 @@ const appRegistry: Record<string, AppComponent> = {
   recetas: lazy(() =>
     import('./recetas').then((m) => ({ default: m.RecetasApp }))
   ),
+  importaciones: lazy(() =>
+    import('./importaciones').then((m) => ({ default: m.ImportacionesApp }))
+  ),
+  autos: lazy(() =>
+    import('./autos').then((m) => ({ default: m.AutosApp }))
+  ),
 };
 
 /**

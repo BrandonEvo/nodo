@@ -359,14 +359,6 @@ export function DashboardCanvas({
   if (AppComponent) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-[#111111] tracking-tight">
-            {activeModule?.name}
-          </h1>
-          <p className="text-gray-400 mt-1 text-sm font-medium">
-            Aplicación activa &mdash; {activeModule?.code}
-          </p>
-        </div>
         <Suspense fallback={
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#111111]" />

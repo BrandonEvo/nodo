@@ -7,8 +7,17 @@ from .iam import TenantMember, TenantMemberModuleAccess
 from .audit import AuditLog
 from .invitations import Invitation
 from .platform_config import PlatformConfig
+from .bakery import (
+    InventoryItem,
+    Recipe,
+    RecipeIngredient,
+    ProductionOrder,
+    WasteLog,
+    Sale,
+    SaleItem,
+    ShiftRegister,
+)
 
-# Esto expone los modelos para cuando llames a SQLModel.metadata.create_all() o desde env.py de Alembic
 __all__ = [
     "AuditBase",
     "Module",
@@ -22,4 +31,13 @@ __all__ = [
     "AuditLog",
     "Invitation",
     "PlatformConfig",
+    # Bakery modules
+    "InventoryItem",
+    "Recipe",
+    "RecipeIngredient",
+    "ProductionOrder",
+    "WasteLog",
+    "Sale",
+    "SaleItem",
+    "ShiftRegister",
 ]

@@ -217,3 +217,20 @@ app.include_router(
     platform_config_router.router,
     prefix="/api/admin/config",
 )
+
+# ==========================================
+# MÓDULOS OPERATIVOS DE PANADERÍA
+# ==========================================
+from api.routers import bodega as bodega_router
+from api.routers import recetas as recetas_router
+from api.routers import cocina as cocina_router
+from api.routers import mostrador as mostrador_router
+from api.routers import cierre as cierre_router
+from api.routers import autos as autos_router
+
+app.include_router(bodega_router.router, prefix="/api/bodega")
+app.include_router(recetas_router.router, prefix="/api/recetas")
+app.include_router(cocina_router.router, prefix="/api/cocina")
+app.include_router(mostrador_router.router, prefix="/api/mostrador")
+app.include_router(cierre_router.router, prefix="/api/cierre")
+app.include_router(autos_router.router, prefix="/api/autos")

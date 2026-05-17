@@ -1,301 +1,552 @@
-# DOCUMENTACIÓN TÉCNICA DEL SISTEMA: NODO ENTERPRISE
+# DOCUMENTACIÓN TÉCNICA — NODO ENTERPRISE
+Versión API: 2.0.0 | Última revisión: 2026-05-13
 
-## 1. RESUMEN DEL SISTEMA Y ARQUITECTURA GLOBAL
-Nodo es una plataforma SaaS (Software as a Service) multi-inquilino (multi-tenant) diseñada para gestionar empresas, usuarios y módulos de forma escalable. Utiliza una arquitectura de base de datos compartida con aislamiento lógico por identificadores de empresa.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 1. RESUMEN Y PROPÓSITO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Patrón de Arquitectura:** 
-El sistema sigue una arquitectura cliente-servidor, donde el backend funciona como una API RESTful. Internamente, el backend adopta un patrón basado en **Routers, Servicios y Modelos** (una variante orientada a APIs similar a MVC/MVT):
-- **Models (Modelos)**: Entidades y esquemas definidos con SQLModel y Pydantic, representan la capa de datos y validación.
-- **Routers/Controllers (Controladores)**: Endpoints de FastAPI que reciben las peticiones, manejan la lógica de negocio apoyándose en dependencias (`deps.py`) y retornan respuestas.
-- **Frontend (Vista)**: Una Single Page Application (SPA) que consume la API de manera independiente.
+Nodo es una plataforma SaaS (Software as a Service) multi-tenant diseñada para
+gestionar empresas, usuarios, roles y módulos de negocio de forma escalable.
+Utiliza una base de datos compartida con aislamiento lógico por `tenant_id`.
 
-## 2. STACK TECNOLÓGICO Y VERSIONES
-El stack está diseñado para alto rendimiento y tipado estricto (TypeScript en frontend y Type Hints en backend):
+Casos de uso: cualquier sistema que requiera que múltiples empresas (tenants)
+operen de forma independiente sobre la misma infraestructura —ERP, facturación,
+inventarios, RR.HH., etc.— con usuarios que pueden pertenecer a varias empresas
+simultáneamente con roles distintos en cada una.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 2. STACK TECNOLÓGICO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ### Backend
-- **Framework**: FastAPI (>=0.110.0, Python 3.10+) - Framework asíncrono basado en Starlette.
-- **Servidor ASGI**: Uvicorn (>=0.28.0) - Sirve la aplicación FastAPI.
-- **Base de Datos**: PostgreSQL - Motor relacional principal. Driver: `asyncpg` (>=0.29.0) para conexiones no bloqueantes.
-- **ORM**: SQLModel (>=0.0.16) - Wrapper sobre SQLAlchemy y Pydantic. Facilita compartir esquemas entre base de datos y API.
-- **Migraciones**: Alembic (>=1.13.1) - Control de cambios en los esquemas de base de datos.
-- **Autenticación**: `fastapi-users[sqlalchemy]` (>=12.1.2) empleando JWT (JSON Web Tokens) y hashing de contraseñas con `bcrypt`.
-- **Seguridad**: `slowapi` (>=0.1.9) para rate limiting.
+  - Framework:     FastAPI >= 0.110.0 (Python 3.10+, ASGI asíncrono)
+  - Servidor:      Uvicorn >= 0.28.0
+  - Base de datos: PostgreSQL 16 — driver asyncpg >= 0.29.0
+  - ORM:           SQLModel >= 0.0.16 (SQLAlchemy + Pydantic unificados)
+  - Migraciones:   Alembic >= 1.13.1
+  - Auth:          fastapi-users[sqlalchemy] >= 12.1.2 (JWT + Google OAuth)
+  - Seguridad:     slowapi >= 0.1.9 (rate limiting), passlib[bcrypt]
+  - HTTP interno:  httpx >= 0.27.0
 
 ### Frontend
-- **Librería Core**: React (^19.2.0) y ReactDOM (^19.2.0).
-- **Lenguaje**: TypeScript (~5.9.3) para seguridad de tipos.
-- **Bundler y Tooling**: Vite (^7.3.1) - Reemplaza a Webpack para tiempos de construcción ultrarrápidos.
-- **Estilos**: TailwindCSS (^3.4.1) con plugins como `tailwindcss-animate`.
-- **Componentes y UI**: `@radix-ui` para primitivas accesibles y `lucide-react` para iconografía.
-- **Peticiones HTTP**: Axios (^1.13.6).
+  - Core:          React 19 + ReactDOM
+  - Lenguaje:      TypeScript ~5.9.3
+  - Bundler:       Vite >= 7.3.1
+  - Estilos:       TailwindCSS 3.4+ con tailwindcss-animate
+  - Componentes:   @radix-ui (primitivas accesibles) + lucide-react (iconos)
+  - HTTP:          Axios >= 1.13.6
 
-### Infraestructura (Docker)
-- **Contenerización**: Docker y Docker Compose para levantar todos los servicios unificados. Se usan distintos archivos como `docker-compose.yml` (base), `docker-compose.override.yml` (desarrollo local) y `docker-compose.prod.yml` (producción). Incluye contenedores separados para: Frontend, Backend, PostgreSQL, y un proxy inverso Nginx (en algunos despliegues).
+### Infraestructura
+  - Docker + Docker Compose
+  - docker-compose.yml           → definición base de servicios
+  - docker-compose.override.yml  → configuración para desarrollo local (hot-reload)
+  - docker-compose.prod.yml      → configuración de producción
 
-## 3. ARQUITECTURA DE DATOS (M:N) Y MODELOS
-### Modelo Base (AuditBase)
-Para estandarizar y facilitar la extensión, todas las tablas transaccionales del negocio heredan de un **Modelo Base** (ej. `AuditBase`). Este incluye:
-- `id` (UUID principal).
-- `tenant_id` (UUID foráneo para relacionar el registro con una empresa).
-- Campos de auditoría como `created_at` o `updated_at`.
-- `created_by` (UUID foráneo a `users.id` para trazabilidad).
-- `is_active` (booleano para borrado lógico).
 
-### Flujo Multi-Tenant (M:N)
-El flujo de pertenencia de un usuario al sistema funciona de la siguiente manera:
-1. **Tenants (Empresas)**: Entidades raíz. Todo registro de negocio cuelga de un `tenant_id`.
-2. **Users (Usuarios)**: Cuentas globales (`users` tabla). Un usuario se registra una vez en toda la plataforma de manera global. Incluye campos OAuth (`google_id`, `full_name`, `picture`) y un campo `onboarding_completed` para rastrear si completó la configuración inicial.
-3. **TenantMembers (Membresías)**: Tabla intermedia (`tenant_members`) que vincula un Usuario con una Empresa (Tenant) y le asigna un `role_id` específico dentro de esa empresa. Así, un usuario puede tener el rol "Propietario" en la Empresa A y "Cajero" en la Empresa B usando las mismas credenciales.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 3. ARQUITECTURA GENERAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-### Jerarquía de 3 Niveles de Acceso
-El sistema reconoce tres niveles de usuario, resueltos dinámicamente desde la arquitectura M:N:
-1. **Súper Admin** (`is_superuser=True`): Control total del sistema. Gestiona empresas, módulos, roles, planes y configuración global.
-2. **Admin de Empresa** (Propietario/Administrador): Su rol en `tenant_members` es "Propietario", "Administrador" o "Super Administrador". Puede invitar empleados, gestionar roles y configurar su empresa.
-3. **Empleado**: Cualquier otro rol. Solo ve los módulos asignados a su empresa.
+Patrón: cliente-servidor. El backend expone una REST API que la SPA consume.
+Internamente el backend sigue Router → Deps → Model (similar a MVC/MVT).
 
-**Nota Importante:** El sistema NO almacena `tenant_id` ni `is_tenant_admin` directamente en la tabla `User`. Estos se resuelven en runtime consultando `TenantMember` + `Role`, lo que permite la arquitectura M:N (un usuario en múltiples empresas con roles distintos).
+  [ React SPA :5173 ]
+         │  HTTP + JWT
+         ▼
+  [ FastAPI :8000 ]
+    ├── main.py          → punto de entrada, middlewares, registro de routers
+    ├── api/deps.py      → dependencias reutilizables (auth, RLS, tenant_id)
+    ├── api/routers/     → endpoints por dominio
+    ├── models/          → entidades SQLModel + schemas Pydantic
+    └── core/            → config, auth JWT, utils de seguridad
+         │  asyncpg (async)
+         ▼
+  [ PostgreSQL 16 ]
 
-## 4. SISTEMA DE ONBOARDING INTELIGENTE (FTUX)
-### Flujo de Enrutamiento Post-Login
-Cuando un usuario inicia sesión (JWT o Google OAuth), el sistema ejecuta un árbol de decisión:
 
-1. **¿El usuario NO existe en BD?**
-   - Se consulta la tabla `invitations` por su email.
-   - *Si TIENE invitación:* Se crea el usuario con `onboarding_completed=True`, se vincula al tenant de la invitación con el rol especificado, y se marca la invitación como `accepted`.
-   - *Si NO TIENE invitación (orgánico):* Se crea el usuario con `onboarding_completed=False`, se crea un Tenant provisional ("Empresa de [nombre/email]"), se crea un rol "Propietario", y se asigna la membresía.
-2. **¿El usuario SÍ existe en BD?**
-   - Se retornan sus datos enriquecidos vía `GET /api/auth/session`.
+Middlewares aplicados en orden (main.py):
+  1. SlowAPIMiddleware   → rate limiting global 100 req/min/IP
+  2. CORSMiddleware      → orígenes configurables via CORS_ORIGINS
+  3. CookieToBearerMiddleware → transforma cookie OAuth en header Authorization
 
-### Endpoint de Sesión Enriquecida
-`GET /api/auth/session` retorna un payload que combina:
-- Datos del usuario (id, email, nombre, foto, is_superuser).
-- Datos M:N del tenant activo (tenant_id, tenant_name, role_name, is_tenant_admin).
-- Estado de onboarding (`onboarding_completed`).
-- Invitaciones pendientes (`has_pending_invites`, `pending_invitations[]`).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 4. MODELO DE DATOS Y ARQUITECTURA M:N MULTI-TENANT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### AuditBase (models/mixins.py)
+Clase base de la que heredan TODAS las tablas transaccionales de negocio:
+
+  class AuditBase(SQLModel):
+      created_at:  datetime    # timestamp UTC automático
+      updated_at:  datetime    # timestamp UTC automático
+      created_by:  UUID | None # FK → users.id (trazabilidad)
+      is_active:   bool        # borrado lógico (default True)
+
+Cada tabla de negocio añade además su propio `id` (UUID PK) y `tenant_id` (FK).
+
+### Relación M:N (Usuario ↔ Empresa)
+
+  ┌──────────┐         ┌────────────────┐         ┌─────────┐
+  │  users   │ ──────► │ tenant_members │ ◄─────── │ tenants │
+  │ (global) │         │  (intermedia)  │         │         │
+  └──────────┘         │  - user_id     │         └─────────┘
+                       │  - tenant_id   │
+                       │  - role_id     │
+                       └────────────────┘
+
+Un usuario se registra UNA sola vez en la plataforma (tabla `users`).
+Puede pertenecer a N empresas con roles distintos en cada una.
+El `tenant_id` NUNCA se almacena en `users`; siempre se resuelve en runtime
+consultando `tenant_members` + `roles`.
+
+### Jerarquía de Acceso (3 niveles)
+  1. Súper Admin     → is_superuser=True en users. Control total del sistema.
+  2. Admin de Tenant → role "Propietario" / "Administrador" en tenant_members.
+  3. Empleado        → cualquier otro rol. Solo ve módulos asignados.
+
+### Modelos principales
+  models/users.py          → User (+ onboarding_completed, google_id, picture)
+  models/tenants.py        → Tenant, SubscriptionPlan, PlanModule, Subscription
+  models/iam.py            → Role, TenantMember, RoleModuleAccess
+  models/invitations.py    → Invitation (workflow: pending→accepted|rejected|revoked)
+  models/core.py           → Module (módulos de negocio del sistema)
+  models/platform_config.py→ PlatformConfig (key-value para Súper Admin)
+  models/audit.py          → AuditLog
+  models/schemas.py        → Schemas Pydantic de entrada/salida (UserRead, SessionRead, etc.)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 5. SISTEMA DE AUTENTICACIÓN Y ONBOARDING (FTUX)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Métodos de login soportados
+  - JWT clásico:   POST /api/auth/jwt/login  (email + password)
+  - Google OAuth:  GET  /api/auth/google/login → callback → cookie HttpOnly
+
+### Árbol de decisión post-login
+
+  Login exitoso
+       │
+       ├─ ¿Usuario NO existe en BD?
+       │       │
+       │       ├─ ¿Tiene invitación pendiente por email?
+       │       │       └─ SÍ → Crear usuario (onboarding_completed=True)
+       │       │                  Crear TenantMember con el rol de la invitación
+       │       │                  Marcar invitación como "accepted"
+       │       │
+       │       └─ NO (registro orgánico)
+       │               └─ Crear usuario (onboarding_completed=False)
+       │                  Crear Tenant provisional ("Empresa de [nombre]")
+       │                  Crear rol "Propietario"
+       │                  Crear TenantMember
+       │
+       └─ ¿Usuario SÍ existe?
+               └─ Cargar sesión enriquecida → GET /api/auth/session
+
+### Sesión enriquecida: GET /api/auth/session
+Retorna en una sola llamada:
+  - Datos del usuario (id, email, nombre, foto, is_superuser)
+  - Datos del tenant activo (tenant_id, tenant_name, role_name, is_tenant_admin)
+  - Estado de onboarding (onboarding_completed)
+  - Invitaciones pendientes (has_pending_invites, pending_invitations[])
 
 ### Modal de Onboarding (Frontend)
-Si `onboarding_completed === false`, el frontend renderiza un `<OnboardingModal />` sobre el AppShell con `backdrop-blur`. Este modal:
-- **No se puede cerrar** hasta completar el formulario.
-- Pide el nombre real de la empresa (reemplaza el nombre provisional).
-- Hace PATCH a `/api/onboarding/complete` que actualiza el Tenant y marca `onboarding_completed = true`.
+Si onboarding_completed === false, el frontend renderiza <OnboardingModal />
+sobre el AppShell con backdrop-blur. El modal:
+  - No se puede cerrar hasta completar el formulario
+  - Pide el nombre real de la empresa (reemplaza el nombre provisional)
+  - Hace PATCH /api/onboarding/complete → actualiza Tenant + onboarding_completed=true
 
-## 5. SISTEMA DE INVITACIONES DE EMPLEADOS
-### Tabla `Invitation`
-Hereda de `AuditBase` y contiene:
-- `email` (indexado), `tenant_id` (FK), `role_id` (FK).
-- `token` (alfanumérico único, generado con `secrets.token_urlsafe(32)`).
-- `status` (workflow: `pending` → `accepted` | `rejected` | `revoked`).
-- `expires_at` (configurable por el Súper Admin).
 
-### Flujo del Dueño (Admin)
-- Panel "Gestión de Equipo" en el dashboard (`/api/invitations/`).
-- Formulario: email + selector de rol → POST crea invitación con status `pending`.
-- Tabla: muestra todas las invitaciones con badges de status, permite "Reenviar" y "Revocar" si la invitación está pendiente.
-- Validaciones: límite configurable de invitaciones pendientes por tenant, no duplicar email+tenant.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 6. SISTEMA DE INVITACIONES DE EMPLEADOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Tabla Invitation
+  - email, tenant_id (FK), role_id (FK)
+  - token (secrets.token_urlsafe(32), único)
+  - status: pending → accepted | rejected | revoked
+  - expires_at (configurable por Súper Admin via platform_config)
+
+### Flujo del Admin de Empresa
+  1. Panel "Gestión de Equipo" → formulario email + rol → POST /api/invitations/
+  2. Tabla de invitaciones con badges de status
+  3. Acciones disponibles sobre invitaciones pendientes: Reenviar / Revocar
 
 ### Flujo del Empleado Invitado
-- Al hacer login, si tiene invitaciones pendientes (`has_pending_invites=True`), aparece un `<InvitationAcceptanceModal />`.
-- Muestra: "La empresa [nombre] te ha invitado como [rol]" con botones Aceptar/Rechazar.
-- Aceptar: POST `/api/invitations/{id}/respond` con `{action: "accept"}` → crea `TenantMember`, actualiza status a `accepted`.
-- Rechazar: actualiza status a `rejected`.
+  1. Hace login → GET /api/auth/session retorna has_pending_invites=true
+  2. Frontend muestra <InvitationAcceptanceModal />
+  3. POST /api/invitations/{id}/respond con {action: "accept" | "reject"}
+  4. Aceptar → crea TenantMember → usuario entra al tenant
 
 ### Endpoints de Invitaciones
-| Método | Ruta | Descripción | Acceso |
-|--------|------|-------------|--------|
-| POST | `/api/invitations/` | Crear invitación | Admin del tenant |
-| GET | `/api/invitations/` | Listar invitaciones del tenant | Admin del tenant |
-| POST | `/api/invitations/{id}/respond` | Aceptar/rechazar | Usuario invitado |
-| PATCH | `/api/invitations/{id}/revoke` | Revocar invitación pendiente | Admin del tenant |
-| POST | `/api/invitations/{id}/resend` | Reenviar (nuevo token) | Admin del tenant |
+  POST   /api/invitations/              Crear invitación          [Admin tenant]
+  GET    /api/invitations/              Listar invitaciones        [Admin tenant]
+  POST   /api/invitations/{id}/respond  Aceptar o rechazar         [Invitado]
+  PATCH  /api/invitations/{id}/revoke   Revocar pendiente          [Admin tenant]
+  POST   /api/invitations/{id}/resend   Reenviar (nuevo token)     [Admin tenant]
 
-## 6. SEGURIDAD Y AISLAMIENTO DE DATOS
-Recientemente se implementaron múltiples capas de seguridad:
-- **Aislamiento de Datos (Logical RLS)**: Aunque PostgreSQL soporta RLS (Row-Level Security) nativo, el sistema implementa un **RLS Lógico a nivel de aplicación**. Todos los endpoints requieren que se inyecte el `tenant_id` actual mediante la dependencia `get_current_tenant_id` en FastAPI. Cada consulta a la base de datos filtra explícitamente `WHERE tenant_id = :tenant_id`, evitando fuga de datos entre empresas.
-- **CORS Dinámico**: Los orígenes permitidos ya no están fijos en el código. Se configuran mediante la variable de entorno `CORS_ORIGINS` (ej: `CORS_ORIGINS="https://mi-dominio.com,https://api.mi-dominio.com"`). Esto evita peticiones no autorizadas desde otros dominios.
-- **Rate Limiting (Anti-DDoS y Fuerza Bruta)**: Se implementó la librería `slowapi`. Actualmente, el sistema limita globalmente a **100 peticiones por minuto por IP**. Si una IP excede este límite (como en un ataque de fuerza bruta al login), el servidor devuelve un error HTTP 429 (Too Many Requests), protegiendo la disponibilidad de PostgreSQL y FastAPI.
-- **Cookie-to-Bearer Middleware**: Para el flujo de Google OAuth, el JWT se entrega en una cookie `HttpOnly`. Un middleware (`CookieToBearerMiddleware`) extrae el token de la cookie y lo inyecta como header `Authorization: Bearer` para que `fastapi-users` lo valide normalmente.
+### Validaciones automáticas
+  - No duplicar email + tenant (invitación pendiente activa)
+  - Límite de invitaciones pendientes por tenant (ver platform_config)
 
-## 7. SISTEMA DE ROLES Y PERMISOS
-El sistema utiliza Control de Acceso Basado en Roles (RBAC) con un enfoque granular en módulos:
-- **Roles**: Se definen globalmente (por el Superadmin) o localmente (creados por un admin del tenant, `is_custom=True`).
-- **Roles especiales**: "Propietario" es el rol canónico de dueño de empresa. "Administrador" y "Super Administrador" también tienen privilegios de admin.
-- **RoleModuleAccess**: Una tabla que cruza un `role_id` con un `module_id` (ej. Módulo de Inventarios) y define booleanos explícitos de permisos: `can_read`, `can_write`, `can_delete`.
-- **Módulos y Subscripciones**: Las empresas se suscriben a módulos (`tenant_modules`). Los roles de esa empresa dictan quién puede usar dicho módulo basado en los accesos configurados.
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 7. SEGURIDAD Y AISLAMIENTO DE DATOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### RLS Lógico (Row-Level Security a nivel de aplicación)
+Todos los endpoints inyectan el tenant_id del usuario autenticado mediante
+la dependencia get_current_tenant_id (api/deps.py). Cada query filtra
+explícitamente WHERE tenant_id = :tenant_id. Ningún endpoint de negocio
+devuelve datos de otro tenant, sin depender de RLS nativo de PostgreSQL.
+
+### Rate Limiting (slowapi)
+Límite global: 100 peticiones / minuto / IP.
+Una IP que supere el límite recibe HTTP 429 (Too Many Requests).
+Protege contra fuerza bruta en login y ataques DDoS básicos.
+
+### CORS Dinámico
+Los orígenes permitidos se configuran via variable de entorno CORS_ORIGINS
+(lista separada por comas). No hay orígenes fijos en el código fuente.
+Ejemplo: CORS_ORIGINS="https://app.mi-dominio.com,https://api.mi-dominio.com"
+
+### Cookie-to-Bearer Middleware
+El flujo de Google OAuth entrega el JWT en una cookie HttpOnly (más segura
+que localStorage). CookieToBearerMiddleware extrae el token de la cookie e
+inyecta el header Authorization: Bearer para que fastapi-users lo valide
+de forma transparente, sin cambios en la lógica de autenticación existente.
+
+### RBAC Granular (Roles + Módulos)
+  - Role:             definido globalmente (Superadmin) o por tenant (is_custom=True)
+  - RoleModuleAccess: tabla que cruza role_id + module_id con booleanos:
+                      can_read, can_write, can_delete
+  - TenantModule:     módulos suscritos por cada empresa
+  - Combinado: un empleado solo puede acceder a módulos que su empresa tenga
+               suscritos Y que su rol tenga habilitados.
+
+### Endpoint de salud
+  GET /health → {"status": "ok", "environment": "...", "database": "connected"}
+  Útil para healthchecks de Docker, load balancers y monitoreo.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## 8. PARAMETRIZACIÓN DEL SÚPER ADMIN
-La tabla `platform_config` (key-value) permite configurar parámetros globales sin requerir recompilación:
-- `invitation_token_validity_days` (default: 7): Días de validez de un token de invitación.
-- `max_pending_invitations_per_tenant` (default: 50): Límite máximo de invitaciones pendientes por empresa.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Estos valores se gestionan desde el panel Súper Admin → Configuración de Plataforma (`GET/PATCH /api/admin/config/`).
+La tabla platform_config almacena pares clave-valor editables en runtime
+sin requerir recompilación ni redeployment.
 
-## 9. GUÍA PARA EL PROGRAMADOR (EXTENSIBILIDAD)
+  Clave                              Default  Descripción
+  ─────────────────────────────────  ───────  ─────────────────────────────────────
+  invitation_token_validity_days     7        Días de validez de un token de invitación
+  max_pending_invitations_per_tenant 50       Límite de invitaciones pendientes por tenant
 
-### Comandos Frecuentes (Docker y Alembic)
-- **Levantar el entorno completo**:
-  `docker-compose up -d --build`
-- **Bajar el entorno**:
-  `docker-compose down`
-- **Crear una nueva migración de BD (después de cambiar un modelo)**:
-  `docker-compose exec backend alembic revision --autogenerate -m "añadir_nueva_tabla"`
-- **Aplicar migraciones a la Base de Datos**:
-  `docker-compose exec backend alembic upgrade head`
+Gestión: panel Súper Admin → Configuración de Plataforma
+  GET   /api/admin/config/   → leer configuración actual
+  PATCH /api/admin/config/   → actualizar un valor
 
-### Flujo Completo: Cómo crear una nueva Tabla (Ej: "Productos")
 
-1. **Crear el Modelo (backend/models/products.py)**
-   Crea un archivo o edita uno existente asegurando que herede de `AuditBase` e incluya `tenant_id`.
-   ```python
-   import uuid
-   from sqlmodel import Field
-   from .mixins import AuditBase
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 9. VARIABLES DE ENTORNO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   class Product(AuditBase, table=True):
-       __tablename__ = "products"
-       
-       id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-       tenant_id: uuid.UUID = Field(foreign_key="tenants.id", index=True)
-       name: str = Field(max_length=150)
-       price: float = Field(default=0.0)
-   ```
+Copiar .env.example → .env y completar los valores antes de levantar Docker.
 
-2. **Registrar el Modelo**
-   Asegúrate de importar `Product` en `backend/models/__init__.py` para que Alembic lo detecte.
+  Variable                    Requerida  Descripción
+  ──────────────────────────  ─────────  ─────────────────────────────────────────────
+  ENVIRONMENT                 Sí         "development" o "production"
+                                         En production: /docs y /redoc quedan ocultos.
+  SECRET_KEY                  Sí         Clave maestra JWT (mínimo 32 bytes hex).
+                                         Generar: openssl rand -hex 32
+  DATABASE_URL                Sí         postgresql+asyncpg://user:pass@db:5432/dbname
+  POSTGRES_USER               Sí         Usuario de PostgreSQL
+  POSTGRES_PASSWORD           Sí         Contraseña de PostgreSQL
+  POSTGRES_DB                 Sí         Nombre de la base de datos
+  SUPERADMIN_PASSWORD_HASH    Sí         Hash bcrypt del password del superadmin.
+                                         Generar: python -c "from passlib.hash import bcrypt; print(bcrypt.hash('mi_pass'))"
+  RESET_PASSWORD_SECRET       Sí         Secreto para tokens de reset de contraseña
+  VERIFICATION_TOKEN_SECRET   Sí         Secreto para tokens de verificación de email
+  CORS_ORIGINS                No         Orígenes permitidos (coma-separados).
+                                         Default: http://localhost:5173,http://127.0.0.1:5173
+  GOOGLE_CLIENT_SECRET        No         Secreto del cliente OAuth de Google.
+                                         Solo requerido si se usa login con Google.
 
-3. **Generar y Aplicar Migración**
-   Ejecuta en consola:
-   `docker-compose exec backend alembic revision --autogenerate -m "tabla_productos"`
-   `docker-compose exec backend alembic upgrade head`
+Nota: en desarrollo, VITE_API_URL se configura en docker-compose.override.yml
+(default: http://localhost:8000/api). No requiere .env del frontend.
 
-4. **Crear el Schema (backend/models/schemas.py)**
-   Crea Pydantic models para validar la entrada/salida:
-   ```python
-   from pydantic import BaseModel
-   import uuid
 
-   class ProductCreate(BaseModel):
-       name: str
-       price: float
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 10. COMANDOS FRECUENTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   class ProductRead(ProductCreate):
-       id: uuid.UUID
-       tenant_id: uuid.UUID
-   ```
+### Docker
+  docker-compose up -d --build          Levantar todos los servicios (con rebuild)
+  docker-compose up -d                  Levantar sin rebuild
+  docker-compose down                   Bajar todos los servicios
+  docker-compose down -v                Bajar y eliminar volúmenes (reset de BD)
+  docker-compose logs -f backend        Ver logs del backend en tiempo real
+  docker-compose logs -f frontend       Ver logs del frontend en tiempo real
+  docker-compose ps                     Ver estado de los contenedores
 
-5. **Crear el Endpoint (backend/api/routers/products.py)**
-   Crea el router, *siempre* filtrando e insertando el `tenant_id` del usuario autenticado:
-   ```python
-   from fastapi import APIRouter, Depends
-   from sqlalchemy.ext.asyncio import AsyncSession
-   from db.session import get_session
-   from models import Product
-   from api.deps import get_current_tenant_id
+### Alembic (migraciones de BD)
+  # Siempre ejecutar desde el host, el comando corre dentro del contenedor backend
+  docker-compose exec backend alembic revision --autogenerate -m "descripcion_del_cambio"
+  docker-compose exec backend alembic upgrade head
+  docker-compose exec backend alembic downgrade -1    # Revertir última migración
+  docker-compose exec backend alembic current         # Ver migración activa
+  docker-compose exec backend alembic history         # Ver historial de migraciones
 
-   router = APIRouter()
+### Seeds y utilidades
+  docker-compose exec backend python seed.py          Poblar datos iniciales
 
-   @router.post("/", response_model=ProductRead)
-   async def create_product(
-       product: ProductCreate, 
-       tenant_id: uuid.UUID = Depends(get_current_tenant_id),
-       db: AsyncSession = Depends(get_session)
-   ):
-       db_obj = Product(**product.dict(), tenant_id=tenant_id)
-       db.add(db_obj)
-       await db.commit()
-       await db.refresh(db_obj)
-       return db_obj
-   ```
 
-6. **Registrar el Endpoint**
-   En `backend/main.py`:
-   ```python
-   from api.routers import products
-   app.include_router(products.router, prefix="/api/products", tags=["Productos"])
-   ```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 11. ESTRUCTURA DE ARCHIVOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-### Cómo crear una nueva Pantalla en Frontend
-1. En `frontend/src/pages/` crea `ProductsPage.tsx`.
-2. Añade la ruta en `frontend/src/App.tsx` o tu router principal.
-3. Utiliza la librería de peticiones (Axios/Fetch) asegurándote de que el JWT viaja en los headers (o que la cookie está configurada).
+### Backend
+  backend/
+  ├── main.py                        Punto de entrada FastAPI: middlewares + routers
+  ├── seed.py                        Script de datos iniciales (roles, módulos, superadmin)
+  ├── requirements.txt               Dependencias Python
+  ├── Dockerfile                     Imagen del backend
+  ├── entrypoint.sh                  Script de inicio (migraciones automáticas + uvicorn)
+  ├── alembic.ini                    Configuración de Alembic
+  ├── core/
+  │   ├── config.py                  Settings (pydantic-settings, lee variables de entorno)
+  │   ├── auth.py                    JWT: BearerTransport + JWTStrategy
+  │   └── security_utils.py          Hash/verificación de contraseñas (bcrypt)
+  ├── db/
+  │   └── session.py                 Motor async SQLAlchemy + fábrica de sesiones
+  ├── api/
+  │   ├── deps.py                    Dependencias centrales: fastapi_users, get_current_tenant_id
+  │   ├── manager.py                 UserManager (fastapi-users: hooks de registro/login)
+  │   └── routers/
+  │       ├── auth.py                POST /api/auth/workspace (registro con tenant)
+  │       ├── auth_google.py         Google OAuth 2.0: login + callback + lógica M:N
+  │       ├── session.py             GET /api/auth/session (sesión enriquecida)
+  │       ├── invitations.py         CRUD completo de invitaciones de equipo
+  │       ├── onboarding.py          PATCH /api/onboarding/complete
+  │       ├── platform_config.py     GET/PATCH /api/admin/config/ (Súper Admin)
+  │       ├── tenant_me.py           Rutas del admin del tenant (/api/me/*)
+  │       ├── tenants.py             CRUD de empresas (Súper Admin)
+  │       ├── roles.py               CRUD de roles con RLS
+  │       ├── tenant_members.py      Gestión de membresías M:N
+  │       ├── modules.py             CRUD de módulos del sistema (Súper Admin)
+  │       ├── plans.py               Planes de suscripción
+  │       └── tenant_modules.py      Módulos asignados a cada tenant
+  └── models/
+      ├── __init__.py                Importación central (Alembic necesita ver todos los modelos)
+      ├── mixins.py                  AuditBase (created_at, updated_at, created_by, is_active)
+      ├── users.py                   User (onboarding_completed, google_id, full_name, picture)
+      ├── tenants.py                 Tenant, SubscriptionPlan, PlanModule, Subscription
+      ├── iam.py                     Role, TenantMember, RoleModuleAccess
+      ├── invitations.py             Invitation (status workflow)
+      ├── platform_config.py         PlatformConfig (key-value)
+      ├── core.py                    Module (módulos de negocio)
+      ├── audit.py                   AuditLog
+      └── schemas.py                 Schemas Pydantic: UserRead, SessionRead, InvitationRead, etc.
 
-### Estructura de Archivos del Backend
-```
-backend/
-├── main.py                      # Punto de entrada FastAPI + registro de routers
-├── seed.py                      # Script de datos iniciales
-├── core/
-│   ├── auth.py                  # Configuración JWT (BearerTransport + JWTStrategy)
-│   ├── config.py                # Variables de entorno (Settings)
-│   └── security_utils.py        # Hash/verificación de passwords
-├── db/
-│   └── session.py               # Motor async + fábrica de sesiones
-├── api/
-│   ├── deps.py                  # Dependencias: fastapi_users, RLS middleware
-│   ├── manager.py               # UserManager (fastapi-users)
-│   └── routers/
-│       ├── auth.py              # Registro de workspace (JWT)
-│       ├── auth_google.py       # Google OAuth 2.0 con lógica M:N + onboarding
-│       ├── session.py           # GET /api/auth/session (sesión enriquecida)
-│       ├── invitations.py       # CRUD de invitaciones de equipo
-│       ├── onboarding.py        # PATCH /api/onboarding/complete
-│       ├── platform_config.py   # Configuración global del Súper Admin
-│       ├── tenant_me.py         # Rutas del admin del tenant (M:N)
-│       ├── tenants.py           # CRUD de empresas (SuperAdmin)
-│       ├── roles.py             # CRUD de roles (RLS)
-│       ├── tenant_members.py    # Membresías M:N
-│       ├── modules.py           # CRUD de módulos (SuperAdmin)
-│       ├── plans.py             # Planes de suscripción
-│       └── tenant_modules.py    # Módulos asignados a tenants
-└── models/
-    ├── __init__.py              # Registro central de modelos
-    ├── mixins.py                # AuditBase (created_at, updated_at, is_active)
-    ├── users.py                 # User (+ onboarding_completed)
-    ├── tenants.py               # Tenant, Subscription, PlanModule, SubscriptionPlan
-    ├── iam.py                   # Role, TenantMember, RoleModuleAccess
-    ├── invitations.py           # Invitation (status workflow)
-    ├── platform_config.py       # PlatformConfig (key-value global)
-    ├── core.py                  # Module
-    ├── audit.py                 # AuditLog
-    └── schemas.py               # Pydantic schemas (UserRead, SessionRead, InvitationRead, etc.)
-```
+### Frontend
+  frontend/src/
+  ├── App.tsx                        Estado global de auth + árbol de modales (onboarding/invitaciones)
+  ├── main.tsx                       Punto de entrada React
+  ├── lib/
+  │   ├── api.ts                     Axios client (withCredentials=true + interceptor de token)
+  │   └── utils.ts                   Utilidades generales
+  ├── services/
+  │   ├── auth.service.ts            login, me, session enriquecida, registerWorkspace
+  │   ├── invitations.service.ts     CRUD de invitaciones
+  │   ├── onboarding.service.ts      Completar onboarding
+  │   ├── modules.service.ts         Módulos activos del tenant
+  │   ├── tenantMe.service.ts        Admin de tenant: roles, miembros
+  │   ├── tenants.service.ts         CRUD de tenants (Súper Admin)
+  │   └── subscriptions.service.ts   Gestión de suscripciones
+  └── components/
+      ├── OnboardingModal.tsx         Modal FTUX, 3 pasos, no cerrable hasta completar
+      ├── InvitationAcceptanceModal.tsx Modal para aceptar/rechazar invitaciones
+      ├── AppShell.tsx               Layout principal: sidebar + topbar + canvas
+      ├── Login.tsx                  Pantalla de login y registro
+      ├── OrgSelector.tsx            Selector de organización activa
+      ├── Launcher.tsx               Lanzador rápido de módulos
+      ├── navigation/
+      │   ├── Sidebar.tsx            Navegación desktop (colapsable)
+      │   ├── Topbar.tsx             Barra superior
+      │   └── BottomNav.tsx          Navegación móvil
+      ├── dashboard/
+      │   └── DashboardCanvas.tsx    Router de vistas internas + PlatformConfigPanel
+      └── admin/
+          ├── AdminTenants.tsx       CRUD de empresas
+          ├── AdminModules.tsx       CRUD de módulos
+          ├── AdminUsers.tsx         CRUD de usuarios
+          ├── AdminRoles.tsx         CRUD de roles
+          ├── AdminSubscriptions.tsx CRUD de planes
+          └── TeamManagement.tsx     Panel de invitaciones del admin de empresa
 
-### Estructura de Archivos del Frontend
-```
-frontend/src/
-├── App.tsx                              # Estado global de auth + modales de onboarding/invitaciones
-├── main.tsx                             # Punto de entrada React
-├── lib/
-│   ├── api.ts                           # Axios client (withCredentials + token interceptor)
-│   └── utils.ts                         # Utilidades
-├── services/
-│   ├── auth.service.ts                  # login, me, session (enriquecida), registerWorkspace
-│   ├── invitations.service.ts           # CRUD invitaciones
-│   ├── onboarding.service.ts            # Completar onboarding
-│   ├── modules.service.ts               # Módulos activos
-│   ├── tenantMe.service.ts              # Admin de tenant: roles, users
-│   ├── tenants.service.ts               # CRUD tenants (SuperAdmin)
-│   └── subscriptions.service.ts         # Suscripciones
-└── components/
-    ├── OnboardingModal.tsx               # FTUX modal (3 pasos, no cerrable)
-    ├── InvitationAcceptanceModal.tsx      # Modal aceptar/rechazar invitaciones
-    ├── AppShell.tsx                      # Layout principal (sidebar + topbar + canvas)
-    ├── Login.tsx                         # Pantalla de login/registro
-    ├── OrgSelector.tsx                   # Selector de organización
-    ├── Launcher.tsx                      # Lanzador rápido
-    ├── navigation/
-    │   ├── Sidebar.tsx                   # Navegación desktop (colapsable)
-    │   ├── Topbar.tsx                    # Barra superior (impersonación)
-    │   └── BottomNav.tsx                 # Navegación móvil
-    ├── dashboard/
-    │   └── DashboardCanvas.tsx           # Router de vistas internas + PlatformConfigPanel
-    └── admin/
-        ├── AdminTenants.tsx              # CRUD empresas
-        ├── AdminModules.tsx              # CRUD módulos
-        ├── AdminUsers.tsx                # CRUD usuarios
-        ├── AdminRoles.tsx                # CRUD roles
-        ├── AdminSubscriptions.tsx        # CRUD planes
-        └── TeamManagement.tsx            # Panel de invitaciones del tenant admin
-```
 
-## 10. CAPACIDAD DE CONCURRENCIA
-Con la configuración asíncrona de `FastAPI` (junto con Uvicorn/Gunicorn) y `asyncpg` para PostgreSQL, Nodo puede escalar horizontalmente en múltiples contenedores. La limitación no será el CPU, sino la RAM y el número de conexiones a PostgreSQL (que se soluciona fácilmente utilizando PgBouncer o servicios similares si la demanda excede los miles de usuarios simultáneos).
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 12. GUÍA: AGREGAR NUEVA FUNCIONALIDAD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Seguir este orden garantiza consistencia con el patrón del proyecto.
+
+### Paso 1 — Crear el Modelo (backend/models/tu_modulo.py)
+Heredar de AuditBase e incluir id y tenant_id propios:
+
+  import uuid
+  from sqlmodel import Field
+  from .mixins import AuditBase
+
+  class Product(AuditBase, table=True):
+      __tablename__ = "products"
+      id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+      tenant_id: uuid.UUID = Field(foreign_key="tenants.id", index=True)
+      name: str = Field(max_length=150)
+      price: float = Field(default=0.0)
+
+### Paso 2 — Registrar el Modelo
+Importar la clase en backend/models/__init__.py para que Alembic la detecte:
+
+  from .products import Product
+
+### Paso 3 — Generar y Aplicar la Migración
+  docker-compose exec backend alembic revision --autogenerate -m "tabla_productos"
+  docker-compose exec backend alembic upgrade head
+
+### Paso 4 — Crear los Schemas (backend/models/schemas.py)
+Agregar schemas de entrada y salida:
+
+  class ProductCreate(BaseModel):
+      name: str
+      price: float
+
+  class ProductRead(ProductCreate):
+      id: uuid.UUID
+      tenant_id: uuid.UUID
+
+### Paso 5 — Crear el Router (backend/api/routers/products.py)
+SIEMPRE usar Depends(get_current_tenant_id) para filtrar por tenant:
+
+  from fastapi import APIRouter, Depends
+  from sqlalchemy.ext.asyncio import AsyncSession
+  from db.session import get_session
+  from models import Product
+  from models.schemas import ProductCreate, ProductRead
+  from api.deps import get_current_tenant_id
+  import uuid
+
+  router = APIRouter()
+
+  @router.post("/", response_model=ProductRead)
+  async def create_product(
+      product: ProductCreate,
+      tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+      db: AsyncSession = Depends(get_session)
+  ):
+      db_obj = Product(**product.dict(), tenant_id=tenant_id)
+      db.add(db_obj)
+      await db.commit()
+      await db.refresh(db_obj)
+      return db_obj
+
+  @router.get("/", response_model=list[ProductRead])
+  async def list_products(
+      tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+      db: AsyncSession = Depends(get_session)
+  ):
+      result = await db.execute(
+          select(Product).where(Product.tenant_id == tenant_id, Product.is_active == True)
+      )
+      return result.scalars().all()
+
+### Paso 6 — Registrar el Router en main.py
+  from api.routers import products
+  app.include_router(products.router, prefix="/api/products", tags=["Productos"])
+
+### Paso 7 — Frontend: Servicio
+Crear frontend/src/services/products.service.ts consumiendo el endpoint.
+
+### Paso 8 — Frontend: Página y Ruta
+  - Crear frontend/src/pages/ProductsPage.tsx
+  - Agregar la ruta en App.tsx (o el router principal)
+  - El JWT viaja automáticamente via Axios (api.ts tiene withCredentials=true)
+
+### Reglas que NUNCA romper
+  - Todo endpoint de negocio DEBE usar Depends(get_current_tenant_id)
+  - Toda query DEBE filtrar por tenant_id (RLS lógico)
+  - Todo modelo de negocio DEBE heredar de AuditBase
+  - Nunca almacenar tenant_id en la tabla users
+  - Siempre importar el modelo en models/__init__.py antes de migrar
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 13. MAPA COMPLETO DE ENDPOINTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Método  Ruta                              Descripción                    Acceso
+  ──────  ────────────────────────────────  ─────────────────────────────  ─────────────
+  GET     /health                           Healthcheck del servidor        Público
+  POST    /api/auth/jwt/login               Login con email+password        Público
+  POST    /api/auth/jwt/logout              Logout (invalida token)         Autenticado
+  POST    /api/auth/register                Registro global de usuario      Público
+  POST    /api/auth/workspace               Registro con tenant             Público
+  GET     /api/auth/session                 Sesión enriquecida M:N          Autenticado
+  GET     /api/auth/google/login            Iniciar flujo Google OAuth      Público
+  GET     /api/auth/google/callback         Callback de Google OAuth        Público
+  GET     /api/users/me                     Perfil del usuario              Autenticado
+  PATCH   /api/users/me                     Actualizar perfil               Autenticado
+  PATCH   /api/onboarding/complete          Completar onboarding            Autenticado
+
+  GET     /api/me/roles                     Roles del tenant activo         Admin tenant
+  GET     /api/me/members                   Miembros del tenant activo      Admin tenant
+
+  POST    /api/invitations/                 Crear invitación                Admin tenant
+  GET     /api/invitations/                 Listar invitaciones             Admin tenant
+  POST    /api/invitations/{id}/respond     Aceptar o rechazar              Invitado
+  PATCH   /api/invitations/{id}/revoke      Revocar invitación              Admin tenant
+  POST    /api/invitations/{id}/resend      Reenviar invitación             Admin tenant
+
+  GET     /api/tenants/                     Listar empresas                 Súper Admin
+  POST    /api/tenants/                     Crear empresa                   Súper Admin
+  GET     /api/tenants/{id}                 Ver empresa                     Súper Admin
+  PATCH   /api/tenants/{id}                 Editar empresa                  Súper Admin
+  DELETE  /api/tenants/{id}                 Eliminar empresa                Súper Admin
+
+  GET     /api/members/                     Listar miembros del tenant      Admin tenant
+  POST    /api/members/                     Agregar miembro                 Admin tenant
+  DELETE  /api/members/{id}                 Remover miembro                 Admin tenant
+
+  GET     /api/admin/modules/               Listar módulos del sistema      Súper Admin
+  POST    /api/admin/modules/               Crear módulo                    Súper Admin
+  PATCH   /api/admin/modules/{id}           Editar módulo                   Súper Admin
+
+  GET     /api/plans/                       Listar planes de suscripción    Autenticado
+  POST    /api/plans/                       Crear plan                      Súper Admin
+
+  GET     /api/tenant-modules/              Módulos del tenant activo       Autenticado
+  POST    /api/tenant-modules/              Asignar módulo al tenant        Admin tenant
+
+  GET     /api/admin/config/                Leer configuración global       Súper Admin
+  PATCH   /api/admin/config/                Actualizar configuración        Súper Admin
+
+  (En development) GET /docs               Swagger UI interactivo
+  (En development) GET /redoc              ReDoc
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 14. ESCALABILIDAD Y CONCURRENCIA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FastAPI con Uvicorn (ASGI) + asyncpg permite manejar miles de conexiones
+concurrentes sin bloquear hilos. El cuello de botella en producción de alta
+carga suele ser el pool de conexiones a PostgreSQL, no el CPU.
+
+Estrategias de escala cuando la carga lo requiera:
+  - Múltiples réplicas del contenedor backend (horizontal scaling)
+  - PgBouncer como pooler de conexiones frente a PostgreSQL
+  - CDN para los assets estáticos del frontend (dist/)
+  - Redis como backend de rate limiting distribuido (reemplazar slowapi in-memory)
+  - RLS nativo de PostgreSQL como segunda capa de seguridad (complementa el RLS lógico)
