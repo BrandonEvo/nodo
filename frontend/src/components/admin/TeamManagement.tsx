@@ -3,14 +3,18 @@ import {
   Users, Mail, Shield, Send, RotateCcw, Ban,
   Clock, CheckCircle2, XCircle, AlertCircle, Plus,
 } from 'lucide-react';
+import { Spinner } from '@/components/ui/Spinner';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { useToast } from '@/components/ui/Toaster';
 import { invitationsService, InvitationData } from '@/services/invitations.service';
 
 export function TeamManagement() {
+  const toast = useToast();
+
   const [invitations, setInvitations] = useState<InvitationData[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
 
-  // Form state
   const [newEmail, setNewEmail] = useState('');
   const [newMemberType, setNewMemberType] = useState('employee');
   const [submitting, setSubmitting] = useState(false);
@@ -39,29 +43,35 @@ export function TeamManagement() {
       setShowForm(false);
       await loadData();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Error al crear invitación');
+      toast.error(err.response?.data?.detail || 'Error al crear invitación');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleRevoke = async (id: string) => {
-    if (!confirm('¿Revocar esta invitación?')) return;
-    try {
-      await invitationsService.revoke(id);
-      await loadData();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Error al revocar');
-    }
+  const handleRevoke = (id: string) => {
+    toast.confirm(
+      '¿Revocar esta invitación?',
+      async () => {
+        try {
+          await invitationsService.revoke(id);
+          toast.warning('Invitación revocada');
+          await loadData();
+        } catch (err: any) {
+          toast.error(err.response?.data?.detail || 'Error al revocar');
+        }
+      },
+      { confirmLabel: 'Revocar' }
+    );
   };
 
   const handleResend = async (id: string) => {
     try {
       await invitationsService.resend(id);
-      alert('Invitación reenviada con nuevo token');
+      toast.success('Invitación reenviada con nuevo token');
       await loadData();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Error al reenviar');
+      toast.error(err.response?.data?.detail || 'Error al reenviar');
     }
   };
 
@@ -141,7 +151,7 @@ export function TeamManagement() {
       {/* Tabla de invitaciones */}
       {loading ? (
         <div className="flex items-center justify-center h-40">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#111111]" />
+          <Spinner size="lg" />
         </div>
       ) : invitations.length === 0 ? (
         <div className="text-center py-16 bg-white border border-dashed border-gray-200 rounded-2xl">

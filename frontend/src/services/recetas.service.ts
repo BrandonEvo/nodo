@@ -6,6 +6,8 @@ export interface RecipeIngredientRead {
   item_name: string;
   item_unit: string;
   quantity: number;
+  unit_cost: number;
+  subtotal: number;
 }
 
 export interface Recipe {
@@ -16,6 +18,11 @@ export interface Recipe {
   estimated_yield: number;
   estimated_cost: number;
   sell_price: number;
+  description: string | null;
+  instructions: string | null;
+  bake_temp: number | null;
+  bake_time: number | null;
+  difficulty: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -28,8 +35,12 @@ export interface RecipeCreate {
   name: string;
   base_unit?: string;
   estimated_yield?: number;
-  estimated_cost?: number;
   sell_price?: number;
+  description?: string | null;
+  instructions?: string | null;
+  bake_temp?: number | null;
+  bake_time?: number | null;
+  difficulty?: string | null;
 }
 
 export interface RecipeIngredientCreate {
@@ -66,6 +77,11 @@ export const recetasService = {
 
   addIngredient: async (recipeId: string, body: RecipeIngredientCreate): Promise<RecipeIngredientRead> => {
     const { data } = await api.post(`${BASE}/${recipeId}/ingredients`, body);
+    return data;
+  },
+
+  updateIngredient: async (recipeId: string, ingredientId: string, body: RecipeIngredientCreate): Promise<RecipeIngredientRead> => {
+    const { data } = await api.patch(`${BASE}/${recipeId}/ingredients/${ingredientId}`, body);
     return data;
   },
 

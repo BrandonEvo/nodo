@@ -1,0 +1,1 @@
+export { PersonalShopperApp } from './PersonalShopperApp';

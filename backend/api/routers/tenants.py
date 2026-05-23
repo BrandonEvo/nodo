@@ -9,8 +9,10 @@ from db.session import get_session
 from models import Tenant, User, TenantMember
 from models.schemas import TenantRead, TenantCreate, TenantUpdate
 from passlib.context import CryptContext
+from api.deps import fastapi_users
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+current_superuser = fastapi_users.current_user(active=True, superuser=True)
 
 router = APIRouter(tags=["Tenants (Empresas)"])
 
@@ -29,9 +31,10 @@ class TenantUserResponse(BaseModel):
     is_verified: bool
     tenant_id: uuid.UUID
     member_type: Optional[str] = "employee"
+    is_google_user: bool = False
 
 @router.post("/", response_model=TenantRead, status_code=status.HTTP_201_CREATED)
-async def create_tenant(tenant_in: TenantCreate, session: AsyncSession = Depends(get_session)):
+async def create_tenant(tenant_in: TenantCreate, session: AsyncSession = Depends(get_session), _user=Depends(current_superuser)):
     db_tenant = Tenant(name=tenant_in.name)
     session.add(db_tenant)
     await session.commit()
@@ -39,12 +42,12 @@ async def create_tenant(tenant_in: TenantCreate, session: AsyncSession = Depends
     return db_tenant
 
 @router.get("/", response_model=List[TenantRead])
-async def list_tenants(session: AsyncSession = Depends(get_session)):
+async def list_tenants(session: AsyncSession = Depends(get_session), _user=Depends(current_superuser)):
     result = await session.execute(select(Tenant).order_by(Tenant.name))
     return result.scalars().all()
 
 @router.patch("/{tenant_id}", response_model=TenantRead)
-async def update_tenant(tenant_id: uuid.UUID, tenant_in: TenantUpdate, session: AsyncSession = Depends(get_session)):
+async def update_tenant(tenant_id: uuid.UUID, tenant_in: TenantUpdate, session: AsyncSession = Depends(get_session), _user=Depends(current_superuser)):
     tenant = await session.get(Tenant, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant no encontrado")
@@ -64,9 +67,10 @@ class TenantPlanAssign(BaseModel):
 
 @router.put("/{tenant_id}/plan", response_model=TenantRead)
 async def assign_tenant_plan(
-    tenant_id: uuid.UUID, 
-    body: TenantPlanAssign, 
-    session: AsyncSession = Depends(get_session)
+    tenant_id: uuid.UUID,
+    body: TenantPlanAssign,
+    session: AsyncSession = Depends(get_session),
+    _user=Depends(current_superuser),
 ):
     from sqlalchemy import delete
     from models import Subscription, PlanModule, SubscriptionPlan
@@ -137,7 +141,7 @@ async def hard_delete_tenant(tenant_id: uuid.UUID, body: HardDeleteRequest, sess
     return None
 
 @router.get("/{tenant_id}/users", response_model=List[TenantUserResponse])
-async def list_tenant_users(tenant_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+async def list_tenant_users(tenant_id: uuid.UUID, session: AsyncSession = Depends(get_session), _user=Depends(current_superuser)):
     query = select(User, TenantMember).join(TenantMember, TenantMember.user_id == User.id).where(TenantMember.tenant_id == tenant_id)
     result = await session.execute(query)
     users = []
@@ -149,12 +153,13 @@ async def list_tenant_users(tenant_id: uuid.UUID, session: AsyncSession = Depend
             is_superuser=user.is_superuser,
             is_verified=user.is_verified,
             tenant_id=member.tenant_id,
-            member_type=member.member_type
+            member_type=member.member_type,
+            is_google_user=user.google_id is not None,
         ))
     return users
 
 @router.post("/{tenant_id}/users", response_model=TenantUserResponse, status_code=status.HTTP_201_CREATED)
-async def create_tenant_user(tenant_id: uuid.UUID, user_in: TenantUserCreate, session: AsyncSession = Depends(get_session)):
+async def create_tenant_user(tenant_id: uuid.UUID, user_in: TenantUserCreate, session: AsyncSession = Depends(get_session), _user=Depends(current_superuser)):
     tenant = await session.get(Tenant, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -206,7 +211,8 @@ async def create_tenant_user(tenant_id: uuid.UUID, user_in: TenantUserCreate, se
         is_superuser=existing_user.is_superuser,
         is_verified=existing_user.is_verified,
         tenant_id=member.tenant_id,
-        member_type=member.member_type
+        member_type=member.member_type,
+        is_google_user=existing_user.google_id is not None,
     )
 
 class HardDeleteUserRequest(BaseModel):
@@ -252,7 +258,7 @@ async def hard_delete_tenant_user(tenant_id: uuid.UUID, user_id: uuid.UUID, body
     return None
 
 @router.get("/{tenant_id}/users/{user_id}/modules", response_model=List[uuid.UUID])
-async def get_tenant_user_modules(tenant_id: uuid.UUID, user_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+async def get_tenant_user_modules(tenant_id: uuid.UUID, user_id: uuid.UUID, session: AsyncSession = Depends(get_session), _user=Depends(current_superuser)):
     mem_query = select(TenantMember).where(TenantMember.user_id == user_id, TenantMember.tenant_id == tenant_id)
     member = (await session.execute(mem_query)).scalar_one_or_none()
     if not member:
@@ -264,7 +270,7 @@ async def get_tenant_user_modules(tenant_id: uuid.UUID, user_id: uuid.UUID, sess
     return result.scalars().all()
 
 @router.put("/{tenant_id}/users/{user_id}/modules", response_model=List[uuid.UUID])
-async def update_tenant_user_modules(tenant_id: uuid.UUID, user_id: uuid.UUID, module_ids: List[uuid.UUID], session: AsyncSession = Depends(get_session)):
+async def update_tenant_user_modules(tenant_id: uuid.UUID, user_id: uuid.UUID, module_ids: List[uuid.UUID], session: AsyncSession = Depends(get_session), _user=Depends(current_superuser)):
     mem_query = select(TenantMember).where(TenantMember.user_id == user_id, TenantMember.tenant_id == tenant_id)
     member = (await session.execute(mem_query)).scalar_one_or_none()
     if not member:

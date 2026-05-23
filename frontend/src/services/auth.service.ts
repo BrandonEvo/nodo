@@ -29,6 +29,7 @@ export interface SessionData {
   is_superuser: boolean;
   is_verified: boolean;
   onboarding_completed: boolean;
+  is_google_user: boolean;
   tenant_id?: string | null;
   tenant_name?: string | null;
   tenant_logo_url?: string | null;
@@ -44,18 +45,20 @@ export interface SessionData {
 // ==========================================
 export const authService = {
   async login(email: string, pass: string) {
+    // JWT viaja en httpOnly cookie — nunca expuesto a JavaScript
     const params = new URLSearchParams();
     params.append('username', email);
     params.append('password', pass);
-
-    const { data } = await api.post('/api/auth/jwt/login', params, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    const { data } = await api.post('/api/auth/cookie-login', params, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
-
-    if (data.access_token) {
-      localStorage.setItem('token', data.access_token);
-    }
     return data;
+  },
+
+  async logout() {
+    await api.post('/api/auth/cookie-logout').catch(() => {});
+    // Limpiar token legacy de localStorage si existía
+    localStorage.removeItem('token');
   },
 
   /** Endpoint básico de fastapi-users */
@@ -73,5 +76,5 @@ export const authService = {
   async registerWorkspace(data: { tenant_name: string; email: string; password: string }) {
     const response = await api.post('/api/auth/register-workspace', data);
     return response.data;
-  }
+  },
 };

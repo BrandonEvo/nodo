@@ -20,7 +20,7 @@ fastapi_users = FastAPIUsers[User, uuid.UUID](
 # 2. Dependencia para exigir usuario logueado
 current_active_user = fastapi_users.current_user(active=True)
 
-# 3. Resuelve el tenant_id activo del usuario autenticado vía TenantMember
+# 3. Resuelve el tenant_id activo y activa RLS para el resto del request
 async def get_current_tenant_id(
     current_user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_session),
@@ -37,7 +37,16 @@ async def get_current_tenant_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Sin membresía activa en ninguna empresa",
         )
-    return membership.tenant_id
+
+    tenant_id = membership.tenant_id
+
+    # Activar RLS: cambiar al rol limitado y fijar el contexto de tenant.
+    # SET LOCAL aplica solo al transaction actual (este request).
+    # nodo_admin bypassa RLS; nodo_app no — esto activa las políticas.
+    await session.execute(text("SET LOCAL ROLE nodo_app"))
+    await session.execute(text(f"SET LOCAL app.current_tenant = '{tenant_id}'"))
+
+    return tenant_id
 
 # 4. Middleware RLS (legacy — mantiene compatibilidad con routers existentes)
 async def get_tenant_session(
@@ -52,6 +61,7 @@ async def get_tenant_session(
     3. Configura la variable de PostgreSQL a nivel local.
     """
     try:
+        await session.execute(text("SET LOCAL ROLE nodo_app"))
         await session.execute(text(f"SET LOCAL app.current_tenant = '{str(x_tenant_id)}'"))
         yield session
     finally:

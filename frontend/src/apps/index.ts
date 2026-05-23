@@ -45,6 +45,15 @@ const appRegistry: Record<string, AppComponent> = {
   autos: lazy(() =>
     import('./autos').then((m) => ({ default: m.AutosApp }))
   ),
+  reportes: lazy(() =>
+    import('./reportes').then((m) => ({ default: m.ReportesApp }))
+  ),
+  gastos: lazy(() =>
+    import('./gastos').then((m) => ({ default: m.GastosApp }))
+  ),
+  'personal-shopper': lazy(() =>
+    import('./personal-shopper').then((m) => ({ default: m.PersonalShopperApp }))
+  ),
 };
 
 /**

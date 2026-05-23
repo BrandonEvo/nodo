@@ -176,12 +176,13 @@ export function Sidebar({
                     key={item.id}
                     id={`sidebar-${item.id}`}
                     onClick={() => onTabChange(item.id)}
+                    style={isActive ? { backgroundColor: accentColor } : undefined}
                     className={`
                       w-full flex items-center gap-3 rounded-xl
                       transition-all duration-200 group relative
                       ${collapsed ? 'justify-center px-2 py-3' : 'px-3 py-2.5'}
                       ${isActive
-                        ? 'bg-white text-[#111111] shadow-lg shadow-white/10'
+                        ? 'text-white shadow-lg'
                         : 'text-gray-400 hover:text-white hover:bg-white/5'
                       }
                     `}
@@ -218,11 +219,12 @@ export function Sidebar({
       <div className={`shrink-0 border-t border-gray-800/60 px-3 py-4 space-y-1`}>
         <button
           onClick={() => onTabChange('profile')}
+          style={activeTab === 'profile' ? { backgroundColor: accentColor } : undefined}
           className={`
             w-full flex items-center gap-3 rounded-xl transition-all duration-200
             ${collapsed ? 'justify-center px-2 py-3' : 'px-3 py-2.5'}
             ${activeTab === 'profile'
-              ? 'bg-white text-[#111111]'
+              ? 'text-white shadow-lg'
               : 'text-gray-400 hover:text-white hover:bg-white/5'
             }
           `}

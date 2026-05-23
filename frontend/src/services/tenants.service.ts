@@ -20,6 +20,7 @@ export interface TenantUser {
   is_verified: boolean;
   tenant_id: string;
   member_type: string;
+  is_google_user: boolean;
 }
 
 export const tenantsService = {
@@ -30,11 +31,6 @@ export const tenantsService = {
 
   async create(body: TenantCreate): Promise<Tenant> {
     const { data } = await api.post<Tenant>('/api/tenants/', body);
-    return data;
-  },
-
-  async get(id: string): Promise<Tenant> {
-    const { data } = await api.get<Tenant>(`/api/tenants/${id}`);
     return data;
   },
 

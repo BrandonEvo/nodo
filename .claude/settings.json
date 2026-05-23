@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose exec *)",
+      "Bash(flatpak list *)",
+      "Read(//var/lib/flatpak/exports/**)",
+      "Bash(find /usr /opt /snap /home/bparedes -name \"docker\" -type f 2>/dev/null | head -5)",
+      "Read(//home/bparedes/**)",
+      "Bash(cat /proc/1/cgroup 2>/dev/null | head -3; ls /.dockerenv 2>/dev/null && echo \"inside container\"; echo \"PATH=$PATH\")",
+      "Read(//proc/1/**)",
+      "Bash(flatpak-spawn --host which docker)",
+      "Bash(flatpak-spawn --host docker compose -f /home/bparedes/Docker/nodo/docker-compose.yml exec backend alembic revision --autogenerate -m \"bakers_percent_and_unit_cost_override\")",
+      "Bash(flatpak-spawn --host docker compose -f /home/bparedes/Docker/nodo/docker-compose.yml exec backend alembic upgrade head)",
+      "Bash(flatpak-spawn --host docker compose -f /home/bparedes/Docker/nodo/docker-compose.yml exec backend alembic current)",
+      "Bash(python -c ' *)",
+      "Bash(python3 -c ' *)"
+    ]
+  }
+}

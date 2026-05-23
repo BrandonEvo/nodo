@@ -6,13 +6,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from fastapi_users import FastAPIUsers
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 # Configuración interna
 from core.config import settings
+from core.limiter import limiter
 from core.auth import auth_backend
 from api.manager import get_user_manager
 from db.session import get_session
@@ -30,6 +30,7 @@ from api.routers import session as session_router
 from api.routers import invitations as invitations_router
 from api.routers import onboarding as onboarding_router
 from api.routers import platform_config as platform_config_router
+from api.routers import roles as roles_router
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +44,6 @@ def _cors_headers():
         "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "*",
     }
-
-# --- Rate Limiting ---
-# Limita a 100 peticiones por minuto por IP por defecto para proteger de DDoS
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 app = FastAPI(
     title="Nodo API Enterprise",
@@ -82,7 +79,43 @@ app.add_middleware(
 )
 
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse as StarletteJSONResponse
 from fastapi import Request
+import time
+from collections import defaultdict
+import threading
+
+# ── Login rate limiter (in-process, covers direct port-8000 access) ──────────
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_login_lock = threading.Lock()
+_LOGIN_MAX = 10       # requests
+_LOGIN_WINDOW = 60.0  # seconds
+
+def _is_login_rate_limited(ip: str) -> bool:
+    now = time.monotonic()
+    with _login_lock:
+        attempts = _login_attempts[ip]
+        # Drop attempts outside the window
+        _login_attempts[ip] = [t for t in attempts if now - t < _LOGIN_WINDOW]
+        if len(_login_attempts[ip]) >= _LOGIN_MAX:
+            return True
+        _login_attempts[ip].append(now)
+        return False
+
+
+class LoginRateLimitMiddleware(BaseHTTPMiddleware):
+    """Hard limit on the login endpoint independent of SlowAPI or nginx."""
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/api/auth/jwt/login" and request.method == "POST":
+            ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
+            ip = ip.split(",")[0].strip()
+            if _is_login_rate_limited(ip):
+                return StarletteJSONResponse(
+                    status_code=429,
+                    content={"detail": "Demasiados intentos. Espera un momento e intenta de nuevo."},
+                )
+        return await call_next(request)
+
 
 class CookieToBearerMiddleware(BaseHTTPMiddleware):
     """
@@ -101,6 +134,7 @@ class CookieToBearerMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
+app.add_middleware(LoginRateLimitMiddleware)
 app.add_middleware(CookieToBearerMiddleware)
 
 @app.get("/health")
@@ -218,6 +252,11 @@ app.include_router(
     prefix="/api/admin/config",
 )
 
+app.include_router(
+    roles_router.router,
+    prefix="/api/admin/roles",
+)
+
 # ==========================================
 # MÓDULOS OPERATIVOS DE PANADERÍA
 # ==========================================
@@ -227,6 +266,10 @@ from api.routers import cocina as cocina_router
 from api.routers import mostrador as mostrador_router
 from api.routers import cierre as cierre_router
 from api.routers import autos as autos_router
+from api.routers import gastos as gastos_router
+from api.routers import reportes as reportes_router
+from api.routers import personal_shopper as personal_shopper_router
+from api.routers import public_tracking as public_tracking_router
 
 app.include_router(bodega_router.router, prefix="/api/bodega")
 app.include_router(recetas_router.router, prefix="/api/recetas")
@@ -234,3 +277,7 @@ app.include_router(cocina_router.router, prefix="/api/cocina")
 app.include_router(mostrador_router.router, prefix="/api/mostrador")
 app.include_router(cierre_router.router, prefix="/api/cierre")
 app.include_router(autos_router.router, prefix="/api/autos")
+app.include_router(gastos_router.router, prefix="/api/gastos")
+app.include_router(reportes_router.router, prefix="/api/reportes")
+app.include_router(personal_shopper_router.router, prefix="/api/personal-shopper")
+app.include_router(public_tracking_router.router, prefix="/api/tracking")

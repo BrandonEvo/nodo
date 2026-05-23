@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle2, XCircle, Users, Building2, Shield } from 'lucide-react';
+import { useToast } from '@/components/ui/Toaster';
 import { invitationsService } from '@/services/invitations.service';
 import type { PendingInvitation } from '@/services/auth.service';
 
@@ -9,6 +10,7 @@ interface InvitationAcceptanceModalProps {
 }
 
 export function InvitationAcceptanceModal({ invitations, onComplete }: InvitationAcceptanceModalProps) {
+  const toast = useToast();
   const [pendingList] = useState(invitations);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [respondedIds, setRespondedIds] = useState<Set<string>>(new Set());
@@ -29,7 +31,7 @@ export function InvitationAcceptanceModal({ invitations, onComplete }: Invitatio
         }, 1200);
       }
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Error al responder la invitación');
+      toast.error(err.response?.data?.detail || 'Error al responder la invitación');
     } finally {
       setProcessingId(null);
     }

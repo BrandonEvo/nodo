@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Sun, Moon } from 'lucide-react';
 import { Sidebar } from './navigation/Sidebar';
 import { Topbar } from './navigation/Topbar';
 import { BottomNav } from './navigation/BottomNav';
 import { DashboardCanvas } from './dashboard/DashboardCanvas';
+import { useDarkMode } from '@/hooks/useDarkMode';
 
 interface AppShellProps {
     userSession: any;
@@ -18,6 +20,7 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 }
 
 export function AppShell({ userSession, activeModules = [], onLogout }: AppShellProps) {
+    const { isDark, toggle: toggleDark } = useDarkMode();
     const realIsSuperAdmin = userSession?.is_superuser;
 
     // ── IMPERSONATION STATE (3 levels) ──
@@ -65,7 +68,7 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
     }, [appViewMode]);
 
     return (
-        <div className="min-h-screen bg-[#f4f5f7]" style={tenantCssVars}>
+        <div className="min-h-screen bg-[#f4f5f7] dark:bg-[#1C1C1E]" style={tenantCssVars}>
             {/* ── DESKTOP SIDEBAR (hidden on mobile) ── */}
             <Sidebar
                 activeTab={activeTab}
@@ -90,10 +93,12 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                     appViewMode={appViewMode}
                     onViewModeChange={setAppViewMode}
                     tenantColor={tenantColor}
+                    isDark={isDark}
+                    onToggleDark={toggleDark}
                 />
 
                 {/* ── MOBILE HEADER (visible only on mobile) ── */}
-                <header className="lg:hidden flex items-center justify-between px-5 h-16 bg-white/80 backdrop-blur-xl border-b border-gray-100/80 sticky top-0 z-30 pt-safe">
+                <header className="lg:hidden flex items-center justify-between px-5 h-16 bg-white/80 dark:bg-[#1C1C1E]/80 backdrop-blur-xl border-b border-gray-100/80 dark:border-white/5 sticky top-0 z-30 pt-safe">
                     <div className="flex items-center gap-2.5">
                         {tenantLogo ? (
                             <img src={tenantLogo} alt={tenantName} className="w-8 h-8 rounded-lg object-contain" />
@@ -103,10 +108,17 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                             </div>
                         )}
                         <div>
-                            <p className="text-sm font-bold text-[#111111] leading-tight">{tenantName}</p>
+                            <p className="text-sm font-bold text-[#111111] dark:text-white leading-tight">{tenantName}</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={toggleDark}
+                            className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                            aria-label={isDark ? 'Modo claro' : 'Modo oscuro'}
+                        >
+                            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                        </button>
                         {userPicture ? (
                             <img src={userPicture} alt="Avatar" className="w-8 h-8 rounded-lg object-cover" referrerPolicy="no-referrer" />
                         ) : (
@@ -131,6 +143,8 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                         onLogout={onLogout}
                         tenantLogo={tenantLogo}
                         tenantColor={tenantColor}
+                        isDark={isDark}
+                        onToggleDark={toggleDark}
                     />
                 </main>
             </div>
@@ -141,6 +155,7 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                 onTabChange={setActiveTab}
                 isSuperAdmin={isSuperAdmin}
                 isTenantAdmin={isTenantAdmin}
+                activeModules={activeModules}
             />
         </div>
     );

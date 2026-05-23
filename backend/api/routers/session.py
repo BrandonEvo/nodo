@@ -79,6 +79,7 @@ async def get_session_enriched(
         is_superuser=current_user.is_superuser,
         is_verified=current_user.is_verified,
         onboarding_completed=current_user.onboarding_completed,
+        is_google_user=current_user.google_id is not None,
         tenant_id=tenant_id,
         tenant_name=tenant_name,
         tenant_logo_url=tenant_logo_url,

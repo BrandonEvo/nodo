@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Building2, Palette, Image as ImageIcon, Save, CheckCircle2, Upload, X } from 'lucide-react';
+import { useToast } from '@/components/ui/Toaster';
+import { PageSpinner } from '@/components/ui/Spinner';
 import { tenantMeService } from '@/services/tenantMe.service';
 
 export function TenantConfigPanel() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -36,11 +39,11 @@ export function TenantConfigPanel() {
 
   const handleFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('Solo se permiten archivos de imagen (PNG, JPG, SVG, WebP)');
+      toast.error('Solo se permiten archivos de imagen (PNG, JPG, SVG, WebP)');
       return;
     }
     if (file.size > 1 * 1024 * 1024) {
-      alert('La imagen no debe superar 1MB');
+      toast.error('La imagen no debe superar 1MB');
       return;
     }
     const reader = new FileReader();
@@ -60,20 +63,17 @@ export function TenantConfigPanel() {
         theme_color: form.theme_color
       });
       setSuccess(true);
+      toast.success('Configuración guardada correctamente');
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Error al guardar configuración');
+      toast.error(err.response?.data?.detail || 'Error al guardar configuración');
     } finally {
       setSaving(false);
     }
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#111111]" />
-      </div>
-    );
+    return <PageSpinner />;
   }
 
   return (

@@ -3,12 +3,21 @@ import { Login } from '@/components/Login'
 import { AppShell } from '@/components/AppShell'
 import { OnboardingModal } from '@/components/OnboardingModal'
 import { InvitationAcceptanceModal } from '@/components/InvitationAcceptanceModal'
+import { PublicTrackingPage } from '@/components/PublicTrackingPage'
+import { ToastProvider } from '@/components/ui/Toaster'
 import { authService, SessionData } from '@/services/auth.service'
 import { modulesService } from '@/services/modules.service'
 
+// Extract tracking token from URL: /tracking/<uuid>
+function getTrackingToken(): string | null {
+  const match = window.location.pathname.match(/^\/tracking\/([0-9a-f-]{36})$/i);
+  return match ? match[1] : null;
+}
+
 type AuthState = 'loading' | 'unauth' | 'auth';
 
-export default function App() {
+// ── Authenticated app shell ──────────────────────────────────────────────────
+function AuthedApp() {
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [userSession, setUserSession] = useState<SessionData | null>(null);
   const [activeModules, setActiveModules] = useState<any[]>([]);
@@ -18,7 +27,6 @@ export default function App() {
       const session = await authService.session();
       setUserSession(session);
 
-      // Cargar módulos del tenant si tiene uno
       if (session.tenant_id) {
         try {
           const modules = await modulesService.getMyActiveModules(session.tenant_id);
@@ -47,28 +55,27 @@ export default function App() {
     verifySession();
   }, []);
 
-  const handleLoginSuccess = async (_token: string) => {
-    localStorage.setItem('token', _token);
+  const handleLoginSuccess = async () => {
+    // La cookie ya fue seteada por el backend — solo cargar la sesión
+    localStorage.removeItem('token'); // limpiar token legacy si existía
     const session = await loadSession();
     if (session) {
       setAuthState('auth');
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
+  const handleLogout = async () => {
+    await authService.logout(); // borra la httpOnly cookie en el backend
     setUserSession(null);
     setActiveModules([]);
     setAuthState('unauth');
   };
 
   const handleOnboardingComplete = async () => {
-    // Recargar la sesión para obtener el estado actualizado
     await loadSession();
   };
 
   const handleInvitationsComplete = async () => {
-    // Recargar la sesión para obtener el estado actualizado
     await loadSession();
   };
 
@@ -90,22 +97,17 @@ export default function App() {
   if (authState === 'auth' && userSession) {
     return (
       <>
-        {/* CAPA 1: AppShell siempre se renderiza */}
         <AppShell
           userSession={userSession}
           activeModules={activeModules}
           onLogout={handleLogout}
         />
-
-        {/* CAPA 2: Modal de Onboarding (bloqueante, sin cierre) */}
         {!userSession.onboarding_completed && !userSession.is_superuser && (
           <OnboardingModal
             userEmail={userSession.email}
             onComplete={handleOnboardingComplete}
           />
         )}
-
-        {/* CAPA 3: Modal de Invitaciones Pendientes (después del onboarding) */}
         {userSession.onboarding_completed && userSession.has_pending_invites && (
           <InvitationAcceptanceModal
             invitations={userSession.pending_invitations}
@@ -117,4 +119,17 @@ export default function App() {
   }
 
   return null;
+}
+
+// ── Root router ──────────────────────────────────────────────────────────────
+export default function App() {
+  const trackingToken = getTrackingToken();
+
+  return (
+    <ToastProvider>
+      {trackingToken
+        ? <PublicTrackingPage token={trackingToken} />
+        : <AuthedApp />}
+    </ToastProvider>
+  );
 }

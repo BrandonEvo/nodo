@@ -1,0 +1,1 @@
+export { GastosApp } from './GastosApp';

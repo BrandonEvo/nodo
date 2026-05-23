@@ -1,5 +1,5 @@
 # DOCUMENTACIÓN TÉCNICA — NODO ENTERPRISE
-Versión API: 2.0.0 | Última revisión: 2026-05-13
+Versión API: 2.0.0 | Última revisión: 2026-05-18
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## 1. RESUMEN Y PROPÓSITO
@@ -9,10 +9,18 @@ Nodo es una plataforma SaaS (Software as a Service) multi-tenant diseñada para
 gestionar empresas, usuarios, roles y módulos de negocio de forma escalable.
 Utiliza una base de datos compartida con aislamiento lógico por `tenant_id`.
 
+La plataforma combina dos capas:
+  1. CORE (infraestructura SaaS): autenticación, multi-tenancy, roles,
+     invitaciones, suscripciones, configuración global.
+  2. APPS DE NEGOCIO: módulos verticales que cada tenant puede activar
+     según su plan — actualmente orientados a panaderías/cafés
+     (bodega, recetas, cocina, mostrador, cierre) más utilidades
+     adicionales (autos, calculadora, importaciones).
+
 Casos de uso: cualquier sistema que requiera que múltiples empresas (tenants)
-operen de forma independiente sobre la misma infraestructura —ERP, facturación,
-inventarios, RR.HH., etc.— con usuarios que pueden pertenecer a varias empresas
-simultáneamente con roles distintos en cada una.
+operen de forma independiente sobre la misma infraestructura, con usuarios
+que pueden pertenecer a varias empresas simultáneamente con roles distintos
+en cada una.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -36,12 +44,14 @@ simultáneamente con roles distintos en cada una.
   - Estilos:       TailwindCSS 3.4+ con tailwindcss-animate
   - Componentes:   @radix-ui (primitivas accesibles) + lucide-react (iconos)
   - HTTP:          Axios >= 1.13.6
+  - Lazy loading:  Apps de negocio cargadas con React.lazy + dynamic import
 
 ### Infraestructura
   - Docker + Docker Compose
   - docker-compose.yml           → definición base de servicios
   - docker-compose.override.yml  → configuración para desarrollo local (hot-reload)
   - docker-compose.prod.yml      → configuración de producción
+  - nginx/                       → reverse proxy en producción
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -57,7 +67,8 @@ Internamente el backend sigue Router → Deps → Model (similar a MVC/MVT).
   [ FastAPI :8000 ]
     ├── main.py          → punto de entrada, middlewares, registro de routers
     ├── api/deps.py      → dependencias reutilizables (auth, RLS, tenant_id)
-    ├── api/routers/     → endpoints por dominio
+    ├── api/helpers.py   → utilidades compartidas entre módulos de negocio
+    ├── api/routers/     → endpoints por dominio (core + apps de negocio)
     ├── models/          → entidades SQLModel + schemas Pydantic
     └── core/            → config, auth JWT, utils de seguridad
          │  asyncpg (async)
@@ -69,6 +80,12 @@ Middlewares aplicados en orden (main.py):
   1. SlowAPIMiddleware   → rate limiting global 100 req/min/IP
   2. CORSMiddleware      → orígenes configurables via CORS_ORIGINS
   3. CookieToBearerMiddleware → transforma cookie OAuth en header Authorization
+
+
+Frontend — Registro de Apps (frontend/src/apps/index.ts):
+Cada app de negocio se registra en un `appRegistry` que mapea
+`frontend_route` (clave en BD del Module) → componente React lazy-loaded.
+El AppShell resuelve la app activa según los módulos suscritos por el tenant.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -106,7 +123,7 @@ consultando `tenant_members` + `roles`.
   2. Admin de Tenant → role "Propietario" / "Administrador" en tenant_members.
   3. Empleado        → cualquier otro rol. Solo ve módulos asignados.
 
-### Modelos principales
+### Modelos del CORE
   models/users.py          → User (+ onboarding_completed, google_id, picture)
   models/tenants.py        → Tenant, SubscriptionPlan, PlanModule, Subscription
   models/iam.py            → Role, TenantMember, RoleModuleAccess
@@ -114,11 +131,163 @@ consultando `tenant_members` + `roles`.
   models/core.py           → Module (módulos de negocio del sistema)
   models/platform_config.py→ PlatformConfig (key-value para Súper Admin)
   models/audit.py          → AuditLog
-  models/schemas.py        → Schemas Pydantic de entrada/salida (UserRead, SessionRead, etc.)
+  models/schemas.py        → Schemas Pydantic (UserRead, SessionRead, y schemas
+                             de TODOS los módulos de negocio)
+
+### Modelos de NEGOCIO (models/bakery.py)
+Contiene las entidades de los módulos verticales orientados a panaderías:
+
+  Módulo Bodega:
+    - InventoryItem          → insumos con stock, costo unitario, categoría
+    - InventoryPriceHistory  → bitácora de cambios de precio
+    - StockMovement          → entradas/ajustes con stock resultante
+
+  Módulo Recetas:
+    - Recipe                 → producto producible (nombre, rendimiento, costo,
+                               precio, instrucciones, temp/tiempo de horneado)
+    - RecipeIngredient       → relación N:M Recipe ↔ InventoryItem + cantidad
+
+  Módulo Cocina:
+    - ProductionOrder        → orden de producción (recipe + cantidad + estado)
+    - WasteLog               → mermas por orden de producción
+
+  Módulo Mostrador:
+    - Sale                   → venta (total, método de pago)
+    - SaleItem               → línea de venta (recipe + cantidad + precio +
+                               freshness_tag: "fresco" | "ayer")
+
+  Módulo Cierre:
+    - ShiftRegister          → cierre de turno (efectivo esperado vs real,
+                               diferencia, tarjetas, tickets, notas)
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 5. SISTEMA DE AUTENTICACIÓN Y ONBOARDING (FTUX)
+## 5. MÓDULOS DE NEGOCIO (APPS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Cada módulo está implementado como:
+  Backend  → backend/api/routers/<modulo>.py (+ modelos en models/bakery.py)
+  Frontend → frontend/src/apps/<modulo>/<Modulo>App.tsx (+ service en
+             frontend/src/services/<modulo>.service.ts)
+
+El registro central de apps está en frontend/src/apps/index.ts.
+
+### 5.1 BODEGA (frontend_route: "bodega")
+Inventario de insumos con historial de precios y movimientos de stock.
+
+Funcionalidades:
+  - CRUD de insumos (nombre, unidad, stock actual, stock mínimo, categoría)
+  - Ajuste de stock con registro automático en StockMovement
+  - Captura de `last_unit_cost` cada vez que se reabastece
+  - Historial de precios (InventoryPriceHistory) por insumo
+  - Historial de movimientos (entrada/ajuste) por insumo
+  - Alertas implícitas de stock bajo (current_stock < minimum_stock)
+
+Endpoints (prefix /api/bodega):
+  GET    /items                          Listar insumos
+  POST   /items                          Crear insumo
+  PATCH  /items/{id}                     Editar insumo
+  PATCH  /items/{id}/adjust              Ajustar stock (registra movimiento)
+  GET    /items/{id}/price-history       Historial de precios
+  GET    /items/{id}/movements           Historial de movimientos
+  DELETE /items/{id}                     Eliminar (borrado lógico)
+
+### 5.2 RECETAS (frontend_route: "recetas")
+Catálogo de productos producibles. Cada receta enlaza insumos de bodega.
+
+Funcionalidades:
+  - CRUD de recetas (nombre, unidad base, rendimiento estimado, costo, precio
+    de venta, descripción, instrucciones, temperatura/tiempo de horneado,
+    dificultad)
+  - Gestión de ingredientes por receta (RecipeIngredient: insumo + cantidad)
+  - El costo estimado se recalcula a partir de los ingredientes y su costo
+    unitario actual
+
+Endpoints (prefix /api/recetas):
+  GET    /                                       Listar recetas
+  POST   /                                       Crear receta
+  GET    /{id}                                   Detalle con ingredientes
+  PATCH  /{id}                                   Editar receta
+  DELETE /{id}                                   Eliminar receta
+  POST   /{id}/ingredients                       Agregar ingrediente
+  PATCH  /{id}/ingredients/{ingredient_id}       Editar cantidad
+  DELETE /{id}/ingredients/{ingredient_id}       Quitar ingrediente
+
+### 5.3 COCINA (frontend_route: "cocina")
+Órdenes de producción con descuento automático de stock y registro de mermas.
+
+Funcionalidades:
+  - Crear órdenes de producción a partir de una receta + cantidad
+  - Estados: pending → en_proceso → completed
+  - Preview pre-producción: muestra ingredientes requeridos vs stock disponible
+  - Al completar la orden: descuenta insumos del inventario, registra
+    `actual_units` reales producidas, calcula merma vs rendimiento estimado
+  - WasteLog: registrar mermas asociadas a una orden con razón
+
+Endpoints (prefix /api/cocina):
+  GET    /orders                       Listar órdenes
+  GET    /preview/{recipe_id}          Vista previa de insumos requeridos
+  POST   /orders                       Crear orden
+  PATCH  /orders/{id}/start            Marcar en proceso
+  PATCH  /orders/{id}/complete         Completar (descuenta stock)
+  POST   /orders/{id}/waste            Registrar merma
+  DELETE /orders/{id}                  Cancelar orden
+
+### 5.4 MOSTRADOR (frontend_route: "mostrador")
+Punto de venta (POS) para productos finales.
+
+Funcionalidades:
+  - Listar productos disponibles (recetas con stock o producción asociada)
+  - Crear ventas multi-línea con SaleItem
+  - Etiqueta de frescura por línea: "fresco" | "ayer"
+  - Métodos de pago: efectivo / tarjeta / otros
+  - Historial de ventas
+
+Endpoints (prefix /api/mostrador):
+  GET    /products                     Listar productos vendibles
+  POST   /sales                        Registrar venta
+  GET    /sales                        Historial de ventas
+
+### 5.5 CIERRE (frontend_route: "cierre")
+Cierre de turno con conciliación de caja.
+
+Funcionalidades:
+  - Resumen del día en vivo: efectivo, tarjeta, total, tickets, ticket promedio
+  - Registro de cierre: efectivo contado vs esperado → diferencia automática
+  - Notas opcionales por cierre
+  - Historial de los últimos 30 cierres
+
+Endpoints (prefix /api/cierre):
+  GET    /summary                      Resumen del día actual
+  POST   /                             Cerrar turno (registra ShiftRegister)
+  GET    /                             Historial de cierres
+
+### 5.6 AUTOS (frontend_route: "autos")
+Calculadora de importación de vehículos USA → Guatemala.
+No persiste datos: solo procesa entradas y devuelve un desglose de costos.
+
+Funcionalidades:
+  - Matriz de estados USA con costos de grúa y barco hasta puerto Houston
+  - Tipo de cambio configurable (default Q8.00/USD)
+  - Cálculo de comisiones bancarias, transferencias, almacenaje, SAT (~32%),
+    trámite aduanero, placas, tacuacina, agencia
+  - Sobrecargos por tamaño de vehículo (normal/mediano/grande)
+  - Costo opcional de reparación post-importación
+
+Endpoints (prefix /api/autos):
+  GET    /estados                      Estados USA disponibles
+  POST   /calcular                     Desglose completo de costos
+
+### 5.7 CALCULADORA (frontend_route: "calc")
+Calculadora aritmética simple. Frontend-only, no consume backend.
+
+### 5.8 IMPORTACIONES (frontend_route: "importaciones")
+Motor de pricing inteligente (SmartCalculator + pricingEngine).
+Frontend-only por ahora — sin endpoints backend dedicados.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 6. SISTEMA DE AUTENTICACIÓN Y ONBOARDING (FTUX)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ### Métodos de login soportados
@@ -161,7 +330,7 @@ sobre el AppShell con backdrop-blur. El modal:
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 6. SISTEMA DE INVITACIONES DE EMPLEADOS
+## 7. SISTEMA DE INVITACIONES DE EMPLEADOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ### Tabla Invitation
@@ -194,7 +363,7 @@ sobre el AppShell con backdrop-blur. El modal:
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 7. SEGURIDAD Y AISLAMIENTO DE DATOS
+## 8. SEGURIDAD Y AISLAMIENTO DE DATOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ### RLS Lógico (Row-Level Security a nivel de aplicación)
@@ -233,7 +402,7 @@ de forma transparente, sin cambios en la lógica de autenticación existente.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 8. PARAMETRIZACIÓN DEL SÚPER ADMIN
+## 9. PARAMETRIZACIÓN DEL SÚPER ADMIN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 La tabla platform_config almacena pares clave-valor editables en runtime
@@ -250,7 +419,7 @@ Gestión: panel Súper Admin → Configuración de Plataforma
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 9. VARIABLES DE ENTORNO
+## 10. VARIABLES DE ENTORNO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Copiar .env.example → .env y completar los valores antes de levantar Docker.
@@ -279,7 +448,7 @@ Nota: en desarrollo, VITE_API_URL se configura en docker-compose.override.yml
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 10. COMANDOS FRECUENTES
+## 11. COMANDOS FRECUENTES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ### Docker
@@ -304,7 +473,7 @@ Nota: en desarrollo, VITE_API_URL se configura en docker-compose.override.yml
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 11. ESTRUCTURA DE ARCHIVOS
+## 12. ESTRUCTURA DE ARCHIVOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ### Backend
@@ -315,6 +484,7 @@ Nota: en desarrollo, VITE_API_URL se configura en docker-compose.override.yml
   ├── Dockerfile                     Imagen del backend
   ├── entrypoint.sh                  Script de inicio (migraciones automáticas + uvicorn)
   ├── alembic.ini                    Configuración de Alembic
+  ├── migrations/                    Versiones Alembic (versions/*.py)
   ├── core/
   │   ├── config.py                  Settings (pydantic-settings, lee variables de entorno)
   │   ├── auth.py                    JWT: BearerTransport + JWTStrategy
@@ -323,6 +493,7 @@ Nota: en desarrollo, VITE_API_URL se configura en docker-compose.override.yml
   │   └── session.py                 Motor async SQLAlchemy + fábrica de sesiones
   ├── api/
   │   ├── deps.py                    Dependencias centrales: fastapi_users, get_current_tenant_id
+  │   ├── helpers.py                 Utilidades compartidas (parseo, cálculos, etc.)
   │   ├── manager.py                 UserManager (fastapi-users: hooks de registro/login)
   │   └── routers/
   │       ├── auth.py                POST /api/auth/workspace (registro con tenant)
@@ -333,11 +504,18 @@ Nota: en desarrollo, VITE_API_URL se configura en docker-compose.override.yml
   │       ├── platform_config.py     GET/PATCH /api/admin/config/ (Súper Admin)
   │       ├── tenant_me.py           Rutas del admin del tenant (/api/me/*)
   │       ├── tenants.py             CRUD de empresas (Súper Admin)
-  │       ├── roles.py               CRUD de roles con RLS
   │       ├── tenant_members.py      Gestión de membresías M:N
+  │       ├── tenant_modules.py      Módulos asignados a cada tenant
   │       ├── modules.py             CRUD de módulos del sistema (Súper Admin)
   │       ├── plans.py               Planes de suscripción
-  │       └── tenant_modules.py      Módulos asignados a cada tenant
+  │       │
+  │       │   ── APPS DE NEGOCIO ──
+  │       ├── bodega.py              Inventario + precios + movimientos
+  │       ├── recetas.py             Recetas + ingredientes
+  │       ├── cocina.py              Órdenes de producción + mermas
+  │       ├── mostrador.py           Ventas (POS)
+  │       ├── cierre.py              Cierre de turno
+  │       └── autos.py               Calculadora importación vehículos
   └── models/
       ├── __init__.py                Importación central (Alembic necesita ver todos los modelos)
       ├── mixins.py                  AuditBase (created_at, updated_at, created_by, is_active)
@@ -348,7 +526,9 @@ Nota: en desarrollo, VITE_API_URL se configura en docker-compose.override.yml
       ├── platform_config.py         PlatformConfig (key-value)
       ├── core.py                    Module (módulos de negocio)
       ├── audit.py                   AuditLog
-      └── schemas.py                 Schemas Pydantic: UserRead, SessionRead, InvitationRead, etc.
+      ├── bakery.py                  TODOS los modelos de negocio (bodega, recetas,
+      │                              cocina, mostrador, cierre)
+      └── schemas.py                 Schemas Pydantic de core y de cada app
 
 ### Frontend
   frontend/src/
@@ -364,9 +544,27 @@ Nota: en desarrollo, VITE_API_URL se configura en docker-compose.override.yml
   │   ├── modules.service.ts         Módulos activos del tenant
   │   ├── tenantMe.service.ts        Admin de tenant: roles, miembros
   │   ├── tenants.service.ts         CRUD de tenants (Súper Admin)
-  │   └── subscriptions.service.ts   Gestión de suscripciones
+  │   ├── subscriptions.service.ts   Gestión de suscripciones
+  │   ├── plans.service.ts           Planes de suscripción
+  │   │   ── SERVICES DE APPS ──
+  │   ├── bodega.service.ts          Inventario
+  │   ├── recetas.service.ts         Recetas e ingredientes
+  │   ├── cocina.service.ts          Órdenes de producción
+  │   ├── mostrador.service.ts       Ventas
+  │   ├── cierre.service.ts          Cierre de turno
+  │   └── autos.service.ts           Cálculo de importación
+  ├── apps/                          REGISTRO DE APPS DE NEGOCIO
+  │   ├── index.ts                   appRegistry (frontend_route → componente lazy)
+  │   ├── bodega/BodegaApp.tsx
+  │   ├── recetas/RecetasApp.tsx + RecipeFormModal.tsx
+  │   ├── cocina/CocinaApp.tsx
+  │   ├── mostrador/MostradorApp.tsx
+  │   ├── cierre/CierreApp.tsx
+  │   ├── autos/AutosApp.tsx
+  │   ├── calculadora/CalculadoraApp.tsx
+  │   └── importaciones/             SmartCalculator + pricingEngine
   └── components/
-      ├── OnboardingModal.tsx         Modal FTUX, 3 pasos, no cerrable hasta completar
+      ├── OnboardingModal.tsx         Modal FTUX, no cerrable hasta completar
       ├── InvitationAcceptanceModal.tsx Modal para aceptar/rechazar invitaciones
       ├── AppShell.tsx               Layout principal: sidebar + topbar + canvas
       ├── Login.tsx                  Pantalla de login y registro
@@ -388,13 +586,14 @@ Nota: en desarrollo, VITE_API_URL se configura en docker-compose.override.yml
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 12. GUÍA: AGREGAR NUEVA FUNCIONALIDAD
+## 13. GUÍA: AGREGAR UNA NUEVA APP DE NEGOCIO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Seguir este orden garantiza consistencia con el patrón del proyecto.
 
-### Paso 1 — Crear el Modelo (backend/models/tu_modulo.py)
-Heredar de AuditBase e incluir id y tenant_id propios:
+### Paso 1 — Crear el Modelo
+Editar backend/models/bakery.py (o crear un archivo dedicado e importarlo en
+models/__init__.py). Heredar de AuditBase e incluir id y tenant_id propios:
 
   import uuid
   from sqlmodel import Field
@@ -408,49 +607,18 @@ Heredar de AuditBase e incluir id y tenant_id propios:
       price: float = Field(default=0.0)
 
 ### Paso 2 — Registrar el Modelo
-Importar la clase en backend/models/__init__.py para que Alembic la detecte:
-
-  from .products import Product
+Importar la clase en backend/models/__init__.py para que Alembic la detecte.
 
 ### Paso 3 — Generar y Aplicar la Migración
   docker-compose exec backend alembic revision --autogenerate -m "tabla_productos"
   docker-compose exec backend alembic upgrade head
 
-### Paso 4 — Crear los Schemas (backend/models/schemas.py)
-Agregar schemas de entrada y salida:
+### Paso 4 — Crear los Schemas
+Agregar ProductCreate / ProductRead / ProductUpdate en backend/models/schemas.py.
 
-  class ProductCreate(BaseModel):
-      name: str
-      price: float
-
-  class ProductRead(ProductCreate):
-      id: uuid.UUID
-      tenant_id: uuid.UUID
-
-### Paso 5 — Crear el Router (backend/api/routers/products.py)
-SIEMPRE usar Depends(get_current_tenant_id) para filtrar por tenant:
-
-  from fastapi import APIRouter, Depends
-  from sqlalchemy.ext.asyncio import AsyncSession
-  from db.session import get_session
-  from models import Product
-  from models.schemas import ProductCreate, ProductRead
-  from api.deps import get_current_tenant_id
-  import uuid
-
-  router = APIRouter()
-
-  @router.post("/", response_model=ProductRead)
-  async def create_product(
-      product: ProductCreate,
-      tenant_id: uuid.UUID = Depends(get_current_tenant_id),
-      db: AsyncSession = Depends(get_session)
-  ):
-      db_obj = Product(**product.dict(), tenant_id=tenant_id)
-      db.add(db_obj)
-      await db.commit()
-      await db.refresh(db_obj)
-      return db_obj
+### Paso 5 — Crear el Router
+Crear backend/api/routers/products.py. SIEMPRE usar Depends(get_current_tenant_id)
+para filtrar por tenant:
 
   @router.get("/", response_model=list[ProductRead])
   async def list_products(
@@ -463,15 +631,22 @@ SIEMPRE usar Depends(get_current_tenant_id) para filtrar por tenant:
       return result.scalars().all()
 
 ### Paso 6 — Registrar el Router en main.py
-  from api.routers import products
-  app.include_router(products.router, prefix="/api/products", tags=["Productos"])
+  from api.routers import products as products_router
+  app.include_router(products_router.router, prefix="/api/products", tags=["Productos"])
 
-### Paso 7 — Frontend: Servicio
-Crear frontend/src/services/products.service.ts consumiendo el endpoint.
+### Paso 7 — Crear el Module en BD
+El Súper Admin registra el módulo desde el panel AdminModules con:
+  - frontend_route: "products"  (clave que usará el appRegistry)
+  - icono, nombre, descripción, plan al que pertenece
 
-### Paso 8 — Frontend: Página y Ruta
-  - Crear frontend/src/pages/ProductsPage.tsx
-  - Agregar la ruta en App.tsx (o el router principal)
+### Paso 8 — Frontend: Service
+Crear frontend/src/services/products.service.ts consumiendo /api/products.
+
+### Paso 9 — Frontend: App
+  - Crear frontend/src/apps/products/ProductsApp.tsx
+  - Crear frontend/src/apps/products/index.ts exportando { ProductsApp }
+  - Registrar en frontend/src/apps/index.ts:
+      products: lazy(() => import('./products').then(m => ({ default: m.ProductsApp })))
   - El JWT viaja automáticamente via Axios (api.ts tiene withCredentials=true)
 
 ### Reglas que NUNCA romper
@@ -480,12 +655,14 @@ Crear frontend/src/services/products.service.ts consumiendo el endpoint.
   - Todo modelo de negocio DEBE heredar de AuditBase
   - Nunca almacenar tenant_id en la tabla users
   - Siempre importar el modelo en models/__init__.py antes de migrar
+  - El frontend_route del Module en BD DEBE coincidir con la clave en appRegistry
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 13. MAPA COMPLETO DE ENDPOINTS
+## 14. MAPA COMPLETO DE ENDPOINTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+### Core / Plataforma
   Método  Ruta                              Descripción                    Acceso
   ──────  ────────────────────────────────  ─────────────────────────────  ─────────────
   GET     /health                           Healthcheck del servidor        Público
@@ -535,9 +712,48 @@ Crear frontend/src/services/products.service.ts consumiendo el endpoint.
   (En development) GET /docs               Swagger UI interactivo
   (En development) GET /redoc              ReDoc
 
+### Apps de Negocio
+  Método  Ruta                                      Descripción                          Acceso
+  ──────  ────────────────────────────────────────  ───────────────────────────────────  ────────────
+  GET     /api/bodega/items                         Listar insumos                        Autenticado
+  POST    /api/bodega/items                         Crear insumo                          Autenticado
+  PATCH   /api/bodega/items/{id}                    Editar insumo                         Autenticado
+  PATCH   /api/bodega/items/{id}/adjust             Ajustar stock                         Autenticado
+  GET     /api/bodega/items/{id}/price-history      Historial de precios                  Autenticado
+  GET     /api/bodega/items/{id}/movements          Historial de movimientos              Autenticado
+  DELETE  /api/bodega/items/{id}                    Eliminar insumo                       Autenticado
+
+  GET     /api/recetas/                             Listar recetas                        Autenticado
+  POST    /api/recetas/                             Crear receta                          Autenticado
+  GET     /api/recetas/{id}                         Detalle con ingredientes              Autenticado
+  PATCH   /api/recetas/{id}                         Editar receta                         Autenticado
+  DELETE  /api/recetas/{id}                         Eliminar receta                       Autenticado
+  POST    /api/recetas/{id}/ingredients             Agregar ingrediente                   Autenticado
+  PATCH   /api/recetas/{id}/ingredients/{ing_id}    Editar ingrediente                    Autenticado
+  DELETE  /api/recetas/{id}/ingredients/{ing_id}    Quitar ingrediente                    Autenticado
+
+  GET     /api/cocina/orders                        Listar órdenes de producción          Autenticado
+  GET     /api/cocina/preview/{recipe_id}           Preview de insumos vs stock           Autenticado
+  POST    /api/cocina/orders                        Crear orden                           Autenticado
+  PATCH   /api/cocina/orders/{id}/start             Marcar en proceso                     Autenticado
+  PATCH   /api/cocina/orders/{id}/complete          Completar (descuenta stock)           Autenticado
+  POST    /api/cocina/orders/{id}/waste             Registrar merma                       Autenticado
+  DELETE  /api/cocina/orders/{id}                   Cancelar orden                        Autenticado
+
+  GET     /api/mostrador/products                   Productos vendibles                   Autenticado
+  POST    /api/mostrador/sales                      Registrar venta                       Autenticado
+  GET     /api/mostrador/sales                      Historial de ventas                   Autenticado
+
+  GET     /api/cierre/summary                       Resumen del día                       Autenticado
+  POST    /api/cierre/                              Cerrar turno                          Autenticado
+  GET     /api/cierre/                              Historial de cierres                  Autenticado
+
+  GET     /api/autos/estados                        Estados USA con costos                Autenticado
+  POST    /api/autos/calcular                       Desglose de importación               Autenticado
+
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 14. ESCALABILIDAD Y CONCURRENCIA
+## 15. ESCALABILIDAD Y CONCURRENCIA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 FastAPI con Uvicorn (ASGI) + asyncpg permite manejar miles de conexiones
@@ -550,3 +766,5 @@ Estrategias de escala cuando la carga lo requiera:
   - CDN para los assets estáticos del frontend (dist/)
   - Redis como backend de rate limiting distribuido (reemplazar slowapi in-memory)
   - RLS nativo de PostgreSQL como segunda capa de seguridad (complementa el RLS lógico)
+  - Code-splitting: cada app de negocio ya se carga lazy en el frontend, lo
+    que reduce el bundle inicial y mejora el TTI

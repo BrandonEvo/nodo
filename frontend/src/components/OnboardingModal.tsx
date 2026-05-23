@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Building2, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
+import { useToast } from '@/components/ui/Toaster';
 import { onboardingService } from '@/services/onboarding.service';
 
 interface OnboardingModalProps {
@@ -8,6 +9,7 @@ interface OnboardingModalProps {
 }
 
 export function OnboardingModal({ userEmail, onComplete }: OnboardingModalProps) {
+  const toast = useToast();
   const [companyName, setCompanyName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'welcome' | 'form' | 'success'>('welcome');
@@ -24,7 +26,7 @@ export function OnboardingModal({ userEmail, onComplete }: OnboardingModalProps)
         onComplete();
       }, 1500);
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Error al completar el onboarding');
+      toast.error(err.response?.data?.detail || 'Error al completar el onboarding');
     } finally {
       setIsLoading(false);
     }

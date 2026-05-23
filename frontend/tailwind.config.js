@@ -13,6 +13,33 @@ export default {
     			sm: 'calc(var(--radius) - 4px)'
     		},
     		colors: {
+    			brand: '#69E7A8',
+    			// ink y surface ahora son dark-mode aware vía CSS vars
+    			ink: 'var(--nodo-ink)',
+    			surface: 'var(--nodo-canvas)',
+    			// Nodo semantic token palette
+    			nodo: {
+    				accent:  'var(--tenant-color)',
+    				canvas:  'var(--nodo-canvas)',
+    				card:    'var(--nodo-card)',
+    				inset:   'var(--nodo-inset)',
+    				raised:  'var(--nodo-raised)',
+    				ink:     'var(--nodo-ink)',
+    				sub:     'var(--nodo-sub)',
+    				dim:     'var(--nodo-dim)',
+    				line:    'var(--nodo-line)',
+    				'line-s':'var(--nodo-line-s)',
+    				// semantic states
+    				'danger-bg':  'var(--nodo-danger-bg)',
+    				'danger-bd':  'var(--nodo-danger-bd)',
+    				'danger-tx':  'var(--nodo-danger-tx)',
+    				'success-bg': 'var(--nodo-success-bg)',
+    				'success-bd': 'var(--nodo-success-bd)',
+    				'success-tx': 'var(--nodo-success-tx)',
+    				'warn-bg':    'var(--nodo-warn-bg)',
+    				'warn-bd':    'var(--nodo-warn-bd)',
+    				'warn-tx':    'var(--nodo-warn-tx)',
+    			},
     			background: 'hsl(var(--background))',
     			foreground: 'hsl(var(--foreground))',
     			card: {
