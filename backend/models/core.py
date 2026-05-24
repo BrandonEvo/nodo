@@ -13,6 +13,7 @@ class Module(AuditBase, table=True):
     description: Optional[str] = Field(default=None, max_length=1000)
     is_premium: bool = Field(default=False)
     frontend_route: Optional[str] = Field(default=None, max_length=100)  # Ej: "calc", "pos"
+    icon: Optional[str] = Field(default=None, max_length=50)  # Emoji o nombre de icono
 
     # Relación a las suscripciones activas de este módulo
     subscriptions: List["Subscription"] = Relationship(back_populates="module")

@@ -68,8 +68,9 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
     }, [appViewMode]);
 
     return (
-        <div className="min-h-screen bg-[#f4f5f7] dark:bg-[#1C1C1E]" style={tenantCssVars}>
-            {/* ── DESKTOP SIDEBAR (hidden on mobile) ── */}
+        <div className="min-h-screen bg-nodo-canvas" style={tenantCssVars}>
+
+            {/* ── DESKTOP SIDEBAR ── */}
             <Sidebar
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -82,9 +83,10 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                 tenantName={tenantName}
             />
 
-            {/* ── MAIN AREA (offset by sidebar on desktop) ── */}
-            <div className="lg:ml-[272px] transition-all duration-300 min-h-screen flex flex-col">
-                {/* ── DESKTOP TOPBAR (hidden on mobile) ── */}
+            {/* ── MAIN AREA ── */}
+            <div className="lg:ml-[260px] transition-all duration-300 min-h-screen flex flex-col">
+
+                {/* ── DESKTOP TOPBAR ── */}
                 <Topbar
                     displayName={displayName}
                     tenantName={tenantName}
@@ -97,32 +99,42 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                     onToggleDark={toggleDark}
                 />
 
-                {/* ── MOBILE HEADER (visible only on mobile) ── */}
-                <header className="lg:hidden flex items-center justify-between px-5 h-16 bg-white/80 dark:bg-[#1C1C1E]/80 backdrop-blur-xl border-b border-gray-100/80 dark:border-white/5 sticky top-0 z-30 pt-safe">
+                {/* ── MOBILE HEADER ── */}
+                <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-5 h-14 bg-nodo-card/80 backdrop-blur-xl border-b border-nodo-line"
+                    style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+                >
                     <div className="flex items-center gap-2.5">
                         {tenantLogo ? (
-                            <img src={tenantLogo} alt={tenantName} className="w-8 h-8 rounded-lg object-contain" />
+                            <img src={tenantLogo} alt={tenantName} className="w-8 h-8 rounded-xl object-contain" />
                         ) : (
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: tenantColor }}>
-                                <span className="text-white font-black text-sm">{tenantName.charAt(0)}</span>
+                            <div
+                                className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-sm"
+                                style={{ backgroundColor: tenantColor }}
+                            >
+                                {tenantName.charAt(0)}
                             </div>
                         )}
-                        <div>
-                            <p className="text-sm font-bold text-[#111111] dark:text-white leading-tight">{tenantName}</p>
-                        </div>
+                        <p className="text-sm font-bold text-nodo-ink leading-none">{tenantName}</p>
                     </div>
+
                     <div className="flex items-center gap-2">
                         <button
                             onClick={toggleDark}
-                            className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                            className="w-9 h-9 flex items-center justify-center rounded-xl text-nodo-dim hover:text-nodo-sub hover:bg-nodo-inset transition-colors"
                             aria-label={isDark ? 'Modo claro' : 'Modo oscuro'}
                         >
                             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                         </button>
                         {userPicture ? (
-                            <img src={userPicture} alt="Avatar" className="w-8 h-8 rounded-lg object-cover" referrerPolicy="no-referrer" />
+                            <img src={userPicture} alt="Avatar"
+                                className="w-8 h-8 rounded-xl object-cover ring-2 ring-nodo-line"
+                                referrerPolicy="no-referrer"
+                            />
                         ) : (
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-black text-sm" style={{ background: `linear-gradient(135deg, ${tenantColor}, ${tenantColor}dd)` }}>
+                            <div
+                                className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-sm"
+                                style={{ background: `linear-gradient(135deg, ${tenantColor}, ${tenantColor}cc)` }}
+                            >
                                 {displayName.charAt(0).toUpperCase()}
                             </div>
                         )}
@@ -130,7 +142,7 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                 </header>
 
                 {/* ── CONTENT CANVAS ── */}
-                <main className="flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 pb-24 lg:pb-8 overflow-y-auto flex flex-col">
+                <main className="flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 pb-28 lg:pb-10 overflow-y-auto flex flex-col">
                     <DashboardCanvas
                         activeTab={activeTab}
                         setActiveTab={setActiveTab}
@@ -149,7 +161,7 @@ export function AppShell({ userSession, activeModules = [], onLogout }: AppShell
                 </main>
             </div>
 
-            {/* ── MOBILE BOTTOM NAV (hidden on desktop) ── */}
+            {/* ── MOBILE BOTTOM NAV ── */}
             <BottomNav
                 activeTab={activeTab}
                 onTabChange={setActiveTab}

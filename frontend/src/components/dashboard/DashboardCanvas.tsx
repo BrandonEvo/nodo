@@ -45,37 +45,84 @@ export function DashboardCanvas({
 
   // ── SUPER ADMIN HOME ──
   if (activeTab === 'admin_home') {
-    const cards = [
-      { id: 'admin_tenants',        label: 'Empresas',       sub: 'Gestión de',    icon: Building2,      color: 'bg-[#69E7A8]/10 text-[#69E7A8]'     },
-      { id: 'admin_users',          label: 'Usuarios',       sub: 'Directorio de', icon: Users,          color: 'bg-blue-500/10 text-blue-500'        },
-      { id: 'admin_subscriptions',  label: 'Planes',         sub: 'Facturación y', icon: ShoppingCart,   color: 'bg-purple-500/10 text-purple-500'    },
-      { id: 'admin_modules',        label: 'Módulos',        sub: 'Catálogo de',   icon: Package,        color: 'bg-amber-500/10 text-amber-500'      },
-      { id: 'admin_roles',          label: 'Roles',          sub: 'Auditoría de',  icon: Shield,         color: 'bg-rose-500/10 text-rose-500'        },
-      { id: 'admin_platform_config',label: 'Configuración',  sub: 'Plataforma y',  icon: SlidersHorizontal, color: 'bg-cyan-500/10 text-cyan-500'    },
+    const hour = new Date().getHours();
+    const greeting = hour < 5 ? 'Buenas noches' : hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
+    const greetingEmoji = hour < 5 ? '🌙' : hour < 12 ? '☀️' : hour < 18 ? '🌤️' : '🌙';
+    const firstName = displayName.split(' ')[0] || displayName.split('@')[0];
+
+    const sections = [
+      {
+        label: 'Negocio',
+        items: [
+          { id: 'admin_tenants', label: 'Empresas',  desc: 'Gestión de workspaces',       icon: Building2,  gradient: 'from-[#69E7A8] to-emerald-500' },
+          { id: 'admin_users',   label: 'Usuarios',  desc: 'Directorio global de cuentas', icon: Users,      gradient: 'from-blue-400 to-blue-600'      },
+        ],
+      },
+      {
+        label: 'Plataforma',
+        items: [
+          { id: 'admin_modules',       label: 'Módulos', desc: 'Catálogo de funcionalidades',     icon: Package,    gradient: 'from-amber-400 to-orange-500'  },
+          { id: 'admin_subscriptions', label: 'Planes',  desc: 'Suscripciones y facturación',     icon: ShoppingCart, gradient: 'from-violet-500 to-purple-600' },
+        ],
+      },
+      {
+        label: 'Sistema',
+        items: [
+          { id: 'admin_roles',          label: 'Roles',          desc: 'Permisos y auditoría',         icon: Shield,           gradient: 'from-rose-400 to-rose-600'    },
+          { id: 'admin_platform_config',label: 'Configuración',  desc: 'Parámetros globales',           icon: SlidersHorizontal, gradient: 'from-cyan-400 to-cyan-600'   },
+        ],
+      },
     ];
+
     return (
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Panel Maestro</h1>
-          <p className="text-nodo-sub text-sm font-medium mt-0.5">Workbench de Administración de NODO.</p>
+      <div className="flex flex-col gap-8 max-w-lg">
+
+        {/* Header greeting */}
+        <div className="flex items-center gap-4 pt-1">
+          <div className="w-[60px] h-[60px] rounded-2xl flex items-center justify-center text-white text-2xl font-black shadow-md shrink-0"
+            style={{ background: 'linear-gradient(135deg, #69E7A8, #3ec98a)' }}>
+            {firstName.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[#69E7A8] mb-0.5">
+              NODO Admin
+            </p>
+            <h1 className="text-2xl font-bold text-nodo-ink leading-tight">
+              {greeting}, {firstName} {greetingEmoji}
+            </h1>
+            <p className="text-xs text-nodo-sub mt-0.5">Panel Maestro · Workbench</p>
+          </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
-          {cards.map((c) => {
-            const Icon = c.icon;
-            return (
-              <button key={c.id} onClick={() => setActiveTab(c.id)}
-                className="p-6 lg:p-8 bg-nodo-card rounded-3xl border border-nodo-line shadow-sm flex items-center justify-between group hover:shadow-md hover:border-nodo-line-s transition-all duration-200 text-left w-full active:scale-[0.97]">
-                <div>
-                  <p className="text-[10px] font-bold tracking-widest text-nodo-dim uppercase">{c.sub}</p>
-                  <h3 className="text-xl lg:text-2xl font-black text-nodo-ink mt-1">{c.label}</h3>
-                </div>
-                <div className={`w-12 h-12 lg:w-14 lg:h-14 rounded-2xl flex items-center justify-center ${c.color} group-hover:scale-110 transition-transform duration-200`}>
-                  <Icon size={24} />
-                </div>
-              </button>
-            );
-          })}
-        </div>
+
+        {/* Sections iOS Settings style */}
+        {sections.map(section => (
+          <div key={section.label}>
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-widest mb-2 px-1">
+              {section.label}
+            </p>
+            <div className="bg-nodo-card rounded-3xl border border-nodo-line overflow-hidden divide-y divide-nodo-line shadow-sm">
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className="w-full flex items-center gap-4 px-5 py-4 hover:bg-nodo-inset active:bg-nodo-raised transition-colors text-left"
+                  >
+                    <div className={`w-11 h-11 rounded-[14px] bg-gradient-to-br ${item.gradient} flex items-center justify-center shrink-0 shadow-sm`}>
+                      <Icon size={20} className="text-white" strokeWidth={1.8} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-nodo-ink">{item.label}</p>
+                      <p className="text-xs text-nodo-sub mt-0.5">{item.desc}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-nodo-dim shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }

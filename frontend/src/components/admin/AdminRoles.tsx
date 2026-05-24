@@ -1,13 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Shield, Search, Building2, Crown, Briefcase } from 'lucide-react';
-import { Spinner } from '@/components/ui/Spinner';
-import { EmptyState } from '@/components/ui/EmptyState';
+import { Shield, Search, Building2, Crown, Briefcase, Loader2 } from 'lucide-react';
 import { rolesService, RoleAuditEntry } from '@/services/roles.service';
 
 const MEMBER_TYPE_META = {
-  owner:    { label: 'Propietario',    color: 'bg-amber-50 text-amber-700 border-amber-200',  icon: Crown    },
-  admin:    { label: 'Administrador',  color: 'bg-blue-50 text-blue-700 border-blue-200',     icon: Shield   },
-  employee: { label: 'Empleado',       color: 'bg-gray-50 text-gray-600 border-gray-200',     icon: Briefcase },
+  owner:    { label: 'Propietario',   icon: Crown     },
+  admin:    { label: 'Administrador', icon: Shield    },
+  employee: { label: 'Empleado',      icon: Briefcase },
 } as const;
 
 export function AdminRoles() {
@@ -19,13 +17,9 @@ export function AdminRoles() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      try {
-        setEntries(await rolesService.listAudit());
-      } catch (e) {
-        console.error('Error loading roles audit', e);
-      } finally {
-        setLoading(false);
-      }
+      try { setEntries(await rolesService.listAudit()); }
+      catch (e) { console.error('Error loading roles audit', e); }
+      finally { setLoading(false); }
     };
     load();
   }, []);
@@ -49,33 +43,31 @@ export function AdminRoles() {
   }), [entries]);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl sm:text-3xl font-black text-[#111111] tracking-tight flex items-center gap-3">
-          <Shield className="text-[#69E7A8] w-7 h-7 shrink-0" /> Auditoría de Roles
-        </h1>
-        <p className="text-gray-400 mt-1 text-sm font-medium">Vista global de membresías en todas las empresas.</p>
+        <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Auditoría de Roles</h1>
+        <p className="text-nodo-sub text-sm font-medium mt-0.5">Vista global de membresías en todas las empresas.</p>
       </div>
 
       {/* Summary cards */}
       {!loading && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Empresas',       value: counts.tenants,   icon: Building2, color: 'text-[#69E7A8] bg-[#69E7A8]/10' },
-            { label: 'Propietarios',   value: counts.owners,    icon: Crown,     color: 'text-amber-500 bg-amber-500/10'  },
-            { label: 'Administradores', value: counts.admins,   icon: Shield,    color: 'text-blue-500 bg-blue-500/10'   },
-            { label: 'Empleados',      value: counts.employees, icon: Briefcase, color: 'text-gray-500 bg-gray-500/10'   },
+            { label: 'Empresas',        value: counts.tenants,   icon: Building2, colorIcon: 'text-[#69E7A8]',      colorBg: 'bg-[#69E7A8]/10' },
+            { label: 'Propietarios',    value: counts.owners,    icon: Crown,     colorIcon: 'text-nodo-warn-tx',   colorBg: 'bg-nodo-warn-bg'  },
+            { label: 'Administradores', value: counts.admins,    icon: Shield,    colorIcon: 'text-blue-500 dark:text-blue-400', colorBg: 'bg-blue-500/10' },
+            { label: 'Empleados',       value: counts.employees, icon: Briefcase, colorIcon: 'text-nodo-sub',       colorBg: 'bg-nodo-raised'   },
           ].map((c) => {
             const Icon = c.icon;
             return (
-              <div key={c.label} className="p-4 sm:p-5 bg-white rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3 sm:gap-4">
-                <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${c.color}`}>
-                  <Icon size={17} />
+              <div key={c.label} className="p-4 sm:p-5 bg-nodo-card rounded-2xl border border-nodo-line shadow-sm flex items-center gap-3 sm:gap-4">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${c.colorBg}`}>
+                  <Icon size={18} className={c.colorIcon} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">{c.label}</p>
-                  <p className="text-xl sm:text-2xl font-black text-[#111111]">{c.value}</p>
+                  <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider truncate">{c.label}</p>
+                  <p className="text-2xl font-black text-nodo-ink tabular-nums">{c.value}</p>
                 </div>
               </div>
             );
@@ -86,13 +78,13 @@ export function AdminRoles() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-nodo-dim pointer-events-none" />
           <input
             type="text"
             placeholder="Buscar por usuario o empresa..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-11 pl-10 pr-4 rounded-xl border border-gray-200 bg-white text-sm font-medium text-[#111111] placeholder-gray-400 focus:outline-none focus:border-[#111111] transition-colors"
+            className="w-full h-12 pl-11 pr-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim"
           />
         </div>
         <div className="flex gap-2 overflow-x-auto pb-0.5">
@@ -100,10 +92,10 @@ export function AdminRoles() {
             <button
               key={type}
               onClick={() => setFilterType(type)}
-              className={`px-4 h-11 rounded-xl text-xs font-bold border transition-all shrink-0 ${
+              className={`px-4 h-12 rounded-2xl text-xs font-bold border-2 transition-all shrink-0 active:scale-95 ${
                 filterType === type
-                  ? 'bg-[#111111] text-white border-[#111111]'
-                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                  ? 'bg-nodo-ink text-nodo-canvas border-nodo-ink'
+                  : 'bg-nodo-inset text-nodo-sub border-nodo-line hover:border-nodo-ink hover:text-nodo-ink'
               }`}
             >
               {type === '' ? 'Todos' : MEMBER_TYPE_META[type].label}
@@ -114,77 +106,90 @@ export function AdminRoles() {
 
       {/* List */}
       {loading ? (
-        <div className="flex items-center justify-center h-48">
-          <Spinner size="lg" />
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-nodo-sub" />
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={<Shield className="w-6 h-6" />} title="No se encontraron resultados." />
+        <div className="flex flex-col items-center justify-center h-40 text-center px-4">
+          <Shield size={32} className="text-nodo-dim mb-2" />
+          <p className="text-sm font-bold text-nodo-dim">No se encontraron resultados.</p>
+        </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="bg-nodo-card rounded-3xl border border-nodo-line shadow-sm overflow-hidden">
           {/* Desktop column headers */}
-          <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_140px_100px] gap-4 px-6 py-3 border-b border-gray-100 bg-gray-50/60">
+          <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_150px_110px] gap-4 px-6 py-3 border-b border-nodo-line bg-nodo-inset">
             {['Usuario', 'Empresa', 'Rol', 'Estado'].map(h => (
-              <span key={h} className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{h}</span>
+              <span key={h} className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">{h}</span>
             ))}
           </div>
 
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-nodo-line">
             {filtered.map((entry) => {
               const meta = MEMBER_TYPE_META[entry.member_type] ?? MEMBER_TYPE_META.employee;
               const RoleIcon = meta.icon;
               const initials = (entry.user_full_name || entry.user_email).charAt(0).toUpperCase();
 
+              const roleBadgeClass = entry.member_type === 'owner'
+                ? 'bg-nodo-warn-bg text-nodo-warn-tx border-nodo-warn-bd'
+                : entry.member_type === 'admin'
+                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+                  : 'bg-nodo-raised text-nodo-sub border-nodo-line';
+
+              const statusBadgeClass = entry.is_active
+                ? 'bg-nodo-success-bg text-nodo-success-tx border-nodo-success-bd'
+                : 'bg-nodo-raised text-nodo-dim border-nodo-line';
+
               return (
-                <div key={entry.member_id} className="px-4 sm:px-6 py-4 hover:bg-gray-50/50 transition-colors">
-                  {/* Mobile layout */}
+                <div key={entry.member_id} className="px-4 sm:px-6 py-4 hover:bg-nodo-inset transition-colors">
+                  {/* Mobile */}
                   <div className="sm:hidden">
                     <div className="flex items-center gap-3 mb-2">
-                      <div className="w-9 h-9 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center font-black text-sm shrink-0">
+                      <div className="w-9 h-9 rounded-xl bg-nodo-inset text-nodo-sub flex items-center justify-center font-black text-sm shrink-0">
                         {initials}
                       </div>
                       <div className="min-w-0 flex-1">
                         {entry.user_full_name && (
-                          <p className="text-sm font-bold text-[#111111] truncate">{entry.user_full_name}</p>
+                          <p className="text-sm font-bold text-nodo-ink truncate">{entry.user_full_name}</p>
                         )}
-                        <p className="text-xs text-gray-400 truncate">{entry.user_email}</p>
+                        <p className="text-xs text-nodo-dim truncate">{entry.user_email}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap pl-12">
-                      <span className="inline-flex items-center gap-1 text-xs text-gray-500 font-semibold">
-                        <Building2 className="w-3 h-3 text-gray-300" /> {entry.tenant_name}
+                      <span className="inline-flex items-center gap-1 text-xs text-nodo-sub font-semibold">
+                        <Building2 className="w-3 h-3 text-nodo-dim" /> {entry.tenant_name}
                       </span>
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${meta.color}`}>
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${roleBadgeClass}`}>
                         <RoleIcon className="w-3 h-3" /> {meta.label}
                       </span>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${entry.is_active ? 'bg-[#69E7A8]/10 text-[#2a7a52] border-[#69E7A8]/30' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${entry.is_active ? 'bg-[#69E7A8]' : 'bg-gray-300'}`} />
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${statusBadgeClass}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${entry.is_active ? 'bg-nodo-success-tx' : 'bg-nodo-dim'}`} />
                         {entry.is_active ? 'Activo' : 'Inactivo'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Desktop layout */}
-                  <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_140px_100px] gap-4 items-center">
+                  {/* Desktop */}
+                  <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_150px_110px] gap-4 items-center">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center font-black text-sm shrink-0">
+                      <div className="w-9 h-9 rounded-xl bg-nodo-inset text-nodo-sub flex items-center justify-center font-black text-sm shrink-0">
                         {initials}
                       </div>
                       <div className="min-w-0">
                         {entry.user_full_name && (
-                          <p className="text-sm font-bold text-[#111111] truncate">{entry.user_full_name}</p>
+                          <p className="text-sm font-bold text-nodo-ink truncate">{entry.user_full_name}</p>
                         )}
-                        <p className="text-xs text-gray-400 truncate">{entry.user_email}</p>
+                        <p className="text-xs text-nodo-dim truncate">{entry.user_email}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 min-w-0">
-                      <Building2 className="w-4 h-4 text-gray-300 shrink-0" />
-                      <span className="text-sm font-semibold text-[#111111] truncate">{entry.tenant_name}</span>
+                      <Building2 className="w-4 h-4 text-nodo-dim shrink-0" />
+                      <span className="text-sm font-semibold text-nodo-ink truncate">{entry.tenant_name}</span>
                     </div>
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border uppercase tracking-wider w-fit ${meta.color}`}>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-bold border uppercase tracking-wider w-fit ${roleBadgeClass}`}>
                       <RoleIcon className="w-3 h-3" /> {meta.label}
                     </span>
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border uppercase tracking-wider w-fit ${entry.is_active ? 'bg-[#69E7A8]/10 text-[#2a7a52] border-[#69E7A8]/30' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${entry.is_active ? 'bg-[#69E7A8]' : 'bg-gray-300'}`} />
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-bold border uppercase tracking-wider w-fit ${statusBadgeClass}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${entry.is_active ? 'bg-nodo-success-tx' : 'bg-nodo-dim'}`} />
                       {entry.is_active ? 'Activo' : 'Inactivo'}
                     </span>
                   </div>
@@ -193,8 +198,8 @@ export function AdminRoles() {
             })}
           </div>
 
-          <div className="px-6 py-3 border-t border-gray-100 bg-gray-50/60">
-            <p className="text-xs text-gray-400 font-medium">
+          <div className="px-6 py-3 border-t border-nodo-line bg-nodo-inset">
+            <p className="text-xs text-nodo-dim font-medium">
               {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}
               {filtered.length !== entries.length && ` de ${entries.length} total`}
             </p>

@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react";
-import { Plus, Package, Pencil, PowerOff, X, Trash2, ShieldAlert } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Plus, Package, Pencil, PowerOff, Trash2, ShieldAlert, Check, Loader2 } from "lucide-react";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useToast } from "@/components/ui/Toaster";
 import { modulesService, type ModuleRead } from "@/services/modules.service";
 
@@ -13,15 +10,16 @@ export function AdminModules() {
   const [modules, setModules] = useState<ModuleRead[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
-  const [newModuleName, setNewModuleName] = useState("");
-  const [newModuleCode, setNewModuleCode] = useState("");
-  const [newModuleRoute, setNewModuleRoute] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingModule, setEditingModule] = useState<ModuleRead | null>(null);
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [route, setRoute] = useState("");
+  const [icon, setIcon] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const [hardDeletingModuleId, setHardDeletingModuleId] = useState<string | null>(null);
-  const [superAdminPassword, setSuperAdminPassword] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<ModuleRead | null>(null);
+  const [masterPassword, setMasterPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   const loadData = async () => {
@@ -37,88 +35,97 @@ export function AdminModules() {
 
   useEffect(() => { loadData(); }, []);
 
-  const openForm = (mod?: ModuleRead) => {
-    if (mod) {
-      setEditingModuleId(mod.id);
-      setNewModuleName(mod.name);
-      setNewModuleCode(mod.code);
-      setNewModuleRoute(mod.frontend_route ?? '');
-    } else {
-      setEditingModuleId(null);
-      setNewModuleName(""); setNewModuleCode(""); setNewModuleRoute("");
-    }
-    setIsFormOpen(true);
+  const openCreate = () => {
+    setEditingModule(null);
+    setName(""); setCode(""); setRoute(""); setIcon("");
+    setFormOpen(true);
+  };
+
+  const openEdit = (mod: ModuleRead) => {
+    setEditingModule(mod);
+    setName(mod.name);
+    setCode(mod.code);
+    setRoute(mod.frontend_route ?? "");
+    setIcon(mod.icon ?? "");
+    setFormOpen(true);
   };
 
   const closeForm = () => {
-    setIsFormOpen(false);
-    setEditingModuleId(null);
-    setNewModuleName(""); setNewModuleCode(""); setNewModuleRoute("");
+    setFormOpen(false);
+    setEditingModule(null);
+    setName(""); setCode(""); setRoute(""); setIcon("");
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newModuleName.trim() || !newModuleCode.trim()) return;
+    if (!name.trim() || !code.trim()) return;
     setSaving(true);
     try {
-      if (editingModuleId) {
-        await modulesService.update(editingModuleId, {
-          name: newModuleName.trim(),
-          code: newModuleCode.trim().toUpperCase(),
-          frontend_route: newModuleRoute.trim().toLowerCase() || null,
+      if (editingModule) {
+        await modulesService.update(editingModule.id, {
+          name: name.trim(),
+          code: code.trim().toUpperCase(),
+          frontend_route: route.trim().toLowerCase() || null,
+          icon: icon.trim() || null,
         });
-        toast.success("Módulo actualizado correctamente");
+        toast.success("Módulo actualizado");
       } else {
         await modulesService.create({
-          name: newModuleName.trim(),
-          code: newModuleCode.trim().toUpperCase(),
-          frontend_route: newModuleRoute.trim().toLowerCase() || null,
+          name: name.trim(),
+          code: code.trim().toUpperCase(),
+          frontend_route: route.trim().toLowerCase() || null,
+          icon: icon.trim() || null,
         });
-        toast.success("Módulo creado correctamente");
+        toast.success("Módulo creado");
       }
       closeForm();
       await loadData();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Error al guardar módulo");
+      toast.error(e instanceof Error ? e.message : "Error al guardar");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDeactivate = (mod: ModuleRead) => {
     toast.confirm(
       "¿Desactivar este módulo?",
       async () => {
         try {
-          await modulesService.update(id, { is_active: false });
+          await modulesService.update(mod.id, { is_active: false });
           toast.warning("Módulo desactivado");
           await loadData();
         } catch (e: unknown) {
-          toast.error(e instanceof Error ? e.message : "Error al desactivar módulo");
+          toast.error(e instanceof Error ? e.message : "Error al desactivar");
         }
       },
       { confirmLabel: "Desactivar" }
     );
   };
 
-  const handleReactivate = async (id: string) => {
+  const handleReactivate = async (mod: ModuleRead) => {
     try {
-      await modulesService.update(id, { is_active: true });
+      await modulesService.update(mod.id, { is_active: true });
       toast.success("Módulo reactivado");
       await loadData();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Error al reactivar módulo");
+      toast.error(e instanceof Error ? e.message : "Error al reactivar");
     }
+  };
+
+  const openHardDelete = (mod: ModuleRead) => {
+    setDeleteTarget(mod);
+    setMasterPassword("");
   };
 
   const handleHardDelete = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hardDeletingModuleId || !superAdminPassword) return;
+    if (!deleteTarget || !masterPassword) return;
     setDeleting(true);
     try {
-      await modulesService.hardDelete(hardDeletingModuleId, superAdminPassword);
-      setHardDeletingModuleId(null);
-      setSuperAdminPassword("");
+      await modulesService.hardDelete(deleteTarget.id, masterPassword);
+      setDeleteTarget(null);
+      setMasterPassword("");
       toast.success("Módulo destruido permanentemente");
       await loadData();
     } catch (e: any) {
@@ -128,147 +135,264 @@ export function AdminModules() {
     }
   };
 
+  const formValid = name.trim().length > 0 && code.trim().length > 0;
+
   return (
-    <div className="bg-white rounded-2xl sm:rounded-[40px] p-4 sm:p-6 lg:p-10 shadow-sm border border-slate-100 flex flex-col flex-1 overflow-hidden relative">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8 shrink-0">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-[#111111] tracking-tight flex items-center gap-3">
-            <Package className="text-[#69E7A8] w-7 h-7 shrink-0" /> Módulos Globales
-          </h2>
-          <p className="text-slate-500 text-sm mt-1">Registra las funcionalidades disponibles en tu ecosistema.</p>
-        </div>
-        <Button
-          onClick={() => openForm()}
-          className="h-11 sm:h-12 rounded-full bg-[#111111] hover:bg-[#333333] text-white font-bold px-5 sm:px-6 transition-all self-start sm:self-auto shrink-0"
-        >
-          <Plus size={16} className="mr-2" /> Crear Módulo
-        </Button>
-      </div>
+    <>
+      <div className="flex flex-col flex-1 overflow-hidden gap-6">
 
-      {/* Grid */}
-      <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
-        {loading ? (
-          <div className="flex items-center justify-center h-40">
-            <Spinner size="lg" />
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 shrink-0">
+          <div>
+            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Módulos Globales</h1>
+            <p className="text-nodo-sub text-sm font-medium mt-0.5">Funcionalidades disponibles en el ecosistema.</p>
           </div>
-        ) : modules.length === 0 ? (
-          <EmptyState icon={<Package className="w-6 h-6" />} title="No hay módulos registrados." />
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {modules.map((m) => (
-              <div
-                key={m.id}
-                className={`p-5 sm:p-6 bg-white border border-slate-100 rounded-[20px] sm:rounded-[24px] shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group ${m.is_active === false ? 'bg-slate-50 opacity-60' : ''}`}
-              >
-                <div className="absolute top-0 right-0 p-4 opacity-5 bg-[#69E7A8] rounded-bl-[40px] w-24 h-24 group-hover:scale-110 transition-transform" />
+          <button
+            onClick={openCreate}
+            className="h-11 px-5 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-sm flex items-center gap-2 active:scale-[0.97] transition-transform shadow-lg shrink-0"
+          >
+            <Plus size={16} />
+            Crear
+          </button>
+        </div>
 
-                <div className="absolute top-3 right-3 flex flex-col gap-1 z-20">
-                  <button onClick={() => openForm(m)} className="p-1.5 text-slate-400 hover:text-[#111111] hover:bg-slate-100 rounded-full transition" title="Editar módulo">
-                    <Pencil size={16} />
-                  </button>
-                  {m.is_active !== false ? (
-                    <button onClick={() => handleDelete(m.id)} className="p-1.5 text-orange-400 hover:text-white hover:bg-orange-500 rounded-full transition" title="Inactivar">
-                      <PowerOff size={16} />
+        {/* Grid */}
+        <div className="flex-1 overflow-y-auto pr-1">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="w-8 h-8 animate-spin text-nodo-sub" />
+            </div>
+          ) : modules.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center px-4">
+              <Package size={32} className="text-nodo-dim mb-2" />
+              <p className="text-sm font-bold text-nodo-dim">No hay módulos registrados.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {modules.map((mod) => (
+                <div
+                  key={mod.id}
+                  className={`bg-nodo-card border border-nodo-line rounded-3xl p-5 shadow-sm relative overflow-hidden group transition-opacity ${mod.is_active === false ? "opacity-50" : ""}`}
+                >
+                  {/* Accent corner */}
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-[#69E7A8]/10 rounded-bl-[40px] group-hover:scale-110 transition-transform" />
+
+                  {/* Actions */}
+                  <div className="absolute top-3 right-3 flex flex-col gap-1 z-10">
+                    <button
+                      onClick={() => openEdit(mod)}
+                      className="p-1.5 text-nodo-dim hover:text-nodo-ink hover:bg-nodo-raised rounded-full transition-colors"
+                      title="Editar"
+                    >
+                      <Pencil size={15} />
                     </button>
-                  ) : (
-                    <>
-                      <button onClick={() => handleReactivate(m.id)} className="p-1.5 text-green-500 hover:text-white hover:bg-green-500 rounded-full transition bg-green-50" title="Reactivar">
-                        <PowerOff size={16} />
+                    {mod.is_active !== false ? (
+                      <button
+                        onClick={() => handleDeactivate(mod)}
+                        className="p-1.5 text-nodo-warn-tx hover:bg-nodo-warn-bg rounded-full transition-colors"
+                        title="Desactivar"
+                      >
+                        <PowerOff size={15} />
                       </button>
-                      <button onClick={() => setHardDeletingModuleId(m.id)} className="p-1.5 text-red-500 hover:text-white hover:bg-red-600 rounded-full transition bg-red-50" title="Destruir">
-                        <Trash2 size={16} />
-                      </button>
-                    </>
-                  )}
-                </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleReactivate(mod)}
+                          className="p-1.5 text-nodo-success-tx hover:bg-nodo-success-bg rounded-full transition-colors"
+                          title="Reactivar"
+                        >
+                          <PowerOff size={15} />
+                        </button>
+                        <button
+                          onClick={() => openHardDelete(mod)}
+                          className="p-1.5 text-nodo-danger-tx hover:bg-nodo-danger-bg rounded-full transition-colors"
+                          title="Destruir"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
+                    )}
+                  </div>
 
-                <div className="pr-10 relative z-10">
-                  <h4 className={`font-black text-base sm:text-lg leading-tight ${m.is_active === false ? 'text-slate-500' : 'text-[#111111]'}`}>
-                    {m.name}
-                  </h4>
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">{m.code}</span>
-                    {m.frontend_route && (
-                      <span className="font-mono text-xs text-slate-300 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                        apps/{m.frontend_route}
+                  {/* Content */}
+                  <div className="pr-10 relative z-10">
+                    {mod.icon && (
+                      <span className="text-2xl mb-2 block">{mod.icon}</span>
+                    )}
+                    <h4 className="font-black text-base text-nodo-ink leading-tight">{mod.name}</h4>
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs font-bold text-nodo-sub bg-nodo-inset px-2 py-1 rounded-lg">
+                        {mod.code}
+                      </span>
+                      {mod.frontend_route && (
+                        <span className="font-mono text-xs text-nodo-dim bg-nodo-inset border border-nodo-line px-2 py-1 rounded-lg">
+                          apps/{mod.frontend_route}
+                        </span>
+                      )}
+                    </div>
+                    {mod.is_active === false && (
+                      <span className="mt-3 inline-block bg-nodo-inset text-nodo-dim px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">
+                        Inactivo
                       </span>
                     )}
                   </div>
-                  {m.is_active === false && (
-                    <span className="mt-3 inline-block bg-slate-200 text-slate-500 px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">
-                      Inactivo
-                    </span>
-                  )}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Form drawer */}
-      {isFormOpen && (
-        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-20 flex justify-end">
-          <div className="w-full max-w-md h-full bg-white border-l border-slate-200 shadow-2xl flex flex-col p-6 sm:p-8 animate-in slide-in-from-right duration-300">
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="text-xl font-black text-[#111111]">{editingModuleId ? "Editar Módulo" : "Nuevo Módulo"}</h3>
-              <button onClick={closeForm} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
-                <X size={20} />
-              </button>
+      {/* Form BottomSheet */}
+      <BottomSheet
+        open={formOpen}
+        onClose={closeForm}
+        title={editingModule ? "Editar Módulo" : "Nuevo Módulo"}
+        footer={
+          <button
+            form="module-form"
+            type="submit"
+            disabled={saving || !formValid}
+            className="w-full h-14 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2"
+          >
+            {saving
+              ? <Loader2 size={18} className="animate-spin" />
+              : <Check size={18} />
+            }
+            {editingModule ? "GUARDAR CAMBIOS" : "CREAR MÓDULO"}
+          </button>
+        }
+      >
+        <form id="module-form" onSubmit={handleSave} className="flex flex-col gap-5">
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Icono (emoji)
+            </label>
+            <div className="flex gap-3 items-center">
+              <div className="w-12 h-12 rounded-2xl bg-nodo-inset border-2 border-nodo-line flex items-center justify-center text-2xl shrink-0">
+                {icon || <span className="text-nodo-dim text-sm">?</span>}
+              </div>
+              <input
+                type="text"
+                placeholder="Ej. 🥖 🧁 🚗"
+                value={icon}
+                onChange={e => setIcon(e.target.value)}
+                disabled={saving}
+                className="flex-1 h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50"
+              />
             </div>
-            <form onSubmit={handleSave} className="flex-1 overflow-y-auto flex flex-col gap-6 pr-2 custom-scrollbar">
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Nombre Comercial</label>
-                <Input placeholder="Ej. Punto de Venta" value={newModuleName} onChange={(e) => setNewModuleName(e.target.value)} className="h-12 rounded-2xl bg-slate-50 border-slate-200 px-5 focus-visible:ring-[#111111]/5" required disabled={saving} />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Código Interno</label>
-                <Input placeholder="Ej. POS" value={newModuleCode} onChange={(e) => setNewModuleCode(e.target.value)} className="h-12 rounded-2xl bg-slate-50 border-slate-200 px-5 focus-visible:ring-[#111111]/5 uppercase" disabled={saving || !!editingModuleId} />
-                {editingModuleId && <p className="text-[10px] text-slate-400 pl-2 mt-1">El código es un identificador inmutable.</p>}
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Ruta de App Frontend</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-mono select-none">apps/</span>
-                  <Input placeholder="ej: calc, pos" value={newModuleRoute} onChange={(e) => setNewModuleRoute(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ''))} className="h-12 rounded-2xl bg-slate-50 border-slate-200 pl-14 pr-5 focus-visible:ring-[#111111]/5 font-mono" disabled={saving} />
-                </div>
-                <p className="text-[10px] text-slate-400 pl-2 mt-1">
-                  {newModuleRoute ? `→ src/apps/${newModuleRoute}/` : 'Vacío = mostrar "Próximamente".'}
-                </p>
-              </div>
-              <div className="mt-auto pt-8">
-                <Button type="submit" disabled={saving || !newModuleName.trim() || !newModuleCode.trim()} className="w-full h-14 rounded-2xl bg-[#69E7A8] hover:bg-[#58C991] text-[#111111] font-black tracking-wide transition-all active:scale-[0.98]">
-                  {saving
-                    ? <div className="w-5 h-5 border-2 border-[#111111]/30 border-t-[#111111] rounded-full animate-spin" />
-                    : editingModuleId ? "Guardar Cambios" : "Añadir Módulo"
-                  }
-                </Button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
 
-      {/* Hard delete modal */}
-      {hardDeletingModuleId && (
-        <div className="absolute inset-0 bg-[#111111]/80 backdrop-blur-md z-30 flex items-center justify-center p-4">
-          <form onSubmit={handleHardDelete} className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500">
-              <ShieldAlert size={32} />
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Nombre Comercial
+            </label>
+            <input
+              type="text"
+              placeholder="Ej. Punto de Venta"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              required
+              disabled={saving}
+              className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50"
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Código Interno
+            </label>
+            <input
+              type="text"
+              placeholder="Ej. POS"
+              value={code}
+              onChange={e => setCode(e.target.value.toUpperCase())}
+              required
+              disabled={saving || !!editingModule}
+              className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50 uppercase font-mono tracking-widest"
+            />
+            {editingModule && (
+              <p className="text-[10px] text-nodo-dim mt-1.5 pl-1">El código es un identificador inmutable.</p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Ruta de App Frontend
+            </label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-nodo-dim text-sm font-mono select-none">
+                apps/
+              </span>
+              <input
+                type="text"
+                placeholder="ej: calc, pos"
+                value={route}
+                onChange={e => setRoute(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ""))}
+                disabled={saving}
+                className="w-full h-12 pl-14 pr-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50 font-mono"
+              />
             </div>
-            <h3 className="text-2xl font-black text-[#111111] mb-2">Destrucción PRO</h3>
-            <p className="text-slate-500 text-sm mb-6">Borrará el módulo junto con sus planes, roles y membresías. Irreversible.</p>
-            <Input type="password" placeholder="Contraseña Maestra..." value={superAdminPassword} onChange={(e) => setSuperAdminPassword(e.target.value)} className="h-14 rounded-2xl text-center font-bold tracking-widest mb-4 border-slate-200 bg-slate-50 focus-visible:ring-red-500/20 focus-visible:border-red-500" autoFocus />
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => setHardDeletingModuleId(null)} className="flex-1 h-12 rounded-xl text-slate-500 font-bold border-slate-200">Cancelar</Button>
-              <Button type="submit" disabled={deleting || !superAdminPassword} className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold">
-                {deleting ? "Purgando..." : "Destruir"}
-              </Button>
+            <p className="text-[10px] text-nodo-dim mt-1.5 pl-1">
+              {route ? `→ src/apps/${route}/` : "Vacío = mostrar \"Próximamente\"."}
+            </p>
+          </div>
+        </form>
+      </BottomSheet>
+
+      {/* Hard delete BottomSheet */}
+      <BottomSheet
+        open={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setMasterPassword(""); }}
+        title="Destrucción Permanente"
+        footer={
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setDeleteTarget(null); setMasterPassword(""); }}
+              className="flex-1 h-14 rounded-2xl border-2 border-nodo-line text-nodo-sub font-bold text-sm active:scale-[0.97] transition-transform hover:bg-nodo-inset"
+            >
+              Cancelar
+            </button>
+            <button
+              form="hard-delete-form"
+              type="submit"
+              disabled={deleting || !masterPassword}
+              className="flex-1 h-14 rounded-2xl bg-nodo-danger-tx text-white font-bold text-sm active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2"
+            >
+              {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+              Destruir
+            </button>
+          </div>
+        }
+      >
+        <form id="hard-delete-form" onSubmit={handleHardDelete} className="flex flex-col gap-5">
+          <div className="flex flex-col items-center gap-3 py-2">
+            <div className="w-14 h-14 bg-nodo-danger-bg rounded-2xl flex items-center justify-center">
+              <ShieldAlert size={28} className="text-nodo-danger-tx" />
             </div>
-          </form>
-        </div>
-      )}
-    </div>
+            <div className="text-center">
+              <p className="font-black text-nodo-ink text-base">{deleteTarget?.name}</p>
+              <p className="text-sm text-nodo-sub mt-1">
+                Borrará el módulo junto con sus planes, roles y membresías. Irreversible.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Contraseña Maestra
+            </label>
+            <input
+              type="password"
+              placeholder="Contraseña de superadmin..."
+              value={masterPassword}
+              onChange={e => setMasterPassword(e.target.value)}
+              autoFocus
+              className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-danger-bd rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-danger-tx outline-none transition-colors placeholder:text-nodo-dim text-center tracking-widest"
+            />
+          </div>
+        </form>
+      </BottomSheet>
+    </>
   );
 }

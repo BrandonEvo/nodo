@@ -7,6 +7,7 @@ export interface ModuleRead {
   description: string | null;
   is_active: boolean;
   frontend_route: string | null;  // Slug de la app de frontend (ej: "calc")
+  icon: string | null;
 }
 
 export interface ModuleCreate {
@@ -14,6 +15,7 @@ export interface ModuleCreate {
   code: string;
   description?: string;
   frontend_route?: string | null;
+  icon?: string | null;
 }
 
 export const modulesService = {

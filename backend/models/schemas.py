@@ -112,6 +112,7 @@ class ModuleRead(BaseModel):
     is_premium: bool
     is_active: bool
     frontend_route: Optional[str] = None
+    icon: Optional[str] = None
 
 class ModuleCreate(BaseModel):
     name: str
@@ -119,6 +120,7 @@ class ModuleCreate(BaseModel):
     description: Optional[str] = None
     is_premium: bool = False
     frontend_route: Optional[str] = None
+    icon: Optional[str] = None
 
 class ModuleUpdate(BaseModel):
     name: Optional[str] = None
@@ -127,6 +129,7 @@ class ModuleUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_premium: Optional[bool] = None
     frontend_route: Optional[str] = None
+    icon: Optional[str] = None
 
 
 

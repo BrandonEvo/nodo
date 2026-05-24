@@ -56,7 +56,7 @@ export const DEFAULT_INPUTS: PricingInputs = {
   unitCostUSD: 0,
   declaredCostUSD: 0,
   useDeclaredValue: false,
-  totalWeightLbs: 0,
+  totalWeightLbs: 0.1,
   itemCategory: 'ropa',
   mode: 'margin',
   targetMargin: 35,

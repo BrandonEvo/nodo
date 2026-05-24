@@ -26,7 +26,7 @@ async def create_module(body: ModuleCreate, session: AsyncSession = Depends(get_
     existing = await session.execute(select(Module).where(Module.code == body.code))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Ya existe un módulo con ese código")
-    mod = Module(name=body.name, code=body.code.strip().upper(), description=body.description, frontend_route=body.frontend_route)
+    mod = Module(name=body.name, code=body.code.strip().upper(), description=body.description, frontend_route=body.frontend_route, icon=body.icon)
     session.add(mod)
     await session.commit()
     await session.refresh(mod)
@@ -43,6 +43,7 @@ async def update_module(module_id: uuid.UUID, body: ModuleUpdate, session: Async
     if body.description is not None: mod.description = body.description
     if body.is_active is not None: mod.is_active = body.is_active
     if body.frontend_route is not None: mod.frontend_route = body.frontend_route
+    if body.icon is not None: mod.icon = body.icon
     session.add(mod)
     await session.commit()
     await session.refresh(mod)

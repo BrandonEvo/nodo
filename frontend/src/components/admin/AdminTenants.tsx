@@ -1,31 +1,27 @@
 import { useState, useEffect } from "react";
-import { Plus, Building2, Package, Pencil, PowerOff, X, Trash2, ShieldAlert } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Plus, Building2, Package, Pencil, PowerOff, Trash2, ShieldAlert, Loader2, Check, CreditCard } from "lucide-react";
 import { useToast } from "@/components/ui/Toaster";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { tenantsService, type Tenant } from "@/services/tenants.service";
-import { subscriptionsService, type SubscriptionPlan as SubscriptionPlanRead } from "@/services/subscriptions.service";
+import { subscriptionsService, type SubscriptionPlan } from "@/services/subscriptions.service";
 
 export function AdminTenants() {
   const toast = useToast();
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingTenantId, setEditingTenantId] = useState<string | null>(null);
-  const [newTenantName, setNewTenantName] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [tenantName, setTenantName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const [hardDeletingTenantId, setHardDeletingTenantId] = useState<string | null>(null);
-  const [superAdminPassword, setSuperAdminPassword] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
+  const [masterPassword, setMasterPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
 
-  const [plans, setPlans] = useState<SubscriptionPlanRead[]>([]);
-  const [planModalTenant, setPlanModalTenant] = useState<Tenant | null>(null);
+  const [planTenant, setPlanTenant] = useState<Tenant | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
 
@@ -34,12 +30,10 @@ export function AdminTenants() {
     try {
       const [tenantsList, plansList] = await Promise.all([
         tenantsService.list(),
-        subscriptionsService.list().catch(() => [])
+        subscriptionsService.list().catch(() => []),
       ]);
       setTenants(tenantsList);
       setPlans(plansList);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error al cargar datos");
     } finally {
       setLoading(false);
     }
@@ -47,99 +41,100 @@ export function AdminTenants() {
 
   useEffect(() => { loadData(); }, []);
 
-  const openForm = (tenant?: Tenant) => {
-    if (tenant) {
-      setEditingTenantId(tenant.id);
-      setNewTenantName(tenant.name);
-    } else {
-      setEditingTenantId(null);
-      setNewTenantName("");
-    }
-    setIsFormOpen(true);
+  const openCreate = () => {
+    setEditingTenant(null);
+    setTenantName("");
+    setFormOpen(true);
+  };
+
+  const openEdit = (t: Tenant) => {
+    setEditingTenant(t);
+    setTenantName(t.name);
+    setFormOpen(true);
   };
 
   const closeForm = () => {
-    setIsFormOpen(false);
-    setEditingTenantId(null);
-    setNewTenantName("");
+    setFormOpen(false);
+    setEditingTenant(null);
+    setTenantName("");
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTenantName.trim()) return;
+    if (!tenantName.trim()) return;
     setSaving(true);
     try {
-      if (editingTenantId) {
-        await tenantsService.update(editingTenantId, { name: newTenantName.trim() });
-        toast.success("Empresa actualizada correctamente");
+      if (editingTenant) {
+        await tenantsService.update(editingTenant.id, { name: tenantName.trim() });
+        toast.success("Empresa actualizada");
       } else {
-        await tenantsService.create({ name: newTenantName.trim() });
-        toast.success("Empresa registrada correctamente");
+        await tenantsService.create({ name: tenantName.trim() });
+        toast.success("Empresa registrada");
       }
       closeForm();
       await loadData();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Error al guardar empresa");
+      toast.error(e instanceof Error ? e.message : "Error al guardar");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDeactivate = (t: Tenant) => {
     toast.confirm(
       "¿Desactivar esta empresa?",
       async () => {
         try {
-          await tenantsService.update(id, { is_active: false });
+          await tenantsService.update(t.id, { is_active: false });
           toast.warning("Empresa desactivada");
           await loadData();
         } catch (e: unknown) {
-          toast.error(e instanceof Error ? e.message : "Error al desactivar empresa");
+          toast.error(e instanceof Error ? e.message : "Error al desactivar");
         }
       },
       { description: "Sus usuarios no podrán iniciar sesión.", confirmLabel: "Desactivar" }
     );
   };
 
-  const handleReactivate = async (id: string) => {
+  const handleReactivate = async (t: Tenant) => {
     try {
-      await tenantsService.update(id, { is_active: true });
+      await tenantsService.update(t.id, { is_active: true });
       toast.success("Empresa reactivada");
       await loadData();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Error al reactivar empresa");
+      toast.error(e instanceof Error ? e.message : "Error al reactivar");
     }
   };
 
   const handleHardDelete = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hardDeletingTenantId || !superAdminPassword) return;
+    if (!deleteTarget || !masterPassword) return;
     setDeleting(true);
     try {
-      await tenantsService.hardDelete(hardDeletingTenantId, superAdminPassword);
-      setHardDeletingTenantId(null);
-      setSuperAdminPassword("");
+      await tenantsService.hardDelete(deleteTarget.id, masterPassword);
+      setDeleteTarget(null);
+      setMasterPassword("");
       toast.success("Empresa destruida permanentemente");
       await loadData();
     } catch (e: any) {
-      toast.error(e.response?.data?.detail || e.message || "Error al destruir la empresa");
+      toast.error(e.response?.data?.detail || e.message || "Error al destruir");
     } finally {
       setDeleting(false);
     }
   };
 
-  const openPlanModal = (tenant: Tenant) => {
-    setPlanModalTenant(tenant);
-    setSelectedPlanId(tenant.plan_id || null);
+  const openPlanSheet = (t: Tenant) => {
+    setPlanTenant(t);
+    setSelectedPlanId(t.plan_id || null);
   };
 
-  const saveTenantPlan = async () => {
-    if (!planModalTenant || !selectedPlanId) return;
+  const savePlan = async () => {
+    if (!planTenant || !selectedPlanId) return;
     setSavingPlan(true);
     try {
-      await tenantsService.setTenantPlan(planModalTenant.id, selectedPlanId);
-      setPlanModalTenant(null);
-      toast.success("Plan asignado correctamente");
+      await tenantsService.setTenantPlan(planTenant.id, selectedPlanId);
+      setPlanTenant(null);
+      toast.success("Plan asignado");
       await loadData();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Error al asignar plan");
@@ -148,244 +143,287 @@ export function AdminTenants() {
     }
   };
 
+  const isProtected = (t: Tenant) => t.name === "Nodo Principal";
+
   return (
-    <div className="bg-white rounded-2xl sm:rounded-[40px] p-4 sm:p-6 lg:p-10 shadow-sm border border-slate-100 flex flex-col flex-1 overflow-hidden relative">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8 shrink-0">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-[#111111] tracking-tight flex items-center gap-3">
-            <Building2 className="text-[#69E7A8] w-7 h-7 shrink-0" /> Control de Empresas
-          </h2>
-          <p className="text-slate-500 text-sm mt-1">Administra los clientes e inquilinos de tu SaaS.</p>
-        </div>
-        <Button
-          onClick={() => openForm()}
-          className="h-11 sm:h-12 rounded-full bg-[#111111] hover:bg-[#333333] text-white font-bold px-5 sm:px-6 transition-all self-start sm:self-auto shrink-0"
-        >
-          <Plus size={16} className="mr-2" /> Nueva Empresa
-        </Button>
-      </div>
+    <>
+      <div className="flex flex-col flex-1 overflow-hidden gap-6">
 
-      {error && <p className="text-red-500 text-sm mb-4 font-bold">{error}</p>}
-
-      {/* List */}
-      <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
-        {loading ? (
-          <div className="flex items-center justify-center h-40">
-            <Spinner size="lg" />
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 shrink-0">
+          <div>
+            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Empresas</h1>
+            <p className="text-nodo-sub text-sm font-medium mt-0.5">Clientes e inquilinos del ecosistema.</p>
           </div>
-        ) : tenants.length === 0 ? (
-          <EmptyState icon={<Building2 className="w-6 h-6" />} title="No hay empresas registradas." />
-        ) : (
-          <div className="grid gap-3">
-            {tenants.map((t) => (
-              <div
-                key={t.id}
-                className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 sm:p-6 bg-slate-50 rounded-[20px] sm:rounded-[24px] transition-all border border-transparent hover:border-slate-100 group ${t.is_active === false ? 'opacity-60' : 'hover:bg-[#F8F9FA]'}`}
-              >
-                {/* Identity */}
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 sm:w-14 sm:h-14 shrink-0 shadow-sm border border-slate-100 rounded-2xl flex items-center justify-center text-xl sm:text-2xl font-black ${t.is_active === false ? 'text-slate-400 bg-slate-100' : 'text-[#111111] bg-white'}`}>
-                    {t.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h4 className={`font-bold text-base sm:text-lg leading-tight ${t.is_active === false ? 'text-slate-500' : 'text-[#111111]'}`}>
-                      {t.name}
-                    </h4>
-                    {t.is_active === false && (
-                      <span className="inline-block mt-1 font-bold text-[10px] tracking-widest px-2 py-0.5 rounded-md bg-slate-200 text-slate-500">
-                        INACTIVA
-                      </span>
-                    )}
-                  </div>
-                </div>
+          <button
+            onClick={openCreate}
+            className="h-11 px-5 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-sm flex items-center gap-2 active:scale-[0.97] transition-transform shadow-lg shrink-0"
+          >
+            <Plus size={16} />
+            Nueva
+          </button>
+        </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-2 sm:gap-4 pl-16 sm:pl-0">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 sm:h-10 rounded-xl text-xs font-bold border-slate-200 hover:bg-slate-100 hover:text-[#111111] disabled:opacity-50 px-3"
-                    onClick={() => openPlanModal(t)}
-                    disabled={!t.is_active}
+        {/* List */}
+        <div className="flex-1 overflow-y-auto pr-1">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="w-8 h-8 animate-spin text-nodo-sub" />
+            </div>
+          ) : tenants.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center px-4">
+              <Building2 size={32} className="text-nodo-dim mb-2" />
+              <p className="text-sm font-bold text-nodo-dim">No hay empresas registradas.</p>
+            </div>
+          ) : (
+            <div className="bg-nodo-card rounded-3xl border border-nodo-line overflow-hidden shadow-sm divide-y divide-nodo-line">
+              {tenants.map((t) => {
+                const inactive = t.is_active === false;
+                const protected_ = isProtected(t);
+                const currentPlan = plans.find(p => p.id === t.plan_id);
+
+                return (
+                  <div
+                    key={t.id}
+                    className={`flex items-center gap-4 px-5 py-4 transition-colors hover:bg-nodo-inset ${inactive ? "opacity-50" : ""}`}
                   >
-                    <Package size={14} className="sm:mr-1.5" />
-                    <span className="hidden sm:inline">Suscripción</span>
-                  </Button>
+                    {/* Avatar */}
+                    <div className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center text-lg font-black border border-nodo-line ${inactive ? "bg-nodo-inset text-nodo-dim" : "bg-nodo-inset text-nodo-ink"}`}>
+                      {t.name.charAt(0).toUpperCase()}
+                    </div>
 
-                  <div className="w-px h-7 bg-slate-200 hidden sm:block" />
-
-                  <div className="flex items-center gap-1">
-                    {t.name === "Nodo Principal" ? (
-                      <div className="p-1.5 text-slate-300" title="Empresa protegida del sistema">
-                        <ShieldAlert size={18} />
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => openForm(t)}
-                          className="p-1.5 text-slate-400 hover:text-[#111111] hover:bg-slate-200 rounded-full transition"
-                          title="Editar empresa"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        {t.is_active !== false ? (
-                          <button
-                            onClick={() => handleDelete(t.id)}
-                            className="p-1.5 text-orange-400 hover:text-white hover:bg-orange-500 rounded-full transition"
-                            title="Inactivar empresa"
-                          >
-                            <PowerOff size={16} />
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => handleReactivate(t.id)}
-                              className="p-1.5 text-green-500 hover:text-white hover:bg-green-500 rounded-full transition bg-green-50"
-                              title="Reactivar empresa"
-                            >
-                              <PowerOff size={16} />
-                            </button>
-                            <button
-                              onClick={() => setHardDeletingTenantId(t.id)}
-                              className="p-1.5 text-red-500 hover:text-white hover:bg-red-600 rounded-full transition bg-red-50"
-                              title="Destruir Permanente"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className={`text-sm font-bold leading-tight truncate ${inactive ? "text-nodo-sub" : "text-nodo-ink"}`}>
+                          {t.name}
+                        </p>
+                        {protected_ && (
+                          <span className="text-[10px] font-black uppercase tracking-widest text-[#69E7A8] bg-[#69E7A8]/10 px-2 py-0.5 rounded-full">
+                            Sistema
+                          </span>
                         )}
-                      </>
-                    )}
+                        {inactive && (
+                          <span className="text-[10px] font-black uppercase tracking-widest text-nodo-dim bg-nodo-inset px-2 py-0.5 rounded-full">
+                            Inactiva
+                          </span>
+                        )}
+                      </div>
+                      {currentPlan ? (
+                        <p className="text-xs text-nodo-sub mt-0.5 flex items-center gap-1">
+                          <CreditCard size={10} />
+                          {currentPlan.name} · {currentPlan.price === 0 ? "Gratis" : `${currentPlan.currency} ${currentPlan.price}`}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-nodo-dim mt-0.5">Sin plan asignado</p>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => openPlanSheet(t)}
+                        disabled={inactive}
+                        className="p-2 text-nodo-dim hover:text-nodo-ink hover:bg-nodo-raised rounded-full transition-colors disabled:opacity-30"
+                        title="Suscripción"
+                      >
+                        <Package size={15} />
+                      </button>
+
+                      {!protected_ && (
+                        <>
+                          <button
+                            onClick={() => openEdit(t)}
+                            className="p-2 text-nodo-dim hover:text-nodo-ink hover:bg-nodo-raised rounded-full transition-colors"
+                            title="Editar"
+                          >
+                            <Pencil size={15} />
+                          </button>
+
+                          {!inactive ? (
+                            <button
+                              onClick={() => handleDeactivate(t)}
+                              className="p-2 text-nodo-warn-tx hover:bg-nodo-warn-bg rounded-full transition-colors"
+                              title="Desactivar"
+                            >
+                              <PowerOff size={15} />
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleReactivate(t)}
+                                className="p-2 text-nodo-success-tx hover:bg-nodo-success-bg rounded-full transition-colors"
+                                title="Reactivar"
+                              >
+                                <PowerOff size={15} />
+                              </button>
+                              <button
+                                onClick={() => { setDeleteTarget(t); setMasterPassword(""); }}
+                                className="p-2 text-nodo-danger-tx hover:bg-nodo-danger-bg rounded-full transition-colors"
+                                title="Destruir"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
+
+                      {protected_ && (
+                        <div className="p-2 text-nodo-dim" title="Empresa protegida del sistema">
+                          <ShieldAlert size={15} />
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Form drawer */}
-      {isFormOpen && (
-        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-20 flex justify-end">
-          <div className="w-full max-w-md h-full bg-white border-l border-slate-200 shadow-2xl flex flex-col p-6 sm:p-8 animate-in slide-in-from-right duration-300">
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="text-xl font-black text-[#111111]">
-                {editingTenantId ? "Editar Empresa" : "Nueva Empresa"}
-              </h3>
-              <button onClick={closeForm} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSave} className="flex-1 overflow-y-auto flex flex-col gap-6 pr-2 custom-scrollbar">
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">
-                  Nombre de la Empresa
-                </label>
-                <Input
-                  placeholder="Ej. Acme Corp"
-                  value={newTenantName}
-                  onChange={(e) => setNewTenantName(e.target.value)}
-                  className="h-12 rounded-2xl bg-slate-50 border-slate-200 px-5 focus-visible:ring-[#111111]/5"
-                  required
-                  disabled={saving}
-                />
-              </div>
-              <div className="mt-auto pt-8">
-                <Button
-                  type="submit"
-                  disabled={saving || !newTenantName.trim()}
-                  className="w-full h-14 rounded-2xl bg-[#69E7A8] hover:bg-[#58C991] text-[#111111] font-black tracking-wide transition-all active:scale-[0.98]"
-                >
-                  {saving
-                    ? <div className="w-5 h-5 border-2 border-[#111111]/30 border-t-[#111111] rounded-full animate-spin" />
-                    : editingTenantId ? "Guardar Cambios" : "Registrar Empresa"
-                  }
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Hard delete modal */}
-      {hardDeletingTenantId && (
-        <div className="absolute inset-0 bg-[#111111]/80 backdrop-blur-md z-30 flex items-center justify-center p-4">
-          <form onSubmit={handleHardDelete} className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500">
-              <ShieldAlert size={32} />
-            </div>
-            <h3 className="text-2xl font-black text-[#111111] mb-2">Destrucción Masiva PRO</h3>
-            <p className="text-slate-500 text-sm mb-6">
-              Eliminará la empresa con todos sus empleados, roles, suscripciones y membresías. Es IRREVERSIBLE.
-            </p>
-            <Input
-              type="password"
-              placeholder="Contraseña Maestra..."
-              value={superAdminPassword}
-              onChange={(e) => setSuperAdminPassword(e.target.value)}
-              className="h-14 rounded-2xl text-center font-bold tracking-widest mb-4 border-slate-200 bg-slate-50 focus-visible:ring-red-500/20 focus-visible:border-red-500"
-              autoFocus
+      {/* Form BottomSheet */}
+      <BottomSheet
+        open={formOpen}
+        onClose={closeForm}
+        title={editingTenant ? "Editar Empresa" : "Nueva Empresa"}
+        footer={
+          <button
+            form="tenant-form"
+            type="submit"
+            disabled={saving || !tenantName.trim()}
+            className="w-full h-14 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2"
+          >
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+            {editingTenant ? "GUARDAR CAMBIOS" : "REGISTRAR EMPRESA"}
+          </button>
+        }
+      >
+        <form id="tenant-form" onSubmit={handleSave} className="flex flex-col gap-5">
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Nombre de la Empresa
+            </label>
+            <input
+              type="text"
+              placeholder="Ej. Panadería La Luna"
+              value={tenantName}
+              onChange={e => setTenantName(e.target.value)}
+              required
+              disabled={saving}
+              className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50"
             />
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => setHardDeletingTenantId(null)} className="flex-1 h-12 rounded-xl text-slate-500 font-bold border-slate-200">
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={deleting || !superAdminPassword} className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold">
-                {deleting ? "Purgando..." : "Destruir"}
-              </Button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Plan modal */}
-      {planModalTenant && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setPlanModalTenant(null)}>
-          <div className="bg-white rounded-[32px] shadow-2xl max-w-md w-full p-6 sm:p-8 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-xl font-black text-[#111111]">Plan de Suscripción</h3>
-                <p className="text-sm font-semibold text-slate-500 mt-1">{planModalTenant.name}</p>
-              </div>
-              <button onClick={() => setPlanModalTenant(null)} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="space-y-3 max-h-[40vh] overflow-y-auto mb-6 pr-1 custom-scrollbar">
-              {plans.length === 0 && <p className="text-sm text-slate-500">No hay planes definidos en el sistema.</p>}
-              {plans.map((p) => (
-                <label key={p.id} className={`flex items-start gap-4 cursor-pointer p-4 rounded-2xl border-2 transition-all ${selectedPlanId === p.id ? 'border-[#111111] bg-slate-50 shadow-sm' : 'border-transparent bg-slate-50/50 hover:bg-slate-50'}`}>
-                  <input
-                    type="radio"
-                    name="plan_selection"
-                    checked={selectedPlanId === p.id}
-                    onChange={() => setSelectedPlanId(p.id)}
-                    className="w-5 h-5 mt-0.5 accent-[#111111]"
-                  />
-                  <div className="flex-1">
-                    <div className="flex justify-between items-start">
-                      <p className="font-bold text-[#111111] text-base">{p.name}</p>
-                      <p className="font-black text-[#111111]">{p.price === 0 ? "GRATIS" : `${p.currency} ${p.price}`}</p>
-                    </div>
-                    <p className="text-xs font-semibold text-slate-500 mt-1">{p.module_ids.length} Módulos incluidos</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-            <Button
-              onClick={saveTenantPlan}
-              disabled={savingPlan || !selectedPlanId || selectedPlanId === planModalTenant.plan_id}
-              className="w-full h-14 rounded-2xl bg-[#69E7A8] hover:bg-[#58C991] text-[#111111] font-black tracking-wide transition-all active:scale-[0.98]"
-            >
-              {savingPlan
-                ? <div className="w-5 h-5 border-2 border-[#111111]/30 border-t-[#111111] rounded-full animate-spin" />
-                : selectedPlanId === planModalTenant.plan_id ? "Plan Actual" : "Asignar Plan"
-              }
-            </Button>
           </div>
+        </form>
+      </BottomSheet>
+
+      {/* Plan BottomSheet */}
+      <BottomSheet
+        open={!!planTenant}
+        onClose={() => setPlanTenant(null)}
+        title="Plan de Suscripción"
+        footer={
+          <button
+            onClick={savePlan}
+            disabled={savingPlan || !selectedPlanId || selectedPlanId === planTenant?.plan_id}
+            className="w-full h-14 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2"
+          >
+            {savingPlan ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+            {selectedPlanId === planTenant?.plan_id ? "PLAN ACTUAL" : "ASIGNAR PLAN"}
+          </button>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          {planTenant && (
+            <p className="text-xs font-bold text-nodo-dim uppercase tracking-wider">{planTenant.name}</p>
+          )}
+
+          {plans.length === 0 ? (
+            <p className="text-sm text-nodo-dim text-center py-6">No hay planes disponibles.</p>
+          ) : (
+            <div className="bg-nodo-inset rounded-2xl border border-nodo-line overflow-hidden">
+              {plans.filter(p => p.is_active).map((p, i, arr) => {
+                const selected = selectedPlanId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSelectedPlanId(p.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-nodo-raised ${i < arr.length - 1 ? "border-b border-nodo-line" : ""} ${selected ? "bg-nodo-raised" : ""}`}
+                  >
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${selected ? "bg-nodo-ink border-nodo-ink" : "border-nodo-line-s"}`}>
+                      {selected && <Check size={11} className="text-nodo-canvas" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-nodo-ink">{p.name}</p>
+                      <p className="text-xs text-nodo-sub mt-0.5">{p.module_ids.length} módulos</p>
+                    </div>
+                    <span className="text-sm font-black text-nodo-ink tabular-nums shrink-0">
+                      {p.price === 0 ? "Gratis" : `${p.currency} ${p.price}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      </BottomSheet>
+
+      {/* Hard delete BottomSheet */}
+      <BottomSheet
+        open={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setMasterPassword(""); }}
+        title="Destrucción Permanente"
+        footer={
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setDeleteTarget(null); setMasterPassword(""); }}
+              className="flex-1 h-14 rounded-2xl border-2 border-nodo-line text-nodo-sub font-bold text-sm active:scale-[0.97] transition-transform hover:bg-nodo-inset"
+            >
+              Cancelar
+            </button>
+            <button
+              form="hard-delete-tenant-form"
+              type="submit"
+              disabled={deleting || !masterPassword}
+              className="flex-1 h-14 rounded-2xl bg-nodo-danger-tx text-white font-bold text-sm active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2"
+            >
+              {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+              Destruir
+            </button>
+          </div>
+        }
+      >
+        <form id="hard-delete-tenant-form" onSubmit={handleHardDelete} className="flex flex-col gap-5">
+          <div className="flex flex-col items-center gap-3 py-2 text-center">
+            <div className="w-14 h-14 bg-nodo-danger-bg rounded-2xl flex items-center justify-center">
+              <ShieldAlert size={28} className="text-nodo-danger-tx" />
+            </div>
+            <div>
+              <p className="font-black text-nodo-ink text-base">{deleteTarget?.name}</p>
+              <p className="text-sm text-nodo-sub mt-1">
+                Eliminará la empresa con todos sus empleados, roles, suscripciones y membresías.{" "}
+                <span className="font-black text-nodo-danger-tx">Irreversible.</span>
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Contraseña Maestra
+            </label>
+            <input
+              type="password"
+              placeholder="Contraseña de superadmin..."
+              value={masterPassword}
+              onChange={e => setMasterPassword(e.target.value)}
+              autoFocus
+              className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-danger-bd rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-danger-tx outline-none transition-colors placeholder:text-nodo-dim text-center tracking-widest"
+            />
+          </div>
+        </form>
+      </BottomSheet>
+    </>
   );
 }
