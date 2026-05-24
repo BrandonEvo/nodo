@@ -12,7 +12,6 @@ __pycache__/
 *$py.class
 .pytest_cache/
 backend/.venv/
-alembic.ini
 
 # Node / React (Frontend)
 frontend/node_modules/
