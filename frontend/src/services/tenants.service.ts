@@ -4,6 +4,7 @@ export interface Tenant {
   id: string;
   name: string;
   is_active: boolean;
+  is_system: boolean;
   plan_id: string | null;
   created_at: string;
 }
@@ -46,6 +47,15 @@ export const tenantsService = {
 
   async hardDelete(id: string, password: string): Promise<void> {
     await api.post(`/api/tenants/${id}/hard-delete`, { password });
+  },
+
+  async getTenantSubscriptions(tenantId: string): Promise<string[]> {
+    const { data } = await api.get<string[]>(`/api/tenants/${tenantId}/subscriptions`);
+    return data;
+  },
+
+  async setTenantSubscriptions(tenantId: string, moduleIds: string[]): Promise<void> {
+    await api.put(`/api/tenants/${tenantId}/subscriptions`, { module_ids: moduleIds });
   },
 
   async listUsers(tenantId: string): Promise<TenantUser[]> {

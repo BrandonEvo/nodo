@@ -21,6 +21,13 @@ export interface PendingInvitation {
   email: string;
 }
 
+export interface TenantSummary {
+  tenant_id: string;
+  tenant_name: string;
+  member_type: string;
+  is_active: boolean;
+}
+
 export interface SessionData {
   id: string;
   email: string;
@@ -36,6 +43,7 @@ export interface SessionData {
   tenant_theme_color?: string | null;
   member_type?: string | null;
   is_tenant_admin: boolean;
+  available_tenants: TenantSummary[];
   has_pending_invites: boolean;
   pending_invitations: PendingInvitation[];
 }
@@ -57,8 +65,6 @@ export const authService = {
 
   async logout() {
     await api.post('/api/auth/cookie-logout').catch(() => {});
-    // Limpiar token legacy de localStorage si existía
-    localStorage.removeItem('token');
   },
 
   /** Endpoint básico de fastapi-users */
@@ -76,5 +82,29 @@ export const authService = {
   async registerWorkspace(data: { tenant_name: string; email: string; password: string }) {
     const response = await api.post('/api/auth/register-workspace', data);
     return response.data;
+  },
+
+  async registerAsMember(data: { invite_token: string; email: string; password: string; full_name?: string }) {
+    const response = await api.post('/api/auth/register-as-member', data);
+    return response.data;
+  },
+
+  async loginAsMember(email: string, pass: string, inviteToken: string, invitationId: string) {
+    await this.login(email, pass);
+    await api.post(`/api/invitations/${invitationId}/respond`, { action: 'accept' });
+  },
+
+  async switchTenant(tenantId: string): Promise<void> {
+    await api.post('/api/auth/switch-tenant', { tenant_id: tenantId });
+  },
+
+  async forgotPassword(email: string): Promise<{ detail: string; reset_token?: string }> {
+    const { data } = await api.post('/api/auth/forgot-password', { email });
+    return data;
+  },
+
+  async resetPassword(token: string, newPassword: string): Promise<{ ok: boolean }> {
+    const { data } = await api.post('/api/auth/reset-password', { token, new_password: newPassword });
+    return data;
   },
 };

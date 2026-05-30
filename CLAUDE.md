@@ -153,6 +153,83 @@ Cada módulo nuevo necesita:
 
 ---
 
+## Manual de Diseño — Tokens del Sistema
+
+### Filosofía visual
+
+**Soft modern minimalism + Bento layout**: tarjetas redondeadas en grilla asimétrica, cada tarjeta con su propio fondo pastel. Una sola tarjeta saturada (hero) por pantalla. Datos como protagonistas: número grande bold, etiqueta pequeña muted.
+
+### Primary dinámico — `tenantColor` del usuario
+
+El color primario viene de `tenant_theme_color` en Configuración. `AppShell` lo inyecta como CSS vars al documento:
+
+```ts
+// AppShell.tsx — tenantCssVars (se recalcula automáticamente al cambiar tenantColor)
+'--nodo-primary'         // = tenantColor
+'--nodo-primary-soft'    // rgba(r,g,b, 0.12) — fondos sutiles, pastel del primario
+'--nodo-primary-softer'  // rgba(r,g,b, 0.07) — overlays muy sutiles
+'--nodo-primary-deep'    // tenantColor oscurecido 15% — hover, sombras
+'--nodo-on-primary'      // #111111 si el primario es claro; #FFFFFF si es oscuro
+'--nodo-shadow-fab'      // sombra del FAB coloreada con el primario
+```
+
+Clases Tailwind correspondientes:
+
+| Clase | Uso |
+|---|---|
+| `bg-nodo-primary` | Hero card, FAB, botón CTA, tab activo |
+| `bg-nodo-primary-soft` | Fondo de badges, chips, hover de tarjetas primarias |
+| `text-nodo-on-primary` | Texto sobre fondo `nodo-primary` (negro o blanco según luminancia) |
+| `bg-nodo-primary-deep` | Hover sobre hero card |
+
+### Pasteles funcionales — dark-mode aware
+
+Fondos de tarjetas KPI y módulos. Automáticamente cambian en `.dark`:
+
+| Clase Tailwind | Light | Dark |
+|---|---|---|
+| `bg-nodo-pastel-blue` | `#DCE7FF` | `#1a2744` |
+| `bg-nodo-pastel-pink` | `#FFDADD` | `#3d1a1c` |
+| `bg-nodo-pastel-peach` | `#FFE9D6` | `#3d2410` |
+| `bg-nodo-pastel-mint` | `#D8F0DC` | `#0f2a1c` |
+| `bg-nodo-pastel-yellow` | `#FFF4C2` | `#2d2405` |
+| `bg-nodo-pastel-lavender` | `#E9E4F5` | `#221a35` |
+
+**Regla**: máximo 3 pasteles por pantalla + 1 primario saturado.
+
+### Sombras del manual
+
+```css
+--nodo-shadow-card:  0 4px 16px -4px rgba(15,23,42,0.06)   /* tarjeta estándar */
+--nodo-shadow-hero:  0 12px 32px -8px rgba(15,23,42,0.10)   /* tarjeta hero */
+--nodo-shadow-fab:   0 8px 20px -4px rgba(r,g,b,0.35)       /* FAB (usa primary) */
+```
+
+Uso en código: `style={{ boxShadow: 'var(--nodo-shadow-card)' }}` o `shadow-sm` para el 90% de casos.
+
+### Radios del manual
+
+| Uso | Valor | Tailwind |
+|---|---|---|
+| Chips, badges | 12px | `rounded-xl` |
+| Tarjeta estándar, inputs | 20px | `rounded-[20px]` |
+| Tarjeta grande, hero | 28px | `rounded-[28px]` |
+| Botones pill, FAB | 999px | `rounded-full` |
+
+Nunca menos de 16px en tarjetas.
+
+### Tipografía del manual
+
+| Rol | Tailwind |
+|---|---|
+| Número hero (dato principal) | `text-[52px] lg:text-[68px] font-black tabular-nums tracking-tighter` |
+| Título de módulo / pantalla | `text-[28px] font-black text-nodo-ink leading-tight` |
+| Valor KPI | `text-2xl font-black text-nodo-ink tabular-nums` |
+| Label de KPI | `text-[10px] font-semibold text-nodo-sub` |
+| Sección uppercase | `text-[9px] font-bold text-nodo-dim uppercase tracking-[0.14em]` |
+
+---
+
 ## Sistema de Diseño — Reglas Absolutas
 
 ### 1. NUNCA usar colores hardcodeados para UI

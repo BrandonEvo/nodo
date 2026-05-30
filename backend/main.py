@@ -281,3 +281,9 @@ app.include_router(gastos_router.router, prefix="/api/gastos")
 app.include_router(reportes_router.router, prefix="/api/reportes")
 app.include_router(personal_shopper_router.router, prefix="/api/personal-shopper")
 app.include_router(public_tracking_router.router, prefix="/api/tracking")
+
+from api.routers import amazon_scrape as amazon_scrape_router
+app.include_router(amazon_scrape_router.router, prefix="/api/amazon")
+
+from api.routers import importaciones as importaciones_router
+app.include_router(importaciones_router.router, prefix="/api/importaciones")

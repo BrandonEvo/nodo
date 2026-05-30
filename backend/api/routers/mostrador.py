@@ -74,6 +74,7 @@ async def create_sale(
             id=sale_item.id,
             recipe_id=sale_item.recipe_id,
             recipe_name=recipe.name,
+            recipe_icon=recipe.icon,
             quantity=sale_item.quantity,
             price=sale_item.price,
             freshness_tag=sale_item.freshness_tag,
@@ -125,6 +126,7 @@ async def list_today_sales(
                 id=si.id,
                 recipe_id=si.recipe_id,
                 recipe_name=recipe.name if recipe else "—",
+                recipe_icon=recipe.icon if recipe else None,
                 quantity=si.quantity,
                 price=si.price,
                 freshness_tag=si.freshness_tag,
@@ -140,3 +142,23 @@ async def list_today_sales(
         ))
 
     return sales_read
+
+
+@router.delete("/sales/{sale_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_sale(
+    sale_id: uuid.UUID,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """Anula (soft-delete) una venta del día actual."""
+    sale = await session.get(Sale, sale_id)
+    if not sale or sale.tenant_id != tenant_id or not sale.is_active:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+
+    today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
+    if sale.created_at < today_start:
+        raise HTTPException(status_code=400, detail="Solo se pueden anular ventas del día actual")
+
+    sale.is_active = False
+    session.add(sale)
+    await session.commit()

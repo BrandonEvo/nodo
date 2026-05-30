@@ -22,3 +22,12 @@ npm-debug.log
 # Docker y Sistema Operativo
 .DS_Store
 Thumbs.db
+
+# Screenshots de pruebas / Playwright
+*.png
+*.jpg
+*.jpeg
+.playwright-mcp/
+
+# Archivos accidentales
+=*

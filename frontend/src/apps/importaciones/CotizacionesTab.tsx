@@ -1,0 +1,710 @@
+import { useState, useEffect, useCallback } from 'react';
+import {
+  Package2, Truck, CheckCircle2, DollarSign, Clock, AlertTriangle,
+  ChevronRight, RotateCcw, Pencil, X, Check, Loader2, MapPin,
+  Calendar, FileText, Calculator, Share2,
+} from 'lucide-react';
+import { BottomSheet } from '@/components/ui/BottomSheet';
+import {
+  importacionesService,
+  type Cotizacion,
+  type CotizacionStatus,
+  type LogisticsUpdate,
+  type RenovarPayload,
+  STATUS_LABEL,
+  NEXT_STATUS,
+} from '@/services/importaciones.service';
+import {
+  fmtGTQ, fmtPct, CATEGORY_DAI_RATE,
+  type PricingInputs, type PricingConfig,
+} from './pricingEngine';
+import { usePricingEngine } from './usePricingEngine';
+
+// ── Status badge config ───────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<CotizacionStatus, { icon: React.ReactNode; cls: string }> = {
+  pendiente:   { icon: <Clock size={10} />,        cls: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+  comprado:    { icon: <Package2 size={10} />,     cls: 'bg-nodo-warn-bg text-nodo-warn-tx border-nodo-warn-bd' },
+  en_transito: { icon: <Truck size={10} />,        cls: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20' },
+  entregado:   { icon: <CheckCircle2 size={10} />, cls: 'bg-nodo-success-bg text-nodo-success-tx border-nodo-success-bd' },
+  pagado:      { icon: <DollarSign size={10} />,   cls: 'bg-nodo-success-bg text-nodo-success-tx border-nodo-success-bd' },
+  cancelado:   { icon: <X size={10} />,            cls: 'bg-nodo-inset text-nodo-dim border-nodo-line' },
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function isExpired(c: Cotizacion): boolean {
+  return c.status === 'pendiente' && new Date(c.expires_at) < new Date();
+}
+
+function expiryLabel(c: Cotizacion): string {
+  const diff = new Date(c.expires_at).getTime() - Date.now();
+  if (diff <= 0) return 'Vencida';
+  const h = Math.floor(diff / 3_600_000);
+  const m = Math.floor((diff % 3_600_000) / 60_000);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function resultField<T>(c: Cotizacion, key: string): T {
+  return (c.result_snapshot as Record<string, T>)[key];
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso + 'T12:00:00').toLocaleDateString('es-GT', { day: 'numeric', month: 'short' });
+}
+
+// ── StatusBadge ───────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: CotizacionStatus }) {
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase border ${cfg.cls}`}>
+      {cfg.icon}
+      {STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+// ── Logistics BottomSheet ─────────────────────────────────────────────────────
+
+function LogisticsSheet({
+  cotizacion,
+  open,
+  onClose,
+  onSaved,
+}: {
+  cotizacion: Cotizacion;
+  open: boolean;
+  onClose: () => void;
+  onSaved: (updated: Cotizacion) => void;
+}) {
+  const [tracking, setTracking]   = useState(cotizacion.tracking_number ?? '');
+  const [delivery, setDelivery]   = useState(cotizacion.estimated_delivery ?? '');
+  const [notes, setNotes]         = useState(cotizacion.notes ?? '');
+  const [saving, setSaving]       = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setTracking(cotizacion.tracking_number ?? '');
+      setDelivery(cotizacion.estimated_delivery ?? '');
+      setNotes(cotizacion.notes ?? '');
+    }
+  }, [open, cotizacion]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const payload: LogisticsUpdate = {
+        tracking_number:    tracking.trim() || null,
+        estimated_delivery: delivery || null,
+        notes:              notes.trim() || null,
+      };
+      const { data } = await importacionesService.updateLogistics(cotizacion.id, payload);
+      onSaved(data);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title="Logística"
+      footer={
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full h-14 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2"
+        >
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+          GUARDAR
+        </button>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+            Número de tracking
+          </label>
+          <input
+            type="text"
+            value={tracking}
+            onChange={e => setTracking(e.target.value)}
+            placeholder="Ej. 1Z999AA10123456784"
+            className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+            Fecha estimada de entrega
+          </label>
+          <input
+            type="date"
+            value={delivery}
+            onChange={e => setDelivery(e.target.value)}
+            className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+            Notas
+          </label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Observaciones del envío..."
+            className="w-full px-4 py-3 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors resize-none placeholder:text-nodo-dim"
+          />
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
+
+// ── Cotizacion Card ───────────────────────────────────────────────────────────
+
+// ── Edit Sheet ────────────────────────────────────────────────────────────────
+
+function EditSheet({
+  cotizacion,
+  open,
+  onClose,
+  onSaved,
+}: {
+  cotizacion: Cotizacion;
+  open: boolean;
+  onClose: () => void;
+  onSaved: (updated: Cotizacion) => void;
+}) {
+  const { inputs, config, result, updateInput, updateConfig } = usePricingEngine(
+    cotizacion.config_snapshot as unknown as PricingConfig,
+    cotizacion.inputs_snapshot as unknown as PricingInputs,
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const payload: RenovarPayload = {
+        inputs_snapshot: inputs as unknown as Record<string, unknown>,
+        config_snapshot: config as unknown as Record<string, unknown>,
+        result_snapshot: result as unknown as Record<string, unknown>,
+      };
+      const { data } = await importacionesService.recalcular(cotizacion.id, payload);
+      onSaved(data);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const hasSavings     = inputs.useDeclaredValue && result.taxSavingsGTQ > 0;
+  const declaredIsHigh = inputs.useDeclaredValue && inputs.declaredCostUSD > inputs.unitCostUSD;
+
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title="Editar cálculo"
+      footer={
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full h-14 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2"
+        >
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+          GUARDAR CAMBIOS
+        </button>
+      }
+    >
+      <div className="space-y-4">
+
+        {/* Resultado en vivo */}
+        <div className={`rounded-2xl p-4 border ${result.isViable ? 'bg-nodo-success-bg border-nodo-success-bd' : 'bg-nodo-danger-bg border-nodo-danger-bd'}`}>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Precio</p>
+              <p className="text-lg font-black tabular-nums text-nodo-ink">{fmtGTQ(result.salePriceGTQ)}</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Landed</p>
+              <p className="text-lg font-black tabular-nums text-nodo-sub">{fmtGTQ(result.totalLandedCostGTQ)}</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Margen</p>
+              <p className="text-lg font-black tabular-nums text-nodo-sub">{fmtPct(result.actualMargin)}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Precio en USA */}
+        <div>
+          <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">Precio en USA</label>
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-nodo-dim pointer-events-none">$</span>
+            <input
+              type="number" inputMode="decimal" min={0} step={0.01}
+              value={inputs.unitCostUSD}
+              onChange={e => updateInput('unitCostUSD', parseFloat(e.target.value) || 0)}
+              onFocus={e => e.target.select()}
+              className="w-full h-12 pl-8 pr-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-bold text-nodo-ink focus:border-nodo-ink outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </div>
+        </div>
+
+        {/* Tipo de artículo */}
+        <div>
+          <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">Tipo de artículo</label>
+          <div className="grid grid-cols-3 gap-1.5 p-1.5 bg-nodo-inset border-2 border-nodo-line rounded-2xl">
+            {(Object.keys(CATEGORY_DAI_RATE) as Array<keyof typeof CATEGORY_DAI_RATE>).map(cat => {
+              const active = inputs.itemCategory === cat;
+              const rate   = CATEGORY_DAI_RATE[cat];
+              return (
+                <button key={cat} type="button"
+                  onClick={() => updateInput('itemCategory', cat)}
+                  className={`h-11 rounded-xl text-[11px] font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${active ? 'bg-nodo-ink text-nodo-canvas shadow-sm' : 'text-nodo-sub'}`}>
+                  <span>{cat === 'ropa' ? 'Ropa / Aseo' : cat === 'repuestos' ? 'Repuestos' : 'Electrónicos'}</span>
+                  <span className={`text-[9px] font-black ${active ? 'opacity-60' : rate === 0 ? 'text-nodo-success-tx' : 'text-nodo-dim'}`}>
+                    {(rate * 100).toFixed(0)}% DAI
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Peso + cantidad */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">Peso (lbs)</label>
+            <div className="flex items-center h-12 bg-nodo-inset border-2 border-nodo-line rounded-2xl overflow-hidden">
+              <button type="button" onClick={() => updateInput('totalWeightLbs', parseFloat(Math.max(0.1, inputs.totalWeightLbs - 0.1).toFixed(1)))}
+                className="h-full px-3 text-nodo-sub hover:text-nodo-ink hover:bg-nodo-raised active:scale-90 transition-all shrink-0">
+                <span className="text-base font-bold">−</span>
+              </button>
+              <span className="flex-1 text-center text-sm font-black text-nodo-ink tabular-nums">{inputs.totalWeightLbs.toFixed(1)}</span>
+              <button type="button" onClick={() => updateInput('totalWeightLbs', parseFloat((inputs.totalWeightLbs + 0.1).toFixed(1)))}
+                className="h-full px-3 text-nodo-sub hover:text-nodo-ink hover:bg-nodo-raised active:scale-90 transition-all shrink-0">
+                <span className="text-base font-bold">+</span>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">Cantidad</label>
+            <div className="flex items-center h-12 bg-nodo-inset border-2 border-nodo-line rounded-2xl overflow-hidden">
+              <button type="button" onClick={() => updateInput('qty', Math.max(1, inputs.qty - 1))}
+                className="h-full px-3 text-nodo-sub hover:text-nodo-ink hover:bg-nodo-raised active:scale-90 transition-all shrink-0">
+                <span className="text-base font-bold">−</span>
+              </button>
+              <span className="flex-1 text-center text-sm font-black text-nodo-ink tabular-nums">{inputs.qty}</span>
+              <button type="button" onClick={() => updateInput('qty', inputs.qty + 1)}
+                className="h-full px-3 text-nodo-sub hover:text-nodo-ink hover:bg-nodo-raised active:scale-90 transition-all shrink-0">
+                <span className="text-base font-bold">+</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Estrategia de venta */}
+        <div>
+          <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">Precio de venta</label>
+          <div className="flex p-1 bg-nodo-inset border-2 border-nodo-line rounded-xl gap-1 mb-3">
+            {(['margin', 'fixed'] as const).map(m => (
+              <button key={m} type="button" onClick={() => updateInput('mode', m)}
+                className={`flex-1 h-8 rounded-lg text-[11px] font-bold transition-all ${inputs.mode === m ? 'bg-nodo-ink text-nodo-canvas shadow-sm' : 'text-nodo-sub'}`}>
+                {m === 'margin' ? 'Por Margen %' : 'Precio Fijo Q'}
+              </button>
+            ))}
+          </div>
+          {inputs.mode === 'margin' ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-nodo-sub">Margen objetivo</span>
+                <span className="text-sm font-black text-nodo-ink tabular-nums">{inputs.targetMargin.toFixed(0)}%</span>
+              </div>
+              <input type="range" min="0" max="80" step="0.5" value={inputs.targetMargin}
+                onChange={e => updateInput('targetMargin', parseFloat(e.target.value))}
+                className="w-full accent-current h-1.5 cursor-pointer" />
+            </div>
+          ) : (
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-nodo-dim pointer-events-none">Q</span>
+              <input
+                type="number" inputMode="decimal" min={0} step={0.01}
+                value={inputs.fixedSalePrice}
+                onChange={e => updateInput('fixedSalePrice', parseFloat(e.target.value) || 0)}
+                onFocus={e => e.target.select()}
+                className="w-full h-12 pl-8 pr-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-bold text-nodo-ink focus:border-nodo-ink outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Valor declarado */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Declarar valor menor</label>
+            <button
+              type="button"
+              onClick={() => {
+                updateInput('useDeclaredValue', !inputs.useDeclaredValue);
+                if (!inputs.useDeclaredValue && inputs.declaredCostUSD === 0)
+                  updateInput('declaredCostUSD', inputs.unitCostUSD);
+              }}
+              className={`relative w-[51px] h-[31px] rounded-full transition-colors duration-200 shrink-0 ${inputs.useDeclaredValue ? 'bg-[#34C759]' : 'bg-nodo-line'}`}
+            >
+              <span className={`absolute top-[2px] left-[2px] w-[27px] h-[27px] rounded-full bg-white shadow-md transition-transform duration-200 ${inputs.useDeclaredValue ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+          </div>
+          {inputs.useDeclaredValue && (
+            <div className="space-y-2">
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-nodo-dim pointer-events-none">$</span>
+                <input
+                  type="number" inputMode="decimal" min={0} step={0.01}
+                  value={inputs.declaredCostUSD}
+                  onChange={e => updateInput('declaredCostUSD', parseFloat(e.target.value) || 0)}
+                  onFocus={e => e.target.select()}
+                  placeholder="Valor declarado..."
+                  className="w-full h-12 pl-8 pr-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-bold text-nodo-ink focus:border-nodo-ink outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+              {declaredIsHigh && (
+                <p className="text-[11px] font-bold text-nodo-danger-tx px-1">El declarado no puede ser mayor al real.</p>
+              )}
+              {hasSavings && !declaredIsHigh && (
+                <p className="text-[11px] font-bold text-nodo-warn-tx px-1">
+                  Ahorro fiscal estimado: {fmtGTQ(result.taxSavingsGTQ)}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Tipo de cambio */}
+        <div>
+          <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+            Tipo de cambio  <span className="normal-case font-normal">Q/$</span>
+          </label>
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-nodo-dim pointer-events-none">Q</span>
+            <input
+              type="number" inputMode="decimal" min={1} step={0.01}
+              value={config.exchangeRate}
+              onChange={e => updateConfig('exchangeRate', parseFloat(e.target.value) || 7.85)}
+              onFocus={e => e.target.select()}
+              className="w-full h-12 pl-8 pr-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-bold text-nodo-ink focus:border-nodo-ink outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </div>
+        </div>
+
+      </div>
+    </BottomSheet>
+  );
+}
+
+function CotizacionCard({
+  cotizacion,
+  onUpdate,
+}: {
+  cotizacion: Cotizacion;
+  onUpdate: (updated: Cotizacion) => void;
+}) {
+  const [advancing, setAdvancing]         = useState(false);
+  const [renovating, setRenovating]       = useState(false);
+  const [showLogistics, setShowLogistics] = useState(false);
+  const [showEdit, setShowEdit]           = useState(false);
+  const [copied, setCopied]               = useState(false);
+
+  function handleShare() {
+    const url = `${window.location.origin}/import-tracking/${cotizacion.share_token}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  const expired   = isExpired(cotizacion);
+  const nextStatus = NEXT_STATUS[cotizacion.status];
+  const salePrice  = resultField<number>(cotizacion, 'salePriceGTQ');
+  const landed     = resultField<number>(cotizacion, 'totalLandedCostGTQ');
+  const margin     = resultField<number>(cotizacion, 'actualMargin');
+  const isViable   = resultField<boolean>(cotizacion, 'isViable');
+
+  async function handleAdvance() {
+    if (!nextStatus) return;
+    setAdvancing(true);
+    try {
+      const { data } = await importacionesService.advanceStatus(cotizacion.id, nextStatus);
+      onUpdate(data);
+    } finally {
+      setAdvancing(false);
+    }
+  }
+
+  async function handleCancel() {
+    setAdvancing(true);
+    try {
+      const { data } = await importacionesService.advanceStatus(cotizacion.id, 'cancelado');
+      onUpdate(data);
+    } finally {
+      setAdvancing(false);
+    }
+  }
+
+  async function handleRenovar() {
+    setRenovating(true);
+    try {
+      const payload: RenovarPayload = {
+        inputs_snapshot: cotizacion.inputs_snapshot,
+        config_snapshot: cotizacion.config_snapshot,
+        result_snapshot: cotizacion.result_snapshot,
+      };
+      const { data } = await importacionesService.renovar(cotizacion.id, payload);
+      onUpdate(data);
+    } finally {
+      setRenovating(false);
+    }
+  }
+
+  const isClosed = cotizacion.status === 'pagado' || cotizacion.status === 'cancelado';
+
+  return (
+    <>
+      <div className={`bg-nodo-card border rounded-3xl overflow-hidden shadow-sm ${expired ? 'border-nodo-danger-bd' : 'border-nodo-line'}`}>
+
+        {/* Expired banner */}
+        {expired && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-nodo-danger-bg border-b border-nodo-danger-bd">
+            <AlertTriangle size={12} className="text-nodo-danger-tx shrink-0" />
+            <span className="text-[11px] font-bold text-nodo-danger-tx flex-1">Cotización vencida — precios pueden haber cambiado</span>
+            <button
+              onClick={handleRenovar}
+              disabled={renovating}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-nodo-danger-tx text-white text-[10px] font-black active:scale-95 transition-transform disabled:opacity-50"
+            >
+              {renovating ? <Loader2 size={10} className="animate-spin" /> : <RotateCcw size={10} />}
+              Renovar
+            </button>
+          </div>
+        )}
+
+        <div className="p-4 space-y-3">
+          {/* Header row */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-black text-nodo-ink leading-tight line-clamp-2">
+                {cotizacion.product_name}
+              </p>
+              {cotizacion.amazon_asin && (
+                <p className="text-[10px] text-nodo-dim font-medium mt-0.5">ASIN {cotizacion.amazon_asin}</p>
+              )}
+            </div>
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <div className="flex items-center gap-1.5">
+                <StatusBadge status={cotizacion.status} />
+                <button
+                  onClick={handleShare}
+                  title="Copiar link de tracking"
+                  className="w-6 h-6 rounded-lg flex items-center justify-center text-nodo-dim hover:text-nodo-ink hover:bg-nodo-inset active:scale-90 transition-all"
+                >
+                  {copied ? <Check size={12} className="text-nodo-success-tx" /> : <Share2 size={12} />}
+                </button>
+              </div>
+              {cotizacion.status === 'pendiente' && !expired && (
+                <span className="text-[9px] font-bold text-nodo-dim tabular-nums">{expiryLabel(cotizacion)}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Price summary */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Precio sugerido</p>
+              <p className={`text-xl font-black tabular-nums ${isViable ? 'text-nodo-ink' : 'text-nodo-danger-tx'}`}>
+                {fmtGTQ(salePrice)}
+              </p>
+            </div>
+            <div className="h-8 w-px bg-nodo-line" />
+            <div>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Landed</p>
+              <p className="text-base font-black tabular-nums text-nodo-sub">{fmtGTQ(landed)}</p>
+            </div>
+            <div className="h-8 w-px bg-nodo-line" />
+            <div>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Margen</p>
+              <p className="text-base font-black tabular-nums text-nodo-sub">{fmtPct(margin)}</p>
+            </div>
+          </div>
+
+          {/* Logistics info */}
+          {(cotizacion.tracking_number || cotizacion.estimated_delivery || cotizacion.notes) && (
+            <div className="flex flex-wrap gap-3 pt-1 border-t border-nodo-line">
+              {cotizacion.tracking_number && (
+                <div className="flex items-center gap-1.5">
+                  <MapPin size={11} className="text-nodo-dim" />
+                  <span className="text-[11px] font-semibold text-nodo-sub">{cotizacion.tracking_number}</span>
+                </div>
+              )}
+              {cotizacion.estimated_delivery && (
+                <div className="flex items-center gap-1.5">
+                  <Calendar size={11} className="text-nodo-dim" />
+                  <span className="text-[11px] font-semibold text-nodo-sub">{fmtDate(cotizacion.estimated_delivery)}</span>
+                </div>
+              )}
+              {cotizacion.notes && (
+                <div className="flex items-center gap-1.5">
+                  <FileText size={11} className="text-nodo-dim" />
+                  <span className="text-[11px] font-semibold text-nodo-sub line-clamp-1">{cotizacion.notes}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Actions */}
+          {!isClosed && (
+            <div className="flex gap-2 pt-1">
+              {nextStatus && (
+                <button
+                  onClick={handleAdvance}
+                  disabled={advancing}
+                  className="flex-1 h-10 rounded-2xl bg-nodo-ink text-nodo-canvas font-bold text-xs flex items-center justify-center gap-1.5 active:scale-[0.97] transition-transform disabled:opacity-40"
+                >
+                  {advancing
+                    ? <Loader2 size={13} className="animate-spin" />
+                    : <ChevronRight size={13} />
+                  }
+                  {STATUS_LABEL[nextStatus]}
+                </button>
+              )}
+              <button
+                onClick={() => setShowLogistics(true)}
+                className="h-10 px-4 rounded-2xl border-2 border-nodo-line text-nodo-sub font-bold text-xs flex items-center gap-1.5 hover:bg-nodo-inset active:scale-[0.97] transition-all"
+              >
+                <Pencil size={12} />
+                Logística
+              </button>
+              <button
+                onClick={() => setShowEdit(true)}
+                className="h-10 px-4 rounded-2xl border-2 border-nodo-line text-nodo-sub font-bold text-xs flex items-center gap-1.5 hover:bg-nodo-inset active:scale-[0.97] transition-all"
+              >
+                <Calculator size={12} />
+                Cálculo
+              </button>
+              {cotizacion.status !== 'entregado' && (
+                <button
+                  onClick={handleCancel}
+                  disabled={advancing}
+                  className="h-10 px-3 rounded-2xl border-2 border-nodo-line text-nodo-dim hover:border-nodo-danger-bd hover:text-nodo-danger-tx hover:bg-nodo-danger-bg active:scale-[0.97] transition-all disabled:opacity-40"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <LogisticsSheet
+        cotizacion={cotizacion}
+        open={showLogistics}
+        onClose={() => setShowLogistics(false)}
+        onSaved={onUpdate}
+      />
+      <EditSheet
+        cotizacion={cotizacion}
+        open={showEdit}
+        onClose={() => setShowEdit(false)}
+        onSaved={onUpdate}
+      />
+    </>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+export function CotizacionesTab() {
+  const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await importacionesService.list();
+      setCotizaciones(data);
+    } catch {
+      setError('No se pudieron cargar las cotizaciones.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  function handleUpdate(updated: Cotizacion) {
+    setCotizaciones(prev => prev.map(c => c.id === updated.id ? updated : c));
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-nodo-sub" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-40 text-center px-4">
+        <AlertTriangle size={28} className="text-nodo-danger-tx mb-2" />
+        <p className="text-sm font-bold text-nodo-danger-tx">{error}</p>
+        <button onClick={load} className="mt-3 text-xs font-bold text-nodo-sub underline">Reintentar</button>
+      </div>
+    );
+  }
+
+  const active   = cotizaciones.filter(c => c.status !== 'cancelado' && c.status !== 'pagado');
+  const closed   = cotizaciones.filter(c => c.status === 'cancelado' || c.status === 'pagado');
+
+  if (cotizaciones.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-52 text-center px-4">
+        <Package2 size={36} className="text-nodo-dim mb-3" />
+        <p className="text-sm font-black text-nodo-dim">Sin cotizaciones aún</p>
+        <p className="text-xs text-nodo-dim mt-1">Usa la calculadora y guarda una cotización para verla aquí.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 pb-6">
+      {active.length > 0 && (
+        <div className="flex flex-col gap-3">
+          {active.map(c => (
+            <CotizacionCard key={c.id} cotizacion={c} onUpdate={handleUpdate} />
+          ))}
+        </div>
+      )}
+
+      {closed.length > 0 && (
+        <>
+          {active.length > 0 && (
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mt-1">Cerradas</p>
+          )}
+          <div className="flex flex-col gap-3 opacity-60">
+            {closed.map(c => (
+              <CotizacionCard key={c.id} cotizacion={c} onUpdate={handleUpdate} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

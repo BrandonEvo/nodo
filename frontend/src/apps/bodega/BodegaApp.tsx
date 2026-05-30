@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { haptic } from '@/utils/haptic';
 import {
   Search, Plus, Minus, AlertTriangle, ChevronLeft, ChevronRight,
-  Check, Warehouse, Loader2, X,
+  Check, Warehouse, Loader2, X, Package,
 } from 'lucide-react';
 import type { AppProps } from '../index';
 import { bodegaService, type InventoryItem, type PriceHistoryEntry, type StockMovementEntry } from '@/services/bodega.service';
@@ -10,11 +10,7 @@ import { BottomSheet } from '@/components/ui/BottomSheet';
 
 // ── Tipos internos ─────────────────────────────────────────────────────────
 type SheetView = 'detail' | 'entrada' | 'ajuste' | 'nuevo';
-
-interface SheetState {
-  view: SheetView;
-  item?: InventoryItem;
-}
+interface SheetState { view: SheetView; item?: InventoryItem; }
 
 // ── Barra de progreso de stock ──────────────────────────────────────────────
 function StockBar({ item }: { item: InventoryItem }) {
@@ -24,7 +20,7 @@ function StockBar({ item }: { item: InventoryItem }) {
   return (
     <div className="h-1.5 bg-nodo-raised rounded-full overflow-hidden">
       <div
-        className={`h-full rounded-full transition-all duration-500 ${isLow ? 'bg-red-500' : 'bg-emerald-400'}`}
+        className={`h-full rounded-full transition-all duration-500 ${isLow ? 'bg-nodo-danger-tx' : 'bg-nodo-primary'}`}
         style={{ width: `${pct}%` }}
       />
     </div>
@@ -68,7 +64,7 @@ export function BodegaApp(_props: AppProps) {
   }, [inventory, search, showOnlyLow]);
 
   const grouped = useMemo(() => {
-    if (search) return null; // flat list when searching
+    if (search) return null;
     const map: Record<string, InventoryItem[]> = {};
     for (const item of filtered) {
       const cat = item.category?.trim() || 'Sin categoría';
@@ -82,7 +78,6 @@ export function BodegaApp(_props: AppProps) {
     });
   }, [filtered, search]);
 
-  // ── Abrir sheet de ítem ──────────────────────────────────────────────────
   const openItem = (item: InventoryItem) => {
     setSheet({ view: 'detail', item });
     setQty(''); setUnitCost(''); setShowPrice(false);
@@ -102,7 +97,6 @@ export function BodegaApp(_props: AppProps) {
     setNewItem({ name: '', unit: 'kg', minimum_stock: '', current_stock: '', category: '' });
   };
 
-  // ── Acciones ────────────────────────────────────────────────────────────
   const handleAdjust = async () => {
     if (!sheet?.item || !qty) return;
     const amount = parseFloat(qty);
@@ -156,72 +150,95 @@ export function BodegaApp(_props: AppProps) {
     }
   };
 
-  // ── Título del sheet ─────────────────────────────────────────────────────
   const sheetTitle =
     sheet?.view === 'detail'  ? (sheet.item?.name ?? '')
     : sheet?.view === 'entrada' ? '+ Entrada de Stock'
     : sheet?.view === 'ajuste'  ? '− Ajuste de Stock'
     : 'Nuevo Insumo';
 
-  // ── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-nodo-primary" />
       </div>
     );
   }
 
-  const item = sheet?.item;
-  const isLow = item ? item.current_stock < item.minimum_stock : false;
+  const item    = sheet?.item;
+  const isLow   = item ? item.current_stock < item.minimum_stock : false;
   const newStock = item && qty
     ? sheet?.view === 'entrada'
       ? item.current_stock + (parseFloat(qty) || 0)
       : Math.max(0, item.current_stock - (parseFloat(qty) || 0))
     : null;
 
-  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full gap-4">
 
-      {/* Error */}
+      {/* Toast error */}
       {error && (
-        <div className="flex items-center gap-3 bg-nodo-danger-bg border border-nodo-danger-bd text-nodo-danger-tx text-sm font-medium px-4 py-3 rounded-2xl">
+        <div className="fixed top-4 right-4 z-[70] flex items-center gap-3 bg-nodo-danger-bg border border-nodo-danger-bd text-nodo-danger-tx text-sm font-bold px-4 py-3 rounded-2xl shadow-lg max-w-xs">
           <AlertTriangle size={16} className="shrink-0" />
           <span className="flex-1">{error}</span>
-          <button onClick={() => setError(null)}><X size={15} /></button>
+          <button onClick={() => setError(null)}><X size={14} /></button>
         </div>
       )}
 
-      {/* ── HEADER ──────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between">
+      {/* ── HEADER ────────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-nodo-ink tracking-tight">Bodega</h1>
-          <p className="text-sm text-nodo-sub mt-0.5">
+          {/* Módulo pill */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-nodo-primary-soft mb-2">
+            <Warehouse size={12} className="text-nodo-primary" />
+            <span className="text-[11px] font-black text-nodo-primary uppercase tracking-wider">Bodega</span>
+          </div>
+          <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Inventario</h1>
+          <p className="text-sm text-nodo-sub font-medium mt-0.5">
             {inventory.length} insumos
             {lowStock.length > 0
               ? <span className="text-nodo-danger-tx"> · {lowStock.length} bajo mínimo</span>
-              : <span className="text-nodo-success-tx"> · todo en orden</span>
+              : inventory.length > 0
+                ? <span className="text-nodo-success-tx"> · todo en orden</span>
+                : null
             }
           </p>
         </div>
         <button
           onClick={() => setSheet({ view: 'nuevo' })}
-          className="w-11 h-11 rounded-full bg-nodo-ink text-nodo-card flex items-center justify-center active:scale-90 transition-transform shadow-lg shadow-nodo-ink/20"
+          className="w-12 h-12 rounded-full bg-nodo-primary text-white flex items-center justify-center active:scale-90 transition-transform shrink-0"
+          style={{ boxShadow: '0 6px 20px var(--nodo-shadow-fab)' }}
           title="Nuevo insumo"
         >
           <Plus size={20} strokeWidth={2.5} />
         </button>
       </div>
 
-      {/* ── SEARCH ──────────────────────────────────────────────────────── */}
+      {/* ── KPI CARDS (asimétrico) ─────────────────────────────────────────── */}
+      {inventory.length > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-nodo-primary-soft rounded-3xl p-4">
+            <p className="text-[10px] font-black text-nodo-primary uppercase tracking-wider">Total insumos</p>
+            <p className="text-[40px] font-black text-nodo-primary tabular-nums tracking-tight leading-none mt-1">{inventory.length}</p>
+          </div>
+          <div className={`rounded-3xl p-4 ${lowStock.length > 0 ? 'bg-nodo-danger-bg' : 'bg-nodo-success-bg'}`}>
+            <p className={`text-[10px] font-black uppercase tracking-wider ${lowStock.length > 0 ? 'text-nodo-danger-tx' : 'text-nodo-success-tx'}`}>
+              Bajo mínimo
+            </p>
+            <p className={`text-[40px] font-black tabular-nums tracking-tight leading-none mt-1 ${lowStock.length > 0 ? 'text-nodo-danger-tx' : 'text-nodo-success-tx'}`}>
+              {lowStock.length}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── SEARCH ────────────────────────────────────────────────────────── */}
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-nodo-dim pointer-events-none" />
         <input
           value={search}
           onChange={e => { setSearch(e.target.value); setShowOnlyLow(false); }}
           placeholder="Buscar insumo…"
-          className="w-full h-11 pl-11 pr-10 bg-nodo-inset rounded-2xl text-sm font-medium text-nodo-ink placeholder:text-nodo-dim outline-none focus:ring-2 focus:ring-nodo-ink/10 transition-all"
+          className="w-full h-11 pl-11 pr-10 bg-nodo-inset rounded-full text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim outline-none focus:ring-2 focus:ring-nodo-primary/20 transition-all"
         />
         {(search || showOnlyLow) && (
           <button
@@ -233,13 +250,13 @@ export function BodegaApp(_props: AppProps) {
         )}
       </div>
 
-      {/* ── ALERTA STOCK BAJO (compacta) ─────────────────────────────── */}
+      {/* ── ALERTA STOCK BAJO ─────────────────────────────────────────────── */}
       {!showOnlyLow && !search && lowStock.length > 0 && (
         <button
           onClick={() => setShowOnlyLow(true)}
-          className="flex items-center gap-3 bg-nodo-danger-bg border border-nodo-danger-bd rounded-2xl px-4 py-3 text-left w-full active:opacity-80 transition-opacity"
+          className="flex items-center gap-3 bg-nodo-danger-bg border border-nodo-danger-bd rounded-full px-5 py-3 text-left w-full active:opacity-80 transition-opacity"
         >
-          <AlertTriangle size={16} className="text-nodo-danger-tx shrink-0" />
+          <AlertTriangle size={15} className="text-nodo-danger-tx shrink-0" />
           <span className="text-sm font-bold text-nodo-danger-tx flex-1">
             {lowStock.length} {lowStock.length === 1 ? 'insumo' : 'insumos'} bajo el mínimo
           </span>
@@ -250,18 +267,20 @@ export function BodegaApp(_props: AppProps) {
         </button>
       )}
 
-      {/* ── LISTA ───────────────────────────────────────────────────────── */}
+      {/* ── LISTA ─────────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto min-h-0 -mx-1 px-1">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
-            <Warehouse size={36} className="text-nodo-dim" />
-            <p className="text-nodo-sub font-bold text-sm">
+            <div className="w-16 h-16 rounded-3xl bg-nodo-primary-softer flex items-center justify-center">
+              <Warehouse size={28} className="text-nodo-primary" />
+            </div>
+            <p className="text-sm font-bold text-nodo-dim">
               {showOnlyLow ? 'No hay insumos con stock bajo' : search ? 'Sin resultados' : 'No hay insumos'}
             </p>
             {!search && !showOnlyLow && (
               <button
                 onClick={() => setSheet({ view: 'nuevo' })}
-                className="px-5 py-2.5 bg-nodo-ink text-nodo-card text-sm font-bold rounded-xl active:opacity-90 transition-opacity"
+                className="px-5 py-2.5 bg-nodo-primary text-white text-sm font-bold rounded-full active:opacity-90 transition-opacity"
               >
                 + Añadir primer insumo
               </button>
@@ -270,29 +289,27 @@ export function BodegaApp(_props: AppProps) {
         ) : (
           <div className="space-y-4 pb-4">
 
-            {/* ── Búsqueda / solo-bajos: cards individuales ── */}
+            {/* Búsqueda / solo-bajos: cards individuales */}
             {(search || showOnlyLow) && filtered.map(i => (
               <ItemCard key={i.id} item={i} onTap={openItem} />
             ))}
 
-            {/* ── Vista normal: grupos por categoría ── */}
+            {/* Vista normal: grupos por categoría */}
             {grouped && !search && !showOnlyLow && grouped.map(([cat, items]) => {
               const anyLow = items.some(i => i.current_stock < i.minimum_stock);
               return (
                 <div key={cat}>
-                  {/* Encabezado de categoría */}
-                  <div className="flex items-center gap-2 mb-2 px-1">
-                    {anyLow && <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" />}
-                    <span className="text-[11px] font-black text-nodo-dim uppercase tracking-widest flex-1">
+                  {/* Encabezado de categoría como pill */}
+                  <div className="flex items-center gap-2 mb-2 px-0.5">
+                    <span className={`inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-full ${anyLow ? 'bg-nodo-danger-bg text-nodo-danger-tx' : 'bg-nodo-primary-softer text-nodo-primary'}`}>
+                      {anyLow && <span className="w-1.5 h-1.5 rounded-full bg-nodo-danger-tx animate-pulse shrink-0" />}
                       {cat.replace(/_/g, ' ')}
                     </span>
-                    <span className="text-[11px] font-bold text-nodo-dim/50 tabular-nums">
-                      {items.length}
-                    </span>
+                    <span className="text-[11px] font-bold text-nodo-dim/50 tabular-nums">{items.length}</span>
                   </div>
 
-                  {/* Card agrupado (iOS Settings style) */}
-                  <div className="bg-nodo-card rounded-2xl border border-nodo-line overflow-hidden shadow-sm">
+                  {/* Card agrupado */}
+                  <div className="bg-nodo-card rounded-[20px] border border-nodo-line overflow-hidden shadow-sm">
                     {items.map((item, idx) => (
                       <ItemRow
                         key={item.id}
@@ -309,53 +326,56 @@ export function BodegaApp(_props: AppProps) {
         )}
       </div>
 
-      {/* ── BOTTOM SHEET ─────────────────────────────────────────────── */}
+      {/* ── BOTTOM SHEET ──────────────────────────────────────────────────── */}
       <BottomSheet
         open={sheet !== null}
         onClose={closeSheet}
         title={sheetTitle}
         footer={
-          /* Solo detail no tiene footer — los botones están en el contenido */
           sheet?.view !== 'detail' ? (
             <button
               onClick={sheet?.view === 'nuevo' ? handleCreate : handleAdjust}
               disabled={saving || (sheet?.view !== 'nuevo' && (!qty || parseFloat(qty) <= 0))}
               className={[
-                'w-full h-14 rounded-2xl font-black text-base tracking-wide',
+                'w-full h-14 rounded-full font-black text-base tracking-wide',
                 'flex items-center justify-center gap-2 transition-all active:scale-[0.97]',
                 'disabled:opacity-35 disabled:cursor-not-allowed',
-                sheet?.view === 'entrada' ? 'bg-emerald-500 text-white'
-                : sheet?.view === 'ajuste' ? 'bg-red-500 text-white'
+                sheet?.view === 'entrada' ? 'text-white'
+                : sheet?.view === 'ajuste'  ? 'bg-nodo-danger-tx text-white'
                 : 'bg-nodo-ink text-nodo-card',
               ].join(' ')}
+              style={sheet?.view === 'entrada' ? {
+                backgroundColor: 'var(--nodo-primary)',
+                boxShadow: '0 6px 20px var(--nodo-shadow-fab)',
+              } : undefined}
             >
               {saving
                 ? <Loader2 size={20} className="animate-spin" />
                 : <Check size={20} strokeWidth={3} />}
-              {sheet?.view === 'entrada' ? 'CONFIRMAR INGRESO'
-                : sheet?.view === 'ajuste' ? 'CONFIRMAR AJUSTE'
-                : 'CREAR INSUMO'}
+              {sheet?.view === 'entrada' ? 'Confirmar ingreso'
+                : sheet?.view === 'ajuste' ? 'Confirmar ajuste'
+                : 'Crear insumo'}
             </button>
           ) : undefined
         }
       >
 
-        {/* ─────────── DETALLE DE ÍTEM ─────────── */}
+        {/* ─────────── DETALLE ─────────── */}
         {sheet?.view === 'detail' && item && (
           <div className="space-y-4">
             {/* Stock visual */}
-            <div className="bg-nodo-inset rounded-2xl p-5 space-y-3">
+            <div className="bg-nodo-primary-softer rounded-2xl p-5 space-y-3">
               <div className="flex items-end justify-between">
                 <div>
-                  <p className="text-xs font-bold text-nodo-dim uppercase tracking-wider">Stock actual</p>
-                  <p className="text-4xl font-black text-nodo-ink mt-1 tracking-tight">
+                  <p className="text-[10px] font-black text-nodo-primary uppercase tracking-wider">Stock actual</p>
+                  <p className="text-4xl font-black text-nodo-primary mt-1 tracking-tight tabular-nums">
                     {item.current_stock}
-                    <span className="text-xl text-nodo-sub ml-1.5 font-bold">{item.unit}</span>
+                    <span className="text-xl text-nodo-primary/60 ml-1.5 font-bold">{item.unit}</span>
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] text-nodo-dim font-bold uppercase">Mínimo</p>
-                  <p className="text-sm font-black text-nodo-sub">{item.minimum_stock} {item.unit}</p>
+                  <p className="text-[10px] text-nodo-primary/60 font-black uppercase">Mínimo</p>
+                  <p className="text-sm font-black text-nodo-primary/70">{item.minimum_stock} {item.unit}</p>
                 </div>
               </div>
               <StockBar item={item} />
@@ -374,33 +394,33 @@ export function BodegaApp(_props: AppProps) {
               </div>
             )}
 
-            {/* Acciones principales */}
+            {/* Acciones */}
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => goToAction('entrada')}
-                className="h-16 rounded-2xl bg-nodo-success-bg border border-nodo-success-bd text-nodo-success-tx font-black text-base flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                className="h-16 rounded-full bg-nodo-primary-soft border border-nodo-primary-soft text-nodo-primary font-black text-base flex items-center justify-center gap-2 active:scale-95 transition-transform"
               >
                 <Plus size={20} strokeWidth={2.5} />
                 Entrada
               </button>
               <button
                 onClick={() => goToAction('ajuste')}
-                className="h-16 rounded-2xl bg-nodo-danger-bg border border-nodo-danger-bd text-nodo-danger-tx font-black text-base flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                className="h-16 rounded-full bg-nodo-danger-bg border border-nodo-danger-bd text-nodo-danger-tx font-black text-base flex items-center justify-center gap-2 active:scale-95 transition-transform"
               >
                 <Minus size={20} strokeWidth={2.5} />
                 Ajuste
               </button>
             </div>
 
-            {/* Historial reciente de movimientos */}
+            {/* Últimos movimientos */}
             {movements.length > 0 && (
               <div>
-                <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-2 px-1">Últimos movimientos</p>
+                <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider mb-2 px-1">Últimos movimientos</p>
                 <div className="rounded-2xl border border-nodo-line overflow-hidden divide-y divide-nodo-line">
                   {movements.slice(0, 5).map(mv => (
                     <div key={mv.id} className="flex items-center justify-between px-4 py-2.5 bg-nodo-card">
                       <div className="flex items-center gap-2">
-                        <span className={`text-xs font-black px-1.5 py-0.5 rounded-md ${mv.move_type === 'entrada' ? 'bg-nodo-success-bg text-nodo-success-tx' : 'bg-nodo-danger-bg text-nodo-danger-tx'}`}>
+                        <span className={`text-xs font-black px-2 py-0.5 rounded-full ${mv.move_type === 'entrada' ? 'bg-nodo-primary-softer text-nodo-primary' : 'bg-nodo-danger-bg text-nodo-danger-tx'}`}>
                           {mv.move_type === 'entrada' ? '+' : '−'}{mv.quantity} {item.unit}
                         </span>
                         <span className="text-xs text-nodo-sub">→ {mv.stock_after.toFixed(1)}</span>
@@ -417,7 +437,7 @@ export function BodegaApp(_props: AppProps) {
             {/* Eliminar */}
             <button
               onClick={() => handleDelete(item.id)}
-              className="w-full py-3 text-sm font-bold text-nodo-danger-tx text-center rounded-2xl active:bg-nodo-danger-bg transition-colors"
+              className="w-full py-3 text-sm font-bold text-nodo-danger-tx text-center rounded-full active:bg-nodo-danger-bg transition-colors"
             >
               Eliminar insumo
             </button>
@@ -435,17 +455,15 @@ export function BodegaApp(_props: AppProps) {
               <ChevronLeft size={16} /> {item.name}
             </button>
 
-            {/* Stepper custom — sin spinner nativo */}
+            {/* Stepper */}
             <div className="space-y-3">
-              <p className="text-xs font-bold text-nodo-dim uppercase tracking-wider text-center">
+              <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider text-center">
                 {sheet.view === 'entrada' ? 'Cantidad a ingresar' : 'Cantidad a reducir'} ({item.unit})
               </p>
-
-              {/* Botones − / valor / + */}
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setQty(v => String(Math.max(0, parseFloat(v) || 0) - 1 < 0 ? '' : Math.max(0, (parseFloat(v) || 0) - 1)))}
-                  className="w-14 h-14 rounded-2xl bg-nodo-raised text-nodo-ink text-2xl font-black flex items-center justify-center active:scale-90 transition-transform shrink-0 select-none"
+                  onClick={() => setQty(v => String(Math.max(0, (parseFloat(v) || 0) - 1) === 0 ? '' : Math.max(0, (parseFloat(v) || 0) - 1)))}
+                  className="w-14 h-14 rounded-full bg-nodo-raised text-nodo-ink text-2xl font-black flex items-center justify-center active:scale-90 transition-transform shrink-0 select-none"
                 >
                   −
                 </button>
@@ -456,11 +474,12 @@ export function BodegaApp(_props: AppProps) {
                   onChange={e => setQty(e.target.value)}
                   placeholder="0"
                   autoFocus
-                  className="flex-1 h-14 text-center text-4xl font-black text-nodo-ink bg-nodo-inset rounded-2xl outline-none focus:ring-2 focus:ring-nodo-ink/15 transition-all placeholder:text-nodo-dim [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="flex-1 h-14 text-center text-4xl font-black text-nodo-ink bg-nodo-inset rounded-2xl outline-none focus:ring-2 focus:ring-nodo-primary/20 transition-all placeholder:text-nodo-dim [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <button
                   onClick={() => setQty(v => String((parseFloat(v) || 0) + 1))}
-                  className="w-14 h-14 rounded-2xl bg-nodo-ink text-nodo-card text-2xl font-black flex items-center justify-center active:scale-90 transition-transform shrink-0 select-none"
+                  className="w-14 h-14 rounded-full text-white text-2xl font-black flex items-center justify-center active:scale-90 transition-transform shrink-0 select-none"
+                  style={{ backgroundColor: 'var(--nodo-primary)' }}
                 >
                   +
                 </button>
@@ -472,7 +491,7 @@ export function BodegaApp(_props: AppProps) {
                   <button
                     key={n}
                     onClick={() => setQty(v => String((parseFloat(v) || 0) + n))}
-                    className="flex-1 h-10 rounded-xl bg-nodo-raised text-nodo-sub text-sm font-bold active:scale-95 active:bg-nodo-inset transition-transform"
+                    className="flex-1 h-10 rounded-full bg-nodo-primary-softer text-nodo-primary text-sm font-bold active:scale-95 transition-transform"
                   >
                     +{n}
                   </button>
@@ -484,13 +503,13 @@ export function BodegaApp(_props: AppProps) {
             {newStock !== null && (
               <div className="bg-nodo-inset rounded-2xl px-5 py-4 flex items-center justify-between">
                 <div className="text-center flex-1">
-                  <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Actual</p>
-                  <p className="text-lg font-black text-nodo-sub">{item.current_stock} {item.unit}</p>
+                  <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider">Actual</p>
+                  <p className="text-lg font-black text-nodo-sub tabular-nums">{item.current_stock} {item.unit}</p>
                 </div>
                 <div className="text-nodo-dim text-xl font-light">→</div>
                 <div className="text-center flex-1">
-                  <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Nuevo</p>
-                  <p className={`text-lg font-black ${newStock < item.minimum_stock ? 'text-nodo-danger-tx' : 'text-nodo-success-tx'}`}>
+                  <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider">Nuevo</p>
+                  <p className={`text-lg font-black tabular-nums ${newStock < item.minimum_stock ? 'text-nodo-danger-tx' : 'text-nodo-success-tx'}`}>
                     {newStock.toFixed(1)} {item.unit}
                   </p>
                 </div>
@@ -503,13 +522,13 @@ export function BodegaApp(_props: AppProps) {
                 {!showPrice ? (
                   <button
                     onClick={() => setShowPrice(true)}
-                    className="text-sm font-bold text-nodo-sub underline-offset-2 hover:underline active:opacity-60"
+                    className="text-sm font-bold text-nodo-primary underline-offset-2 hover:underline active:opacity-60"
                   >
                     + Registrar precio por {item.unit}
                   </button>
                 ) : (
                   <div>
-                    <label className="text-xs font-bold text-nodo-dim uppercase tracking-wider mb-2 block">
+                    <label className="text-[10px] font-black text-nodo-dim uppercase tracking-wider mb-2 block">
                       Precio por {item.unit} (Q)
                     </label>
                     <input
@@ -520,11 +539,11 @@ export function BodegaApp(_props: AppProps) {
                       value={unitCost}
                       onChange={e => setUnitCost(e.target.value)}
                       placeholder={item.last_unit_cost ? item.last_unit_cost.toFixed(2) : '0.00'}
-                      className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line-s rounded-2xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-success-tx outline-none transition-colors"
+                      className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line-s rounded-2xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-primary outline-none transition-colors"
                     />
                     {priceHistory.length > 0 && (
                       <p className="text-xs text-nodo-dim mt-1.5 px-1">
-                        Último registrado: <span className="font-bold text-nodo-sub">Q{priceHistory[0].unit_cost.toFixed(2)}</span>
+                        Último: <span className="font-bold text-nodo-sub">Q{priceHistory[0].unit_cost.toFixed(2)}</span>
                       </p>
                     )}
                   </div>
@@ -537,33 +556,32 @@ export function BodegaApp(_props: AppProps) {
         {/* ─────────── NUEVO INSUMO ─────────── */}
         {sheet?.view === 'nuevo' && (
           <div className="space-y-5">
-            {/* Nombre */}
             <div>
-              <label className="text-xs font-bold text-nodo-dim uppercase tracking-wider mb-2 block">Nombre</label>
+              <label className="text-[10px] font-black text-nodo-dim uppercase tracking-wider mb-2 block">Nombre</label>
               <input
                 type="text"
                 value={newItem.name}
                 onChange={e => setNewItem(p => ({ ...p, name: e.target.value }))}
                 placeholder="Ej: Harina especial"
                 autoFocus
-                className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line-s rounded-2xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-ink outline-none transition-colors"
+                className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line-s rounded-2xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-primary outline-none transition-colors"
               />
             </div>
 
-            {/* Unidad — pill selector */}
             <div>
-              <label className="text-xs font-bold text-nodo-dim uppercase tracking-wider mb-2 block">Unidad</label>
+              <label className="text-[10px] font-black text-nodo-dim uppercase tracking-wider mb-2 block">Unidad</label>
               <div className="flex flex-wrap gap-2">
                 {UNITS.map(u => (
                   <button
                     key={u}
                     onClick={() => setNewItem(p => ({ ...p, unit: u }))}
                     className={[
-                      'px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95',
+                      'px-4 py-2 rounded-full text-sm font-bold transition-all active:scale-95',
                       newItem.unit === u
-                        ? 'bg-nodo-ink text-nodo-card shadow-sm'
-                        : 'bg-nodo-raised text-nodo-sub hover:bg-nodo-inset',
+                        ? 'text-white shadow-sm'
+                        : 'bg-nodo-raised text-nodo-sub hover:bg-nodo-primary-softer hover:text-nodo-primary',
                     ].join(' ')}
+                    style={newItem.unit === u ? { backgroundColor: 'var(--nodo-primary)' } : undefined}
                   >
                     {u}
                   </button>
@@ -571,29 +589,27 @@ export function BodegaApp(_props: AppProps) {
               </div>
             </div>
 
-            {/* Stocks inicial y mínimo */}
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: 'Stock inicial', key: 'current_stock', placeholder: '0' },
                 { label: 'Stock mínimo', key: 'minimum_stock', placeholder: '5' },
               ].map(f => (
                 <div key={f.key}>
-                  <label className="text-xs font-bold text-nodo-dim uppercase tracking-wider mb-2 block">{f.label}</label>
+                  <label className="text-[10px] font-black text-nodo-dim uppercase tracking-wider mb-2 block">{f.label}</label>
                   <input
                     type="number"
                     inputMode="decimal"
                     value={(newItem as any)[f.key]}
                     onChange={e => setNewItem(p => ({ ...p, [f.key]: e.target.value }))}
                     placeholder={f.placeholder}
-                    className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line-s rounded-2xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-ink outline-none transition-colors"
+                    className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line-s rounded-2xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-primary outline-none transition-colors"
                   />
                 </div>
               ))}
             </div>
 
-            {/* Categoría (opcional) */}
             <div>
-              <label className="text-xs font-bold text-nodo-dim uppercase tracking-wider mb-2 block">
+              <label className="text-[10px] font-black text-nodo-dim uppercase tracking-wider mb-2 block">
                 Categoría <span className="normal-case font-medium text-nodo-dim/60">— opcional</span>
               </label>
               <input
@@ -601,7 +617,7 @@ export function BodegaApp(_props: AppProps) {
                 value={newItem.category}
                 onChange={e => setNewItem(p => ({ ...p, category: e.target.value }))}
                 placeholder="Harinas, Lácteos, Endulzantes…"
-                className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line-s rounded-2xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-ink outline-none transition-colors"
+                className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line-s rounded-2xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-primary outline-none transition-colors"
               />
             </div>
           </div>
@@ -611,7 +627,7 @@ export function BodegaApp(_props: AppProps) {
   );
 }
 
-// ── Helpers de stock ────────────────────────────────────────────────────────
+// ── Helpers de stock ─────────────────────────────────────────────────────────
 function stockLevel(item: InventoryItem): 'low' | 'warn' | 'ok' {
   if (item.minimum_stock <= 0) return 'ok';
   const ratio = item.current_stock / item.minimum_stock;
@@ -620,14 +636,13 @@ function stockLevel(item: InventoryItem): 'low' | 'warn' | 'ok' {
   return 'ok';
 }
 
-const STRIP_COLOR  = { low: 'bg-red-500', warn: 'bg-amber-400', ok: 'bg-emerald-400' } as const;
-const CHIP_COLOR   = {
+const CHIP_COLOR = {
   low:  'bg-nodo-danger-bg text-nodo-danger-tx',
   warn: 'bg-nodo-warn-bg  text-nodo-warn-tx',
-  ok:   'bg-nodo-inset    text-nodo-sub',
+  ok:   'bg-nodo-primary-softer text-nodo-primary',
 } as const;
 
-// ── Fila dentro de un grupo (iOS Settings style) ─────────────────────────────
+// ── Fila dentro de un grupo ───────────────────────────────────────────────────
 function ItemRow({ item, onTap, hasDivider = true }: {
   item: InventoryItem;
   onTap: (item: InventoryItem) => void;
@@ -639,10 +654,19 @@ function ItemRow({ item, onTap, hasDivider = true }: {
       onClick={() => onTap(item)}
       className={`w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-nodo-raised transition-colors ${hasDivider ? 'border-b border-nodo-line' : ''}`}
     >
-      {/* Strip de color — nivel de stock */}
-      <div className={`w-[3px] h-8 rounded-full shrink-0 ${STRIP_COLOR[level]}`} />
+      {/* Ícono flotante sobre tint del módulo */}
+      <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center ${
+        level === 'low'  ? 'bg-nodo-danger-bg'
+        : level === 'warn' ? 'bg-nodo-warn-bg'
+        : 'bg-nodo-primary-softer'
+      }`}>
+        <Package size={17} className={
+          level === 'low'  ? 'text-nodo-danger-tx'
+          : level === 'warn' ? 'text-nodo-warn-tx'
+          : 'text-nodo-primary'
+        } />
+      </div>
 
-      {/* Nombre + subnota si está bajo */}
       <div className="flex-1 min-w-0">
         <span className="font-semibold text-nodo-ink text-[15px] block truncate leading-tight">{item.name}</span>
         {level === 'low' && (
@@ -650,8 +674,7 @@ function ItemRow({ item, onTap, hasDivider = true }: {
         )}
       </div>
 
-      {/* Chip de stock */}
-      <span className={`px-2.5 py-1 rounded-xl text-xs font-black shrink-0 ${CHIP_COLOR[level]}`}>
+      <span className={`px-2.5 py-1 rounded-full text-xs font-black shrink-0 ${CHIP_COLOR[level]}`}>
         {item.current_stock} {item.unit}
       </span>
 
@@ -660,22 +683,32 @@ function ItemRow({ item, onTap, hasDivider = true }: {
   );
 }
 
-// ── Card individual — usado en búsqueda / filtro bajos ───────────────────────
+// ── Card individual — búsqueda / filtro ──────────────────────────────────────
 function ItemCard({ item, onTap }: { item: InventoryItem; onTap: (item: InventoryItem) => void }) {
   const level = stockLevel(item);
   return (
     <button
       onClick={() => onTap(item)}
-      className="w-full bg-nodo-card border border-nodo-line rounded-2xl px-4 py-4 flex items-center gap-3 text-left active:bg-nodo-raised transition-colors shadow-sm"
+      className="w-full bg-nodo-card border border-nodo-line rounded-[20px] px-4 py-4 flex items-center gap-3 text-left active:bg-nodo-raised transition-colors shadow-sm"
     >
-      <div className={`w-[3px] h-9 rounded-full shrink-0 ${STRIP_COLOR[level]}`} />
+      <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center ${
+        level === 'low'  ? 'bg-nodo-danger-bg'
+        : level === 'warn' ? 'bg-nodo-warn-bg'
+        : 'bg-nodo-primary-softer'
+      }`}>
+        <Package size={17} className={
+          level === 'low'  ? 'text-nodo-danger-tx'
+          : level === 'warn' ? 'text-nodo-warn-tx'
+          : 'text-nodo-primary'
+        } />
+      </div>
       <div className="flex-1 min-w-0">
         <span className="font-semibold text-nodo-ink text-[15px] block truncate leading-tight">{item.name}</span>
         {item.category && (
           <span className="text-[11px] text-nodo-dim font-medium">{item.category.replace(/_/g, ' ')}</span>
         )}
       </div>
-      <span className={`px-2.5 py-1 rounded-xl text-xs font-black shrink-0 ${CHIP_COLOR[level]}`}>
+      <span className={`px-2.5 py-1 rounded-full text-xs font-black shrink-0 ${CHIP_COLOR[level]}`}>
         {item.current_stock} {item.unit}
       </span>
       <ChevronRight size={13} className="text-nodo-dim shrink-0 opacity-40" />

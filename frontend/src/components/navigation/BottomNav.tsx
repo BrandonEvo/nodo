@@ -5,6 +5,7 @@ import {
   DollarSign, Package,
 } from 'lucide-react';
 import { resolveApp } from '@/apps';
+import { resolveModuleIcon } from '@/lib/module-icons';
 
 export type TabId = string;
 
@@ -66,7 +67,7 @@ export function BottomNav({
   const managementTab = isSuperAdmin ? 'admin_tenants' : 'mgmt_employees';
 
   const isHomeActive = activeTab === homeTab || activeTab === 'admin_home' || activeTab === 'home';
-  const isMetricsActive = activeTab === 'metrics';
+
   const isManagementActive = [
     'admin_tenants', 'admin_users', 'admin_roles',
     'admin_modules', 'admin_subscriptions', 'admin_platform_config',
@@ -79,7 +80,6 @@ export function BottomNav({
 
   const tabs = [
     { id: homeTab,           label: 'Inicio',   icon: Home,       active: isHomeActive,       visible: true },
-    { id: 'metrics',         label: 'Métricas', icon: BarChart3,  active: isMetricsActive,    visible: isSuperAdmin || isTenantAdmin },
     { id: managementTab,     label: 'Gestión',  icon: Briefcase,  active: isManagementActive, visible: showMgmt },
     { id: '__modules_drawer__', label: 'Apps',  icon: LayoutGrid, active: isModuleActive || drawerOpen, visible: isEmployee && hasModules },
     { id: 'profile',         label: 'Perfil',   icon: User,       active: isProfileActive,    visible: true },
@@ -132,7 +132,7 @@ export function BottomNav({
                 const AppComponent = resolveApp(mod.frontend_route);
                 const isActive = mod.frontend_route === activeTab || mod.code.toLowerCase() === activeTab;
                 const gradient = getModuleGradient(mod.code);
-                const Icon = getModuleIcon(mod.code);
+                const Icon = mod.icon ? resolveModuleIcon(mod.icon) : getModuleIcon(mod.code);
 
                 return (
                   <button
@@ -142,10 +142,7 @@ export function BottomNav({
                     className="flex flex-col items-center gap-2 disabled:opacity-40 active:scale-90 transition-transform duration-150"
                   >
                     <div className={`w-[58px] h-[58px] rounded-[16px] bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg ${isActive ? 'ring-2 ring-white ring-offset-2 ring-offset-nodo-card' : ''}`}>
-                      {mod.icon
-                        ? <span className="text-2xl">{mod.icon}</span>
-                        : <Icon size={26} className="text-white" strokeWidth={1.5} />
-                      }
+                      <Icon size={26} className="text-white" strokeWidth={1.5} />
                     </div>
                     <span className={`text-[10px] font-semibold text-center leading-tight line-clamp-2 w-[64px] ${isActive ? 'text-nodo-ink' : 'text-nodo-sub'}`}>
                       {mod.name}

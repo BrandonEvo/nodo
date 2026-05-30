@@ -112,6 +112,7 @@ class Recipe(AuditBase, table=True):
     difficulty: Optional[str] = Field(default=None, max_length=20)
     # Baker's %: unidades producidas por libra de harina (ej: 36 para pan francés)
     panes_por_libra_harina: Optional[int] = Field(default=None)
+    icon: Optional[str] = Field(default=None, max_length=10)
 
     ingredients: List["RecipeIngredient"] = Relationship(back_populates="recipe")
     production_orders: List["ProductionOrder"] = Relationship(back_populates="recipe")

@@ -51,7 +51,10 @@ async def update_tenant(tenant_id: uuid.UUID, tenant_in: TenantUpdate, session: 
     tenant = await session.get(Tenant, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant no encontrado")
-        
+
+    if tenant.is_system and tenant_in.is_active is False:
+        raise HTTPException(status_code=403, detail="El tenant del sistema no puede desactivarse.")
+
     if tenant_in.name is not None:
         tenant.name = tenant_in.name
     if tenant_in.is_active is not None:
@@ -103,6 +106,52 @@ async def assign_tenant_plan(
     return tenant
 
 
+class TenantModulesAssign(BaseModel):
+    module_ids: List[uuid.UUID]
+
+@router.get("/{tenant_id}/subscriptions", response_model=List[uuid.UUID])
+async def get_tenant_subscriptions(
+    tenant_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    _user=Depends(current_superuser),
+):
+    from models import Subscription
+    result = await session.execute(
+        select(Subscription.module_id).where(
+            Subscription.tenant_id == tenant_id,
+            Subscription.status == "active",
+        )
+    )
+    return result.scalars().all()
+
+@router.put("/{tenant_id}/subscriptions", status_code=status.HTTP_204_NO_CONTENT)
+async def set_tenant_subscriptions(
+    tenant_id: uuid.UUID,
+    body: TenantModulesAssign,
+    session: AsyncSession = Depends(get_session),
+    _user=Depends(current_superuser),
+):
+    from sqlalchemy import delete
+    from models import Subscription, Module
+
+    tenant = await session.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant no encontrado")
+
+    # Verificar que todos los módulos existen
+    for mid in body.module_ids:
+        mod = await session.get(Module, mid)
+        if not mod:
+            raise HTTPException(status_code=404, detail=f"Módulo {mid} no encontrado")
+
+    await session.execute(delete(Subscription).where(Subscription.tenant_id == tenant_id))
+    for mid in body.module_ids:
+        session.add(Subscription(tenant_id=tenant_id, module_id=mid, status="active"))
+
+    await session.commit()
+    return None
+
+
 class HardDeleteRequest(BaseModel):
     password: str
 
@@ -111,31 +160,60 @@ async def hard_delete_tenant(tenant_id: uuid.UUID, body: HardDeleteRequest, sess
     from core.security_utils import verify_superadmin_password
     if not verify_superadmin_password(body.password):
         raise HTTPException(status_code=403, detail="Contraseña incorrecta")
-        
+
     tenant = await session.get(Tenant, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant no encontrado")
-        
-    # Cascadas explícitas de buenas prácticas para proteger la BBDD
-    from models import TenantMember, Subscription, User, TenantMemberModuleAccess, Invitation
-    from sqlalchemy import delete
-    
-    # 0. Borramos invitaciones de la empresa
-    await session.execute(delete(Invitation).where(Invitation.tenant_id == tenant_id))
 
-    # 1. Borramos suscripciones de la empresa
+    if tenant.is_system:
+        raise HTTPException(status_code=403, detail="El tenant del sistema no puede eliminarse.")
+
+    from models import TenantMember, Subscription, User, TenantMemberModuleAccess, Invitation
+    from sqlalchemy import delete, update, text
+
+    tid = str(tenant_id)
+
+    # Usamos SQL directo para garantizar el orden correcto de cascadas
+    # independientemente de qué modelos existan en el código.
+
+    # 1. Desligar usuarios que tenían este tenant como activo
+    await session.execute(
+        update(User).where(User.last_active_tenant_id == tenant_id).values(last_active_tenant_id=None)
+    )
+
+    # 2. Tablas de negocio (hijos de inventario / ventas / producción)
+    for table in (
+        "stock_movements",
+        "inventory_price_history",
+        "sale_items",
+        "sales",
+        "recipe_ingredients",
+        "recipe_constants",
+        "production_orders",
+        "waste_logs",
+        "shift_registers",
+        "expense_lines",
+        "shopper_orders",
+        "import_cotizaciones",
+        "inventory_items",
+        "recipes",
+        "audit_logs",
+    ):
+        await session.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tid})
+
+    # 3. Membresías e invitaciones
+    await session.execute(delete(Invitation).where(Invitation.tenant_id == tenant_id))
     await session.execute(delete(Subscription).where(Subscription.tenant_id == tenant_id))
-    
-    # 2. Borramos los permisos de los miembros de esta empresa
+
     members_result = await session.execute(select(TenantMember.id).where(TenantMember.tenant_id == tenant_id))
     member_ids = members_result.scalars().all()
     if member_ids:
-        await session.execute(delete(TenantMemberModuleAccess).where(TenantMemberModuleAccess.tenant_member_id.in_(member_ids)))
-    
-    # 3. Borramos las membresías de los usuarios a esta empresa
+        await session.execute(
+            delete(TenantMemberModuleAccess).where(TenantMemberModuleAccess.tenant_member_id.in_(member_ids))
+        )
     await session.execute(delete(TenantMember).where(TenantMember.tenant_id == tenant_id))
-    
-    # 4. Finalmente, borramos la empresa
+
+    # 4. Finalmente el tenant
     await session.delete(tenant)
     await session.commit()
     return None
@@ -223,11 +301,14 @@ async def hard_delete_tenant_user(tenant_id: uuid.UUID, user_id: uuid.UUID, body
     from core.security_utils import verify_superadmin_password
     if not verify_superadmin_password(body.password):
         raise HTTPException(status_code=403, detail="Contraseña incorrecta")
-        
+
     query = select(User).where(User.id == user_id)
     user = (await session.execute(query)).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if user.is_superuser:
+        raise HTTPException(status_code=403, detail="Las cuentas de súper administrador no pueden eliminarse.")
         
     # Cascada manual de buenas prácticas para usuarios
     from sqlalchemy import delete, update

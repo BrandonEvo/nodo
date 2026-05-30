@@ -19,6 +19,7 @@ class User(AuditBase, table=True):
     is_superuser: bool = Field(default=False)
     is_verified: bool = Field(default=False)
     onboarding_completed: bool = Field(default=False)
+    last_active_tenant_id: Optional[uuid.UUID] = Field(default=None, foreign_key="tenants.id", index=True)
 
     # Relación M:N explícita evitando colisión con created_by
     tenant_memberships: List["TenantMember"] = Relationship(

@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { Plus, Building2, Package, Pencil, PowerOff, Trash2, ShieldAlert, Loader2, Check, CreditCard } from "lucide-react";
+import { Plus, Building2, Package, Pencil, PowerOff, Trash2, ShieldAlert, Loader2, Check, CreditCard, LayoutGrid } from "lucide-react";
+import { resolveModuleIcon } from "@/lib/module-icons";
 import { useToast } from "@/components/ui/Toaster";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { tenantsService, type Tenant } from "@/services/tenants.service";
 import { subscriptionsService, type SubscriptionPlan } from "@/services/subscriptions.service";
+import { modulesService, type ModuleRead } from "@/services/modules.service";
 
 export function AdminTenants() {
   const toast = useToast();
@@ -24,6 +26,12 @@ export function AdminTenants() {
   const [planTenant, setPlanTenant] = useState<Tenant | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
+
+  const [modulesTenant, setModulesTenant] = useState<Tenant | null>(null);
+  const [allModules, setAllModules] = useState<ModuleRead[]>([]);
+  const [activeModuleIds, setActiveModuleIds] = useState<Set<string>>(new Set());
+  const [loadingModules, setLoadingModules] = useState(false);
+  const [savingModules, setSavingModules] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -143,7 +151,46 @@ export function AdminTenants() {
     }
   };
 
-  const isProtected = (t: Tenant) => t.name === "Nodo Principal";
+  const openModules = async (t: Tenant) => {
+    setModulesTenant(t);
+    setLoadingModules(true);
+    try {
+      const [mods, active] = await Promise.all([
+        modulesService.list(),
+        tenantsService.getTenantSubscriptions(t.id),
+      ]);
+      setAllModules(mods.filter(m => m.is_active));
+      setActiveModuleIds(new Set(active));
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Error al cargar módulos");
+    } finally {
+      setLoadingModules(false);
+    }
+  };
+
+  const toggleModule = (id: string) => {
+    setActiveModuleIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const saveModules = async () => {
+    if (!modulesTenant) return;
+    setSavingModules(true);
+    try {
+      await tenantsService.setTenantSubscriptions(modulesTenant.id, Array.from(activeModuleIds));
+      setModulesTenant(null);
+      toast.success("Módulos actualizados");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Error al guardar módulos");
+    } finally {
+      setSavingModules(false);
+    }
+  };
+
+  const isProtected = (t: Tenant) => !!t.is_system;
 
   return (
     <>
@@ -163,6 +210,30 @@ export function AdminTenants() {
             Nueva
           </button>
         </div>
+
+        {/* KPI row */}
+        {!loading && (
+          <div className="grid grid-cols-3 gap-3 shrink-0">
+            {[
+              { label: 'Total',     value: tenants.length,                                     accent: '#69E7A8', pastel: '#69E7A81a', icon: Building2  },
+              { label: 'Activas',   value: tenants.filter(t => t.is_active !== false).length,  accent: '#a78bfa', pastel: '#a78bfa1a', icon: Package    },
+              { label: 'Inactivas', value: tenants.filter(t => t.is_active === false).length,  accent: '#94a3b8', pastel: '#94a3b81a', icon: PowerOff   },
+            ].map((c) => {
+              const Icon = c.icon;
+              return (
+                <div key={c.label} className="flex flex-col gap-3 p-4 rounded-[20px]" style={{ backgroundColor: c.pastel }}>
+                  <div className="w-9 h-9 rounded-[11px] flex items-center justify-center" style={{ background: `${c.accent}22` }}>
+                    <Icon size={16} style={{ color: c.accent }} strokeWidth={2} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-nodo-ink tabular-nums leading-none">{c.value}</p>
+                    <p className="text-[10px] font-semibold text-nodo-sub mt-1 leading-tight">{c.label}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* List */}
         <div className="flex-1 overflow-y-auto pr-1">
@@ -222,10 +293,17 @@ export function AdminTenants() {
                     {/* Actions */}
                     <div className="flex items-center gap-1 shrink-0">
                       <button
+                        onClick={() => openModules(t)}
+                        className="p-2 text-nodo-dim hover:text-nodo-ink hover:bg-nodo-raised rounded-full transition-colors"
+                        title="Gestionar módulos"
+                      >
+                        <LayoutGrid size={15} />
+                      </button>
+                      <button
                         onClick={() => openPlanSheet(t)}
                         disabled={inactive}
                         className="p-2 text-nodo-dim hover:text-nodo-ink hover:bg-nodo-raised rounded-full transition-colors disabled:opacity-30"
-                        title="Suscripción"
+                        title="Asignar plan"
                       >
                         <Package size={15} />
                       </button>
@@ -362,6 +440,67 @@ export function AdminTenants() {
                     <span className="text-sm font-black text-nodo-ink tabular-nums shrink-0">
                       {p.price === 0 ? "Gratis" : `${p.currency} ${p.price}`}
                     </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </BottomSheet>
+
+      {/* Modules BottomSheet */}
+      <BottomSheet
+        open={!!modulesTenant}
+        onClose={() => setModulesTenant(null)}
+        title="Módulos Activos"
+        footer={
+          <button
+            onClick={saveModules}
+            disabled={savingModules || loadingModules}
+            className="w-full h-14 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2"
+          >
+            {savingModules ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+            GUARDAR MÓDULOS
+          </button>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          {modulesTenant && (
+            <p className="text-xs font-bold text-nodo-dim uppercase tracking-wider">{modulesTenant.name}</p>
+          )}
+
+          {loadingModules ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="w-7 h-7 animate-spin text-nodo-sub" />
+            </div>
+          ) : allModules.length === 0 ? (
+            <p className="text-sm text-nodo-dim text-center py-6">No hay módulos disponibles.</p>
+          ) : (
+            <div className="bg-nodo-inset rounded-2xl border border-nodo-line overflow-hidden">
+              {allModules.map((mod, i) => {
+                const active = activeModuleIds.has(mod.id);
+                return (
+                  <button
+                    key={mod.id}
+                    type="button"
+                    onClick={() => toggleModule(mod.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-nodo-raised ${i < allModules.length - 1 ? "border-b border-nodo-line" : ""} ${active ? "bg-nodo-raised" : ""}`}
+                  >
+                    {(() => {
+                      const ModIcon = resolveModuleIcon(mod.icon);
+                      return (
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${active ? "bg-nodo-ink" : "bg-nodo-raised"}`}>
+                          <ModIcon size={16} className={active ? "text-nodo-canvas" : "text-nodo-sub"} strokeWidth={1.8} />
+                        </div>
+                      );
+                    })()}
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="text-sm font-bold text-nodo-ink">{mod.name}</p>
+                      <p className="text-[10px] text-nodo-dim uppercase tracking-wider font-mono">{mod.code}</p>
+                    </div>
+                    <div className={`relative w-[44px] h-[26px] rounded-full transition-colors duration-200 shrink-0 ${active ? "bg-[#30D158]" : "bg-nodo-line"}`}>
+                      <span className={`absolute top-[2px] left-[2px] w-[22px] h-[22px] bg-nodo-canvas rounded-full shadow-sm transition-transform duration-200 ${active ? "translate-x-[18px]" : "translate-x-0"}`} />
+                    </div>
                   </button>
                 );
               })}

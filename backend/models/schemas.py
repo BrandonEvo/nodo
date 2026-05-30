@@ -29,6 +29,12 @@ class PendingInvitationRead(BaseModel):
     member_type: str = "employee"
     email: str
 
+class TenantSummary(BaseModel):
+    tenant_id: str
+    tenant_name: str
+    member_type: str
+    is_active: bool
+
 class SessionRead(BaseModel):
     """Payload enriquecido que combina datos de User + TenantMember + Invitations."""
     id: uuid.UUID
@@ -46,6 +52,8 @@ class SessionRead(BaseModel):
     tenant_theme_color: Optional[str] = None
     member_type: Optional[str] = None
     is_tenant_admin: bool = False
+    # Multi-tenant switcher
+    available_tenants: List[TenantSummary] = []
     # Invitaciones pendientes
     has_pending_invites: bool = False
     pending_invitations: List[PendingInvitationRead] = []
@@ -54,7 +62,8 @@ class SessionRead(BaseModel):
 # ONBOARDING
 # ==========================================
 class OnboardingUpdate(BaseModel):
-    company_name: str
+    company_name: Optional[str] = None   # None = conservar el nombre ya seteado en registro
+    module_codes: List[str] = []         # Códigos de módulos a activar (ej: ["bodega","recetas"])
 
 # ==========================================
 # INVITATIONS (Gestión de Equipo)
@@ -78,6 +87,21 @@ class InvitationRead(BaseModel):
 class InvitationRespond(BaseModel):
     action: Literal["accept", "reject"]
 
+class InvitationPreview(BaseModel):
+    """Información pública de una invitación — no requiere autenticación."""
+    id: uuid.UUID
+    tenant_name: str
+    member_type: str
+    email: str
+    expires_at: datetime
+
+class MemberRegisterRequest(BaseModel):
+    """Registro de un empleado/miembro via token de invitación."""
+    invite_token: str
+    email: str
+    password: str
+    full_name: str | None = None
+
 # ==========================================
 # TENANTS (Facturación y Espacios)
 # ==========================================
@@ -90,6 +114,7 @@ class TenantRead(BaseModel):
     billing_status: str
     plan_id: Optional[uuid.UUID] = None
     is_active: bool
+    is_system: bool = False
     created_at: datetime
 
 class TenantCreate(BaseModel):
@@ -306,6 +331,7 @@ class RecipeCreate(BaseModel):
     bake_time: Optional[int] = None
     difficulty: Optional[str] = None
     panes_por_libra_harina: Optional[int] = None
+    icon: Optional[str] = None
 
 class RecipeUpdate(BaseModel):
     name: Optional[str] = None
@@ -319,6 +345,7 @@ class RecipeUpdate(BaseModel):
     difficulty: Optional[str] = None
     panes_por_libra_harina: Optional[int] = None
     is_active: Optional[bool] = None
+    icon: Optional[str] = None
 
 class RecipeIngredientCreate(BaseModel):
     inventory_item_id: uuid.UUID
@@ -354,6 +381,7 @@ class RecipeRead(BaseModel):
     bake_time: Optional[int] = None
     difficulty: Optional[str] = None
     panes_por_libra_harina: Optional[int] = None
+    icon: Optional[str] = None
     is_active: bool
     created_at: datetime
 
@@ -443,6 +471,7 @@ class SaleItemRead(BaseModel):
     id: uuid.UUID
     recipe_id: uuid.UUID
     recipe_name: str
+    recipe_icon: Optional[str] = None
     quantity: int
     price: float
     freshness_tag: str

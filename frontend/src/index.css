@@ -36,8 +36,36 @@
     --safe-left: env(safe-area-inset-left, 0px);
     --safe-right: env(safe-area-inset-right, 0px);
 
+    /* ── MASA v2 — Módulo: Bodega (azul cielo) ── */
+    --bodega-bg:    #DFF0FF;
+    --bodega-mid:   #A8CFEF;
+    --bodega-deep:  #3A8ADF;
+    --bodega-text:  #1D4F8A;
+    --bodega-tint:  #EFF7FF;
+
+    /* ── MASA v2 — Módulo: Cocina (durazno cálido) ── */
+    --cocina-bg:    #FFE8D4;
+    --cocina-mid:   #F0B892;
+    --cocina-deep:  #D4733C;
+    --cocina-text:  #8B3E0F;
+    --cocina-tint:  #FFF3EB;
+
+    /* ── MASA v2 — Módulo: Mostrador (menta fresca) ── */
+    --mostrador-bg:    #D4F2E4;
+    --mostrador-mid:   #7DD4A8;
+    --mostrador-deep:  #1EA05E;
+    --mostrador-text:  #0F6040;
+    --mostrador-tint:  #EDFBF3;
+
+    /* ── MASA v2 — Módulo: Cierre (lavanda) ── */
+    --cierre-bg:    #ECE4FF;
+    --cierre-mid:   #C4AEF5;
+    --cierre-deep:  #7B50DC;
+    --cierre-text:  #4A2E94;
+    --cierre-tint:  #F5F0FF;
+
     /* ── Nodo semantic tokens (light) ── */
-    --nodo-canvas:     #F4F5F7;          /* page background */
+    --nodo-canvas:     #F4F2EE;          /* page background — warm off-white MASA v2 */
     --nodo-card:       #FFFFFF;          /* card / panel surface */
     --nodo-inset:      #F8F9FA;          /* input / chip background */
     --nodo-raised:     #F1F2F4;          /* hover / selection */
@@ -57,6 +85,26 @@
     --nodo-warn-bg:    #FFFBEB;
     --nodo-warn-bd:    #FDE68A;
     --nodo-warn-tx:    #D97706;
+
+    /* ── Manual de Diseño — Primary dinámico (sobreescrito por AppShell via tenantColor) ── */
+    --nodo-primary:          #69E7A8;
+    --nodo-primary-soft:     rgba(105,231,168,0.12);
+    --nodo-primary-softer:   rgba(105,231,168,0.07);
+    --nodo-primary-deep:     #2dbb77;
+    --nodo-on-primary:       #111111;
+    --nodo-shadow-fab:       0 8px 20px -4px rgba(105,231,168,0.35);
+
+    /* ── Manual de Diseño — Pasteles funcionales (light) ── */
+    --nodo-pastel-blue:      #DCE7FF;
+    --nodo-pastel-pink:      #FFDADD;
+    --nodo-pastel-peach:     #FFE9D6;
+    --nodo-pastel-mint:      #D8F0DC;
+    --nodo-pastel-yellow:    #FFF4C2;
+    --nodo-pastel-lavender:  #E9E4F5;
+
+    /* ── Manual de Diseño — Sombras (light) ── */
+    --nodo-shadow-card:      0 4px 16px -4px rgba(15,23,42,0.06);
+    --nodo-shadow-hero:      0 12px 32px -8px rgba(15,23,42,0.10);
   }
 
   .dark {
@@ -85,6 +133,34 @@
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
 
+    /* ── MASA v2 — Módulo: Bodega (dark) ── */
+    --bodega-bg:    #0f2035;
+    --bodega-mid:   #2a4a70;
+    --bodega-deep:  #5AA0E8;
+    --bodega-text:  #8FC4F5;
+    --bodega-tint:  #0a1828;
+
+    /* ── MASA v2 — Módulo: Cocina (dark) ── */
+    --cocina-bg:    #2d1a0a;
+    --cocina-mid:   #5a3218;
+    --cocina-deep:  #E8924C;
+    --cocina-text:  #F5B888;
+    --cocina-tint:  #1e1005;
+
+    /* ── MASA v2 — Módulo: Mostrador (dark) ── */
+    --mostrador-bg:    #0a2018;
+    --mostrador-mid:   #154835;
+    --mostrador-deep:  #28C06E;
+    --mostrador-text:  #5DE0A0;
+    --mostrador-tint:  #061510;
+
+    /* ── MASA v2 — Módulo: Cierre (dark) ── */
+    --cierre-bg:    #1a1030;
+    --cierre-mid:   #362060;
+    --cierre-deep:  #9B6EF5;
+    --cierre-text:  #C4A8FF;
+    --cierre-tint:  #120a24;
+
     /* ── Nodo semantic tokens (dark – iOS palette) ── */
     --nodo-canvas:     #000000;
     --nodo-card:       #1C1C1E;
@@ -105,12 +181,24 @@
     --nodo-success-tx: #32D74B;
     --nodo-warn-bg:    rgba(245,158,11,0.12);
     --nodo-warn-bd:    rgba(245,158,11,0.28);
-    --nodo-warn-tx:    #FFD60A
+    --nodo-warn-tx:    #FFD60A;
+
+    /* ── Manual de Diseño — Pasteles funcionales (dark – tinted surfaces) ── */
+    --nodo-pastel-blue:      #1a2744;
+    --nodo-pastel-pink:      #3d1a1c;
+    --nodo-pastel-peach:     #3d2410;
+    --nodo-pastel-mint:      #0f2a1c;
+    --nodo-pastel-yellow:    #2d2405;
+    --nodo-pastel-lavender:  #221a35;
+
+    /* ── Manual de Diseño — Sombras (dark) ── */
+    --nodo-shadow-card:      0 4px 16px -4px rgba(0,0,0,0.30);
+    --nodo-shadow-hero:      0 12px 32px -8px rgba(0,0,0,0.40);
   }
 
   /* Base typography */
   html {
-    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-family: 'Nunito', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;

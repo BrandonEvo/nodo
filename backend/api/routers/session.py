@@ -1,9 +1,10 @@
 """
-GET /api/auth/session — Payload enriquecido con datos M:N, onboarding e invitaciones.
-Reemplaza al básico /api/users/me para el flujo de frontend.
+GET  /api/auth/session        — Payload enriquecido M:N + onboarding + invitaciones.
+POST /api/auth/switch-tenant  — Cambia el tenant activo del usuario.
 """
 import uuid
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -15,26 +16,36 @@ from models.schemas import SessionRead, PendingInvitationRead
 router = APIRouter(tags=["Auth: Session"])
 
 
+async def _resolve_membership(user: User, session: AsyncSession) -> TenantMember | None:
+    """
+    Resuelve la membresía activa del usuario.
+    Prioridad:
+    1. last_active_tenant_id (si está seteado y la membresía sigue activa)
+    2. Primera membresía activa (ordered by assigned_at asc — la más antigua = el workspace propio)
+    """
+    result = await session.execute(
+        select(TenantMember)
+        .where(TenantMember.user_id == user.id, TenantMember.is_active == True)
+        .order_by(TenantMember.assigned_at.asc())
+    )
+    memberships = result.scalars().all()
+    if not memberships:
+        return None
+
+    if user.last_active_tenant_id:
+        for m in memberships:
+            if m.tenant_id == user.last_active_tenant_id:
+                return m
+
+    return memberships[0]
+
+
 @router.get("/session", response_model=SessionRead)
 async def get_session_enriched(
     current_user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """
-    Retorna el estado completo de sesión del usuario:
-    - Datos de identidad (email, nombre, foto).
-    - Datos M:N del tenant activo (tenant_id, tenant_name, member_type, is_tenant_admin).
-    - Estado de onboarding (onboarding_completed).
-    - Invitaciones pendientes (has_pending_invites + lista).
-    """
-    # 1. Resolver membresía M:N
-    mem_result = await session.execute(
-        select(TenantMember).where(
-            TenantMember.user_id == current_user.id,
-            TenantMember.is_active == True
-        )
-    )
-    membership = mem_result.scalars().first()
+    membership = await _resolve_membership(current_user, session)
 
     tenant_id = None
     tenant_name = None
@@ -42,27 +53,40 @@ async def get_session_enriched(
     tenant_theme_color = None
     member_type = None
     is_tenant_admin = False
+    available_tenants = []
 
     if membership:
         tenant = await session.get(Tenant, membership.tenant_id)
-        tenant_id = membership.tenant_id
-        tenant_name = tenant.name if tenant else None
-        tenant_logo_url = tenant.logo_url if tenant else None
+        tenant_id          = membership.tenant_id
+        tenant_name        = tenant.name if tenant else None
+        tenant_logo_url    = tenant.logo_url if tenant else None
         tenant_theme_color = tenant.theme_color if tenant else None
-        member_type = membership.member_type
-        is_tenant_admin = membership.member_type in ("owner", "admin")
+        member_type        = membership.member_type
+        is_tenant_admin    = membership.member_type in ("owner", "admin")
 
-    # 2. Buscar invitaciones pendientes
+        # Lista de todos los tenants disponibles para el switcher
+        all_mems_result = await session.execute(
+            select(TenantMember)
+            .where(TenantMember.user_id == current_user.id, TenantMember.is_active == True)
+        )
+        for m in all_mems_result.scalars().all():
+            t = await session.get(Tenant, m.tenant_id)
+            if t:
+                available_tenants.append({
+                    "tenant_id":   str(m.tenant_id),
+                    "tenant_name": t.name,
+                    "member_type": m.member_type,
+                    "is_active":   m.tenant_id == tenant_id,
+                })
+
     inv_result = await session.execute(
         select(Invitation).where(
-            Invitation.email == current_user.email,
-            Invitation.status == "pending"
+            Invitation.email  == current_user.email,
+            Invitation.status == "pending",
         )
     )
-    pending_invitations_raw = inv_result.scalars().all()
-
     pending_invitations = []
-    for inv in pending_invitations_raw:
+    for inv in inv_result.scalars().all():
         inv_tenant = await session.get(Tenant, inv.tenant_id)
         pending_invitations.append(PendingInvitationRead(
             id=inv.id,
@@ -88,4 +112,33 @@ async def get_session_enriched(
         is_tenant_admin=is_tenant_admin or current_user.is_superuser,
         has_pending_invites=len(pending_invitations) > 0,
         pending_invitations=pending_invitations,
+        available_tenants=available_tenants,
     )
+
+
+class SwitchTenantRequest(BaseModel):
+    tenant_id: uuid.UUID
+
+
+@router.post("/switch-tenant")
+async def switch_tenant(
+    body: SwitchTenantRequest,
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Cambia el tenant activo del usuario (workspace switcher)."""
+    mem_result = await session.execute(
+        select(TenantMember).where(
+            TenantMember.user_id   == current_user.id,
+            TenantMember.tenant_id == body.tenant_id,
+            TenantMember.is_active == True,
+        )
+    )
+    membership = mem_result.scalar_one_or_none()
+    if not membership:
+        raise HTTPException(status_code=403, detail="No tienes acceso a ese workspace.")
+
+    current_user.last_active_tenant_id = body.tenant_id
+    session.add(current_user)
+    await session.commit()
+    return {"ok": True}

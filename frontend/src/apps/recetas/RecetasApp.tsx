@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Search, Plus, X, DollarSign, ChefHat, Loader2, Trash2, Package, TrendingUp, TrendingDown, Pencil, Check, AlertTriangle, BarChart3, ArrowUpDown, Printer, ArrowLeft } from 'lucide-react';
+import { BookOpen, Search, Plus, X, ChefHat, Loader2, Trash2, Package, TrendingUp, TrendingDown, Pencil, Check, AlertTriangle, BarChart3, ArrowUpDown, Printer, ArrowLeft } from 'lucide-react';
 import type { AppProps } from '../index';
 import { recetasService, type Recipe, type RecipeWithIngredients, type RecipeIngredientRead } from '@/services/recetas.service';
 import { bodegaService, type InventoryItem } from '@/services/bodega.service';
@@ -41,7 +41,7 @@ export function RecetasApp(_props: AppProps) {
 
   const emptyRecipeForm: RecipeFormValues = {
     name: '', base_unit: 'unidades', estimated_yield: 1, sell_price: 0.0,
-    description: '', instructions: '', bake_temp: '', bake_time: '', difficulty: '',
+    description: '', instructions: '', bake_temp: '', bake_time: '', difficulty: '', icon: '',
   };
   const [newRecipe, setNewRecipe] = useState<RecipeFormValues>(emptyRecipeForm);
   const [editRecipe, setEditRecipe] = useState<RecipeFormValues>(emptyRecipeForm);
@@ -97,6 +97,7 @@ export function RecetasApp(_props: AppProps) {
         bake_temp: newRecipe.bake_temp ? parseFloat(String(newRecipe.bake_temp)) : null,
         bake_time: newRecipe.bake_time ? parseInt(String(newRecipe.bake_time)) : null,
         difficulty: newRecipe.difficulty || null,
+        icon: newRecipe.icon || null,
       });
       setRecipes(prev => [...prev, r]);
       setShowNewRecipe(false);
@@ -202,6 +203,7 @@ export function RecetasApp(_props: AppProps) {
       bake_temp: selected.bake_temp != null ? String(selected.bake_temp) : '',
       bake_time: selected.bake_time != null ? String(selected.bake_time) : '',
       difficulty: selected.difficulty ?? '',
+      icon: selected.icon ?? '',
     });
     setShowEditRecipe(true);
   };
@@ -220,6 +222,7 @@ export function RecetasApp(_props: AppProps) {
         bake_temp: editRecipe.bake_temp ? parseFloat(String(editRecipe.bake_temp)) : null,
         bake_time: editRecipe.bake_time ? parseInt(String(editRecipe.bake_time)) : null,
         difficulty: editRecipe.difficulty || null,
+        icon: editRecipe.icon || null,
       });
       setRecipes(prev => prev.map(r => r.id === updated.id ? updated : r));
       setSelected(prev => prev ? { ...prev, ...updated } : null);
@@ -344,7 +347,7 @@ export function RecetasApp(_props: AppProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-nodo-sub" />
+        <Loader2 className="w-8 h-8 animate-spin text-nodo-primary" />
       </div>
     );
   }
@@ -372,27 +375,50 @@ export function RecetasApp(_props: AppProps) {
             <span className="text-nodo-canvas/70 flex-1">"{pendingRemove.ing.item_name}" eliminado</span>
             <button
               onClick={handleUndoRemove}
-              className="text-nodo-canvas font-black text-xs border border-nodo-canvas/30 px-2.5 py-1 rounded-lg active:bg-nodo-canvas/10 transition-colors shrink-0"
+              className="text-nodo-canvas font-black text-xs border border-nodo-canvas/30 px-2.5 py-1 rounded-full active:bg-nodo-canvas/10 transition-colors shrink-0"
             >
               Deshacer
             </button>
           </div>
         )}
 
-        {/* Header */}
-        <div className="shrink-0 space-y-3">
-          <div>
-            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Recetas</h1>
-            <p className="text-nodo-sub text-sm font-medium mt-0.5">
-              {recipes.length} recetas · {profitCount} saludables
-            </p>
+        {/* ── Header ── */}
+        <div className="shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="min-w-0">
+              <h1 className="text-[26px] font-black text-nodo-ink leading-tight">Recetario</h1>
+              <p className="text-nodo-sub text-xs font-medium mt-0.5">
+                {recipes.length} recetas
+                {recipes.some(r => r.estimated_cost > 0)
+                  ? ` · ${profitCount} saludables`
+                  : ' · sin costos cargados'}
+              </p>
+            </div>
+            <div className="flex-1 hidden sm:flex justify-center">
+              <SegmentedControl
+                options={VIEW_OPTS}
+                value={viewMode}
+                onChange={v => setViewMode(v as typeof viewMode)}
+                size="sm"
+              />
+            </div>
+            <button
+              onClick={() => setShowNewRecipe(true)}
+              className="w-11 h-11 rounded-full bg-nodo-primary text-nodo-on-primary flex items-center justify-center active:scale-90 transition-transform shrink-0"
+              style={{ boxShadow: 'var(--nodo-shadow-fab)' }}
+              title="Nueva receta"
+            >
+              <Plus size={18} strokeWidth={2.5} />
+            </button>
           </div>
-          <SegmentedControl
-            options={VIEW_OPTS}
-            value={viewMode}
-            onChange={v => setViewMode(v as typeof viewMode)}
-            size="sm"
-          />
+          <div className="sm:hidden mt-3">
+            <SegmentedControl
+              options={VIEW_OPTS}
+              value={viewMode}
+              onChange={v => setViewMode(v as typeof viewMode)}
+              size="sm"
+            />
+          </div>
         </div>
 
         {/* ── VIEW: Recetario ── */}
@@ -403,26 +429,22 @@ export function RecetasApp(_props: AppProps) {
             <div className={`lg:w-72 xl:w-80 shrink-0 flex flex-col bg-nodo-card rounded-3xl border border-nodo-line shadow-sm overflow-hidden ${showList ? '' : 'hidden lg:flex'}`}>
               <div className="p-4 border-b border-nodo-line space-y-3 shrink-0">
                 <div className="relative">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-nodo-sub pointer-events-none" />
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-nodo-dim pointer-events-none" />
                   <input
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder="Buscar receta..."
-                    className="w-full h-10 pl-10 pr-4 bg-nodo-inset border border-nodo-line rounded-xl text-sm font-medium text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-ink outline-none transition-colors"
+                    className="w-full h-10 pl-10 pr-4 bg-nodo-inset rounded-full text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:ring-2 focus:ring-nodo-primary/20 outline-none transition-all"
                   />
                 </div>
-                <button
-                  onClick={() => setShowNewRecipe(true)}
-                  className="w-full h-10 bg-nodo-ink text-nodo-canvas text-sm font-bold rounded-xl active:scale-[0.97] transition-transform flex items-center justify-center gap-2"
-                >
-                  <Plus size={16} /> Nueva Receta
-                </button>
               </div>
 
               <div className="flex-1 overflow-y-auto min-h-0">
                 {filtered.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-40 text-center px-4">
-                    <BookOpen size={32} className="text-nodo-dim mb-2" />
+                  <div className="flex flex-col items-center justify-center h-40 text-center px-4 gap-2">
+                    <div className="w-12 h-12 rounded-2xl bg-nodo-primary-soft flex items-center justify-center">
+                      <BookOpen size={20} className="text-nodo-primary" />
+                    </div>
                     <p className="text-xs font-bold text-nodo-dim">Sin recetas</p>
                   </div>
                 ) : (
@@ -432,32 +454,42 @@ export function RecetasApp(_props: AppProps) {
                     const marginPct = ventaLote > 0 && recipe.estimated_cost > 0
                       ? ((ventaLote - recipe.estimated_cost) / ventaLote) * 100
                       : null;
-                    const marginColor = isSelected
-                      ? 'text-nodo-canvas/70'
-                      : marginPct === null ? 'text-nodo-dim'
-                      : marginPct >= 30 ? 'text-nodo-success-tx'
-                      : marginPct >= 0 ? 'text-amber-500'
-                      : 'text-nodo-danger-tx';
                     return (
                       <button
                         key={recipe.id}
                         onClick={() => loadDetail(recipe.id)}
                         className={`w-full flex items-center gap-3 px-5 py-4 text-left transition-all border-b border-nodo-line last:border-0 ${
-                          isSelected ? 'bg-nodo-ink' : 'hover:bg-nodo-inset'
+                          isSelected ? 'bg-nodo-primary' : 'hover:bg-nodo-inset'
                         }`}
                       >
-                        <ChefHat size={18} className={isSelected ? 'text-nodo-canvas/60' : 'text-nodo-dim'} />
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isSelected ? 'bg-white/20' : 'bg-nodo-primary-soft'}`}>
+                          {recipe.icon
+                            ? <span className="text-lg leading-none">{recipe.icon}</span>
+                            : <ChefHat size={16} className={isSelected ? 'text-nodo-on-primary' : 'text-nodo-primary'} />
+                          }
+                        </div>
                         <div className="min-w-0 flex-1">
-                          <p className={`text-sm font-bold truncate ${isSelected ? 'text-nodo-canvas' : 'text-nodo-ink'}`}>
+                          <p className={`text-sm font-bold truncate ${isSelected ? 'text-nodo-on-primary' : 'text-nodo-ink'}`}>
                             {recipe.name}
                           </p>
-                          <p className={`text-xs ${isSelected ? 'text-nodo-canvas/60' : 'text-nodo-sub'}`}>
-                            {recipe.estimated_yield} {recipe.base_unit} · Q{recipe.sell_price.toFixed(2)}
+                          <p className={`text-xs ${isSelected ? 'text-nodo-on-primary opacity-70' : 'text-nodo-sub'}`}>
+                            {recipe.estimated_yield} {recipe.base_unit}
                           </p>
                         </div>
-                        <span className={`text-xs font-black shrink-0 tabular-nums ${marginColor}`}>
-                          {marginPct !== null ? `${marginPct.toFixed(0)}%` : '—'}
-                        </span>
+                        <div className="shrink-0 text-right">
+                          <p className={`text-sm font-black tabular-nums ${isSelected ? 'text-nodo-on-primary' : 'text-nodo-ink'}`}>
+                            Q{recipe.sell_price.toFixed(2)}
+                          </p>
+                          {marginPct !== null && (
+                            <p className={`text-[10px] font-bold tabular-nums ${
+                              marginPct >= 30 ? 'text-nodo-success-tx'
+                              : marginPct >= 0 ? 'text-amber-500'
+                              : 'text-nodo-danger-tx'
+                            }`}>
+                              {marginPct.toFixed(0)}%
+                            </p>
+                          )}
+                        </div>
                       </button>
                     );
                   })
@@ -469,7 +501,7 @@ export function RecetasApp(_props: AppProps) {
             <div className={`flex-1 flex flex-col min-w-0 min-h-0 ${!showList ? '' : 'hidden lg:flex'}`}>
               {loadingDetail ? (
                 <div className="flex items-center justify-center h-64 bg-nodo-card rounded-3xl border border-nodo-line">
-                  <Loader2 className="w-6 h-6 animate-spin text-nodo-sub" />
+                  <Loader2 className="w-6 h-6 animate-spin text-nodo-primary" />
                 </div>
               ) : selected ? (
                 <div className="bg-nodo-card rounded-3xl border border-nodo-line shadow-sm flex-1 overflow-y-auto min-h-0 flex flex-col">
@@ -479,38 +511,42 @@ export function RecetasApp(_props: AppProps) {
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => setShowList(true)}
-                          className="lg:hidden w-9 h-9 flex items-center justify-center rounded-xl bg-nodo-inset text-nodo-sub active:scale-90 transition-transform"
+                          className="lg:hidden w-9 h-9 flex items-center justify-center rounded-full bg-nodo-inset text-nodo-sub active:scale-90 transition-transform"
                         >
                           <ArrowLeft size={18} />
                         </button>
-                        <div className="w-12 h-12 rounded-2xl bg-nodo-inset flex items-center justify-center shrink-0">
-                          <ChefHat size={24} className="text-nodo-sub" />
+                        {/* Ícono de receta con primary-soft */}
+                        <div className="w-12 h-12 rounded-2xl bg-nodo-primary-soft flex items-center justify-center shrink-0">
+                          {selected.icon
+                            ? <span className="text-2xl leading-none">{selected.icon}</span>
+                            : <ChefHat size={22} className="text-nodo-primary" />
+                          }
                         </div>
                         <div>
                           <h2 className="text-xl font-black text-nodo-ink">{selected.name}</h2>
-                          <p className="text-xs text-nodo-sub mt-0.5 tabular-nums">
-                            {selected.estimated_yield} {selected.base_unit} · Q{selected.sell_price.toFixed(2)} por {selected.base_unit}
+                          <p className="text-xs text-nodo-sub mt-0.5 tabular-nums whitespace-nowrap">
+                            {selected.estimated_yield} {selected.base_unit} · Q{selected.sell_price.toFixed(2)} c/u
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button
                           onClick={handlePrintRecipe}
-                          className="w-9 h-9 flex items-center justify-center rounded-xl text-nodo-sub hover:bg-nodo-inset transition-colors"
+                          className="w-9 h-9 flex items-center justify-center rounded-full text-nodo-sub hover:bg-nodo-inset transition-colors"
                           title="Imprimir"
                         >
                           <Printer size={17} />
                         </button>
                         <button
                           onClick={openEditRecipe}
-                          className="w-9 h-9 flex items-center justify-center rounded-xl text-nodo-sub hover:bg-nodo-inset transition-colors"
+                          className="w-9 h-9 flex items-center justify-center rounded-full text-nodo-sub hover:bg-nodo-inset transition-colors"
                           title="Editar"
                         >
                           <Pencil size={17} />
                         </button>
                         <button
                           onClick={() => setConfirmDelete(selected.id)}
-                          className="w-9 h-9 flex items-center justify-center rounded-xl text-nodo-danger-tx hover:bg-nodo-danger-bg transition-colors"
+                          className="w-9 h-9 flex items-center justify-center rounded-full text-nodo-danger-tx hover:bg-nodo-danger-bg transition-colors"
                           title="Eliminar"
                         >
                           <Trash2 size={17} />
@@ -531,7 +567,7 @@ export function RecetasApp(_props: AppProps) {
                   {/* Tab: Costos */}
                   {activeTab === 'costos' && (
                     <div className="p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto min-h-0">
-                      {/* Alertas de rentabilidad */}
+                      {/* Alertas */}
                       {(() => {
                         const ventaLote = selected.sell_price * (selected.estimated_yield || 1);
                         const ganancia = ventaLote - selected.estimated_cost;
@@ -558,7 +594,7 @@ export function RecetasApp(_props: AppProps) {
                         return null;
                       })()}
 
-                      {/* Financial cards */}
+                      {/* Resumen financiero — tarjeta única */}
                       {(() => {
                         const costTotal = selected.estimated_cost;
                         const yld = selected.estimated_yield || 1;
@@ -567,56 +603,36 @@ export function RecetasApp(_props: AppProps) {
                         const gananciaLote = ventaLote - costTotal;
                         const marginPct = ventaLote > 0 ? (gananciaLote / ventaLote) * 100 : 0;
                         const profitable = gananciaLote >= 0;
+                        const marginChip = marginPct >= 30
+                          ? 'bg-violet-500/10 border-violet-500/20 text-violet-600 dark:text-violet-400'
+                          : marginPct >= 0
+                          ? 'bg-nodo-warn-bg border-nodo-warn-bd text-nodo-warn-tx'
+                          : 'bg-nodo-danger-bg border-nodo-danger-bd text-nodo-danger-tx';
                         return (
-                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                            <div className="bg-nodo-success-bg border border-nodo-success-bd rounded-2xl p-4 flex flex-col gap-1">
-                              <div className="flex items-center gap-1.5 text-nodo-success-tx">
-                                <DollarSign size={13} />
-                                <p className="text-[10px] font-bold uppercase tracking-wider">Costo Lote</p>
+                          <div className={`rounded-3xl p-5 ${profitable ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-nodo-danger-bg border border-nodo-danger-bd'}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className={`text-[10px] font-black uppercase tracking-wider mb-1 ${profitable ? 'text-blue-500' : 'text-nodo-danger-tx'}`}>
+                                  Ganancia por lote
+                                </p>
+                                <p className={`text-[44px] font-black tabular-nums tracking-tight leading-none ${profitable ? 'text-blue-600 dark:text-blue-400' : 'text-nodo-danger-tx'}`}>
+                                  {profitable ? '+' : ''}Q{gananciaLote.toFixed(2)}
+                                </p>
                               </div>
-                              <p className="text-2xl font-black text-nodo-success-tx tabular-nums">Q{costTotal.toFixed(2)}</p>
-                              <p className="text-[11px] text-nodo-success-tx/80 tabular-nums">Q{costUnit.toFixed(2)} por {selected.base_unit}</p>
+                              <span className={`shrink-0 mt-1 px-3 py-1.5 rounded-full text-xs font-black border ${marginChip}`}>
+                                {marginPct.toFixed(1)}% · {marginPct >= 30 ? 'Saludable' : marginPct >= 0 ? 'Bajo' : 'Pérdida'}
+                              </span>
                             </div>
-                            <div className="bg-nodo-inset border border-nodo-line rounded-2xl p-4 flex flex-col gap-1">
-                              <div className="flex items-center gap-1.5 text-nodo-sub">
-                                <DollarSign size={13} />
-                                <p className="text-[10px] font-bold uppercase tracking-wider">Precio Venta</p>
-                              </div>
-                              <p className="text-2xl font-black text-nodo-ink tabular-nums">Q{ventaLote.toFixed(2)}</p>
-                              <p className="text-[11px] text-nodo-sub tabular-nums">Q{selected.sell_price.toFixed(2)} por {selected.base_unit}</p>
-                            </div>
-                            <div className={`border rounded-2xl p-4 flex flex-col gap-1 ${profitable ? 'bg-blue-500/10 border-blue-500/20' : 'bg-nodo-danger-bg border-nodo-danger-bd'}`}>
-                              <div className={`flex items-center gap-1.5 ${profitable ? 'text-blue-500' : 'text-nodo-danger-tx'}`}>
-                                <TrendingUp size={13} />
-                                <p className="text-[10px] font-bold uppercase tracking-wider">Ganancia</p>
-                              </div>
-                              <p className={`text-2xl font-black tabular-nums ${profitable ? 'text-blue-600 dark:text-blue-400' : 'text-nodo-danger-tx'}`}>
-                                {profitable ? '+' : ''}Q{gananciaLote.toFixed(2)}
-                              </p>
-                              <p className={`text-[11px] tabular-nums ${profitable ? 'text-blue-500/80' : 'text-nodo-danger-tx/80'}`}>
-                                {profitable ? '+' : ''}Q{(selected.sell_price - costUnit).toFixed(2)} por {selected.base_unit}
-                              </p>
-                            </div>
-                            <div className={`border rounded-2xl p-4 flex flex-col gap-1 ${
-                              marginPct >= 30 ? 'bg-violet-500/10 border-violet-500/20'
-                              : marginPct >= 0 ? 'bg-nodo-warn-bg border-nodo-warn-bd'
-                              : 'bg-nodo-danger-bg border-nodo-danger-bd'
-                            }`}>
-                              <div className={`flex items-center gap-1.5 ${
-                                marginPct >= 30 ? 'text-violet-500' : marginPct >= 0 ? 'text-nodo-warn-tx' : 'text-nodo-danger-tx'
-                              }`}>
-                                <TrendingUp size={13} />
-                                <p className="text-[10px] font-bold uppercase tracking-wider">Margen</p>
-                              </div>
-                              <p className={`text-2xl font-black tabular-nums ${
-                                marginPct >= 30 ? 'text-violet-600 dark:text-violet-400'
-                                : marginPct >= 0 ? 'text-nodo-warn-tx' : 'text-nodo-danger-tx'
-                              }`}>{marginPct.toFixed(1)}%</p>
-                              <p className={`text-[11px] ${
-                                marginPct >= 30 ? 'text-violet-500/80' : marginPct >= 0 ? 'text-nodo-warn-tx/80' : 'text-nodo-danger-tx/80'
-                              }`}>
-                                {marginPct >= 30 ? 'Saludable' : marginPct >= 0 ? 'Bajo' : 'Pérdida'}
-                              </p>
+                            <div className={`flex gap-4 mt-3 pt-3 border-t ${profitable ? 'border-blue-500/10' : 'border-nodo-danger-tx/10'}`}>
+                              <span className={`text-xs tabular-nums ${profitable ? 'text-blue-500/70' : 'text-nodo-danger-tx/70'}`}>
+                                Costo: Q{costTotal.toFixed(2)}
+                              </span>
+                              <span className={`text-xs tabular-nums ${profitable ? 'text-blue-500/70' : 'text-nodo-danger-tx/70'}`}>
+                                Venta: Q{ventaLote.toFixed(2)}
+                              </span>
+                              <span className={`text-xs tabular-nums ${profitable ? 'text-blue-500/70' : 'text-nodo-danger-tx/70'}`}>
+                                Q{costUnit.toFixed(2)} / {selected.base_unit}
+                              </span>
                             </div>
                           </div>
                         );
@@ -637,10 +653,12 @@ export function RecetasApp(_props: AppProps) {
                         }, {});
                         return (
                           <div>
-                            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-4">Ingredientes</p>
+                            <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider mb-4">Ingredientes</p>
                             {selected.ingredients.length === 0 ? (
-                              <div className="flex flex-col items-center py-6 mb-3 text-center">
-                                <Package size={28} className="text-nodo-dim mb-1.5" />
+                              <div className="flex flex-col items-center py-6 mb-3 text-center gap-2">
+                                <div className="w-12 h-12 rounded-2xl bg-nodo-primary-soft flex items-center justify-center">
+                                  <Package size={20} className="text-nodo-primary" />
+                                </div>
                                 <p className="text-sm text-nodo-dim font-medium">Sin ingredientes — añade el primero abajo</p>
                               </div>
                             ) : (
@@ -648,10 +666,9 @@ export function RecetasApp(_props: AppProps) {
                                 <table className="w-full text-sm">
                                   <thead>
                                     <tr className="border-b border-nodo-line">
-                                      <th className="text-left px-5 py-3 text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Insumo</th>
-                                      <th className="text-center px-4 py-3 text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Cantidad</th>
-                                      <th className="text-center px-4 py-3 text-[10px] font-bold text-nodo-dim uppercase tracking-wider hidden sm:table-cell">Precio/U</th>
-                                      <th className="text-right px-4 py-3 text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Subtotal</th>
+                                      <th className="text-left px-5 py-3 text-[10px] font-black text-nodo-dim uppercase tracking-wider">Insumo</th>
+                                      <th className="text-center px-4 py-3 text-[10px] font-black text-nodo-dim uppercase tracking-wider">Cantidad</th>
+                                      <th className="text-right px-4 py-3 text-[10px] font-black text-nodo-dim uppercase tracking-wider">Subtotal</th>
                                       <th className="px-3 py-3" />
                                     </tr>
                                   </thead>
@@ -671,7 +688,7 @@ export function RecetasApp(_props: AppProps) {
                                                   if (e.key === 'Escape') { setEditingIngId(null); setEditingIngQty(''); }
                                                 }}
                                                 onBlur={() => handleUpdateIngQty(ing.id)}
-                                                className="w-20 h-8 px-2 text-center text-sm font-bold border-2 border-nodo-ink rounded-lg outline-none bg-nodo-card text-nodo-ink"
+                                                className="w-20 h-8 px-2 text-center text-sm font-bold border-2 border-nodo-primary rounded-xl outline-none bg-nodo-card text-nodo-ink"
                                               />
                                               <span className="text-xs text-nodo-sub">{ing.item_unit}</span>
                                             </div>
@@ -685,16 +702,13 @@ export function RecetasApp(_props: AppProps) {
                                             </button>
                                           )}
                                         </td>
-                                        <td className="px-4 py-3 text-center text-nodo-sub font-medium hidden sm:table-cell tabular-nums">
-                                          {ing.unit_cost > 0 ? `Q${ing.unit_cost.toFixed(2)}` : <span className="text-nodo-dim">—</span>}
-                                        </td>
                                         <td className="px-4 py-3 text-right font-bold text-nodo-ink tabular-nums">
                                           {ing.subtotal > 0 ? `Q${ing.subtotal.toFixed(2)}` : <span className="text-nodo-dim font-medium">—</span>}
                                         </td>
                                         <td className="px-3 py-3 text-right">
                                           <button
                                             onClick={() => handleRemoveIngredient(ing.id)}
-                                            className="p-1.5 text-nodo-danger-tx/50 hover:text-nodo-danger-tx hover:bg-nodo-danger-bg rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                            className="p-1.5 text-nodo-danger-tx/50 hover:text-nodo-danger-tx hover:bg-nodo-danger-bg rounded-full transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                                           >
                                             <X size={14} />
                                           </button>
@@ -704,8 +718,7 @@ export function RecetasApp(_props: AppProps) {
                                   </tbody>
                                   <tfoot>
                                     <tr className="border-t-2 border-nodo-line bg-nodo-card">
-                                      <td colSpan={3} className="px-5 py-3 text-xs font-bold text-nodo-dim uppercase tracking-wider hidden sm:table-cell">Total costo lote</td>
-                                      <td colSpan={3} className="px-5 py-3 text-xs font-bold text-nodo-dim uppercase tracking-wider sm:hidden">Total</td>
+                                      <td colSpan={2} className="px-5 py-3 text-xs font-black text-nodo-dim uppercase tracking-wider">Total costo lote</td>
                                       <td className="px-4 py-3 text-right text-base font-black text-nodo-success-tx tabular-nums">Q{selected.estimated_cost.toFixed(2)}</td>
                                       <td className="px-3 py-3" />
                                     </tr>
@@ -719,12 +732,12 @@ export function RecetasApp(_props: AppProps) {
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 relative">
                                   {selectedItem ? (
-                                    <div className="flex items-center gap-2 px-3 py-2 bg-nodo-ink rounded-xl h-10">
-                                      <span className="text-sm font-bold text-nodo-canvas flex-1 truncate">{selectedItem.name}</span>
-                                      <span className="text-xs text-nodo-canvas/50 shrink-0">{selectedItem.unit}</span>
+                                    <div className="flex items-center gap-2 px-3 py-2 bg-nodo-primary rounded-xl h-10">
+                                      <span className="text-sm font-bold text-nodo-on-primary flex-1 truncate">{selectedItem.name}</span>
+                                      <span className="text-xs text-nodo-on-primary opacity-50 shrink-0">{selectedItem.unit}</span>
                                       <button
                                         onClick={() => { setNewIng(prev => ({ ...prev, inventory_item_id: '' })); setIngSearch(''); setIngDropOpen(true); }}
-                                        className="text-nodo-canvas/50 hover:text-nodo-canvas transition-colors shrink-0"
+                                        className="text-nodo-on-primary opacity-50 hover:opacity-100 transition-opacity shrink-0"
                                       >
                                         <X size={14} />
                                       </button>
@@ -738,13 +751,13 @@ export function RecetasApp(_props: AppProps) {
                                         onFocus={() => setIngDropOpen(true)}
                                         onBlur={() => setTimeout(() => setIngDropOpen(false), 150)}
                                         placeholder="Buscar insumo de bodega..."
-                                        className="w-full h-10 pl-9 pr-3 bg-nodo-inset border border-nodo-line rounded-xl text-sm font-medium text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-ink outline-none transition-colors"
+                                        className="w-full h-10 pl-9 pr-3 bg-nodo-inset border border-nodo-line rounded-xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:border-nodo-primary outline-none transition-colors"
                                       />
                                       {ingDropOpen && filteredInv.length > 0 && (
                                         <div className="absolute z-20 bottom-full mb-1 w-full bg-nodo-card border border-nodo-line-s rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
                                           {Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).map(([cat, items]) => (
                                             <div key={cat}>
-                                              <p className="px-3 pt-2 pb-1 text-[10px] font-bold text-nodo-dim uppercase tracking-wider">{cat}</p>
+                                              <p className="px-3 pt-2 pb-1 text-[10px] font-black text-nodo-dim uppercase tracking-wider">{cat}</p>
                                               {items.map(i => (
                                                 <button
                                                   key={i.id}
@@ -768,12 +781,12 @@ export function RecetasApp(_props: AppProps) {
                                   onChange={e => setNewIng(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
                                   onKeyDown={e => { if (e.key === 'Enter' && newIng.inventory_item_id) handleAddIngredient(); }}
                                   placeholder={selectedItem?.unit ?? 'cant.'}
-                                  className="w-24 h-10 px-3 text-center bg-nodo-inset border border-nodo-line rounded-xl text-sm font-bold text-nodo-ink focus:border-nodo-ink outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  className="w-16 sm:w-24 h-10 px-3 text-center bg-nodo-inset border border-nodo-line rounded-xl text-sm font-bold text-nodo-ink focus:border-nodo-primary outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 />
                                 <button
                                   onClick={handleAddIngredient}
                                   disabled={!newIng.inventory_item_id || saving}
-                                  className="h-10 px-4 bg-nodo-ink text-nodo-canvas text-sm font-bold rounded-xl active:scale-95 transition-transform disabled:opacity-30 flex items-center gap-1.5 shrink-0"
+                                  className="h-10 px-3 sm:px-4 bg-nodo-primary text-nodo-on-primary text-sm font-bold rounded-full active:scale-95 transition-transform disabled:opacity-30 flex items-center gap-1.5 shrink-0"
                                 >
                                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                                   Añadir
@@ -798,7 +811,7 @@ export function RecetasApp(_props: AppProps) {
                           {showSimulator && (
                             <div className="mt-4 bg-violet-500/10 border border-violet-500/20 rounded-2xl p-4 space-y-3">
                               <div className="flex items-center justify-between">
-                                <p className="text-xs font-bold text-violet-600 dark:text-violet-400 uppercase tracking-wider">Simulador de precios</p>
+                                <p className="text-xs font-black text-violet-600 dark:text-violet-400 uppercase tracking-wider">Simulador de precios</p>
                                 <button
                                   onClick={() => setSimAdjustments({})}
                                   className="text-[10px] font-bold text-violet-400 hover:text-violet-600 dark:hover:text-violet-300 transition-colors"
@@ -819,7 +832,7 @@ export function RecetasApp(_props: AppProps) {
                                           value={pct === 0 ? '' : pct}
                                           onChange={e => setSimAdjustments(prev => ({ ...prev, [ing.id]: parseFloat(e.target.value) || 0 }))}
                                           placeholder="0"
-                                          className="w-16 h-8 px-2 text-center text-sm font-bold border-2 border-violet-500/30 bg-nodo-card rounded-lg outline-none focus:border-violet-500 transition-colors text-nodo-ink [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                          className="w-16 h-8 px-2 text-center text-sm font-bold border-2 border-violet-500/30 bg-nodo-card rounded-xl outline-none focus:border-violet-500 transition-colors text-nodo-ink [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                         />
                                         <span className="text-xs text-violet-500 font-bold">%</span>
                                       </div>
@@ -845,7 +858,7 @@ export function RecetasApp(_props: AppProps) {
                                 return (
                                   <div className="bg-nodo-card rounded-xl p-3 flex items-center justify-between gap-4 border border-violet-500/20">
                                     <div className="text-center">
-                                      <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Costo proyectado</p>
+                                      <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider">Costo proyectado</p>
                                       <p className="text-lg font-black text-nodo-ink tabular-nums">Q{simCost.toFixed(2)}</p>
                                       <p className={`text-[10px] font-bold tabular-nums ${
                                         delta > 0 ? 'text-nodo-danger-tx' : delta < 0 ? 'text-nodo-success-tx' : 'text-nodo-dim'
@@ -854,7 +867,7 @@ export function RecetasApp(_props: AppProps) {
                                       </p>
                                     </div>
                                     <div className="text-center">
-                                      <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Margen proyectado</p>
+                                      <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider">Margen proyectado</p>
                                       <p className={`text-lg font-black tabular-nums ${
                                         simMargin >= 30 ? 'text-violet-600 dark:text-violet-400'
                                         : simMargin >= 0 ? 'text-nodo-warn-tx' : 'text-nodo-danger-tx'
@@ -866,7 +879,7 @@ export function RecetasApp(_props: AppProps) {
                                       </p>
                                     </div>
                                     <div className="text-center">
-                                      <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Ganancia proyectada</p>
+                                      <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider">Ganancia proyectada</p>
                                       <p className={`text-lg font-black tabular-nums ${
                                         simGanancia >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-nodo-danger-tx'
                                       }`}>
@@ -889,7 +902,7 @@ export function RecetasApp(_props: AppProps) {
                     <div className="p-6 lg:p-8 flex-1 overflow-y-auto min-h-0">
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                          <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Ficha técnica</p>
+                          <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider">Ficha técnica</p>
                           {!(selected.description || selected.bake_temp || selected.bake_time || selected.difficulty || selected.instructions) && (
                             <button
                               onClick={openEditRecipe}
@@ -903,7 +916,7 @@ export function RecetasApp(_props: AppProps) {
                         {!(selected.description || selected.bake_temp || selected.bake_time || selected.difficulty || selected.instructions) ? (
                           <button
                             onClick={openEditRecipe}
-                            className="w-full text-left bg-nodo-inset border-2 border-dashed border-nodo-line rounded-2xl px-5 py-6 hover:border-nodo-line-s transition-all group"
+                            className="w-full text-left bg-nodo-inset border-2 border-dashed border-nodo-line rounded-2xl px-5 py-6 hover:border-nodo-primary/30 transition-all group"
                           >
                             <p className="text-sm font-semibold text-nodo-sub group-hover:text-nodo-ink transition-colors">
                               Sin instrucciones, temperatura ni notas aún
@@ -915,7 +928,7 @@ export function RecetasApp(_props: AppProps) {
                             {(selected.bake_temp || selected.bake_time || selected.difficulty) && (
                               <div className="flex flex-wrap gap-3">
                                 {selected.difficulty && (
-                                  <span className={`px-3 py-1.5 rounded-xl text-xs font-bold ${
+                                  <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${
                                     selected.difficulty === 'fácil' ? 'bg-nodo-success-bg text-nodo-success-tx border border-nodo-success-bd'
                                     : selected.difficulty === 'media' ? 'bg-nodo-warn-bg text-nodo-warn-tx border border-nodo-warn-bd'
                                     : 'bg-nodo-danger-bg text-nodo-danger-tx border border-nodo-danger-bd'
@@ -924,12 +937,12 @@ export function RecetasApp(_props: AppProps) {
                                   </span>
                                 )}
                                 {selected.bake_temp && (
-                                  <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+                                  <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
                                     🌡 {selected.bake_temp}°C
                                   </span>
                                 )}
                                 {selected.bake_time && (
-                                  <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                  <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
                                     ⏱ {selected.bake_time} min
                                   </span>
                                 )}
@@ -938,18 +951,18 @@ export function RecetasApp(_props: AppProps) {
 
                             {selected.description && (
                               <div className="bg-nodo-inset rounded-2xl p-4 border border-nodo-line">
-                                <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-2">Descripción</p>
+                                <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider mb-2">Descripción</p>
                                 <p className="text-sm text-nodo-sub leading-relaxed">{selected.description}</p>
                               </div>
                             )}
 
                             {selected.instructions && (
                               <div className="bg-nodo-inset rounded-2xl p-4 border border-nodo-line">
-                                <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-3">Instrucciones</p>
+                                <p className="text-[10px] font-black text-nodo-dim uppercase tracking-wider mb-3">Instrucciones</p>
                                 <div className="space-y-2">
                                   {selected.instructions.split('\n').filter(l => l.trim()).map((line, i) => (
                                     <div key={i} className="flex gap-3">
-                                      <span className="w-5 h-5 rounded-full bg-nodo-ink text-nodo-canvas text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">
+                                      <span className="w-5 h-5 rounded-full bg-nodo-primary text-nodo-on-primary text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">
                                         {i + 1}
                                       </span>
                                       <p className="text-sm text-nodo-sub leading-relaxed">{line.trim()}</p>
@@ -965,8 +978,10 @@ export function RecetasApp(_props: AppProps) {
                   )}
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-center bg-nodo-card rounded-3xl border border-nodo-line">
-                  <BookOpen size={48} className="text-nodo-dim mb-4" />
+                <div className="flex-1 flex flex-col items-center justify-center text-center bg-nodo-card rounded-3xl border border-nodo-line gap-3">
+                  <div className="w-16 h-16 rounded-3xl bg-nodo-primary-soft flex items-center justify-center">
+                    <BookOpen size={28} className="text-nodo-primary" />
+                  </div>
                   <p className="text-sm font-bold text-nodo-dim">Selecciona una receta</p>
                 </div>
               )}
@@ -977,20 +992,31 @@ export function RecetasApp(_props: AppProps) {
         {/* ── VIEW: Rentabilidad ── */}
         {viewMode === 'rentabilidad' && (
           <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-hidden">
-            <div className="grid grid-cols-3 gap-3 shrink-0">
-              <div className="bg-nodo-success-bg border border-nodo-success-bd rounded-2xl px-5 py-4 flex flex-col gap-1">
-                <p className="text-[10px] font-bold text-nodo-success-tx uppercase tracking-wider">Saludables ≥30%</p>
-                <p className="text-3xl font-black text-nodo-success-tx tabular-nums">{profitCount}</p>
+            {/* KPI asimétrico — saludables como hero */}
+            <div className="grid grid-cols-2 gap-3 shrink-0">
+              <div className="col-span-2 bg-nodo-success-bg border border-nodo-success-bd rounded-3xl px-5 py-5">
+                <p className="text-[10px] font-black text-nodo-success-tx uppercase tracking-wider">Recetas saludables ≥30%</p>
+                <p className="text-[48px] font-black text-nodo-success-tx tabular-nums tracking-tight leading-none mt-1">{profitCount}</p>
               </div>
-              <div className="bg-nodo-warn-bg border border-nodo-warn-bd rounded-2xl px-5 py-4 flex flex-col gap-1">
-                <p className="text-[10px] font-bold text-nodo-warn-tx uppercase tracking-wider">Margen bajo</p>
-                <p className="text-3xl font-black text-nodo-warn-tx tabular-nums">{lowCount}</p>
+              <div className="bg-nodo-warn-bg border border-nodo-warn-bd rounded-3xl px-5 py-4">
+                <p className="text-[10px] font-black text-nodo-warn-tx uppercase tracking-wider">Margen bajo</p>
+                <p className="text-[32px] font-black text-nodo-warn-tx tabular-nums leading-none mt-1">{lowCount}</p>
               </div>
-              <div className="bg-nodo-danger-bg border border-nodo-danger-bd rounded-2xl px-5 py-4 flex flex-col gap-1">
-                <p className="text-[10px] font-bold text-nodo-danger-tx uppercase tracking-wider">En pérdida</p>
-                <p className="text-3xl font-black text-nodo-danger-tx tabular-nums">{lossCount}</p>
+              <div className="bg-nodo-danger-bg border border-nodo-danger-bd rounded-3xl px-5 py-4">
+                <p className="text-[10px] font-black text-nodo-danger-tx uppercase tracking-wider">En pérdida</p>
+                <p className="text-[32px] font-black text-nodo-danger-tx tabular-nums leading-none mt-1">{lossCount}</p>
               </div>
             </div>
+
+            {recipesSorted.length > 0 && recipesSorted.every(r => r.margin === null) && (
+              <div className="flex items-start gap-3 bg-nodo-warn-bg border border-nodo-warn-bd rounded-2xl px-4 py-3 shrink-0">
+                <AlertTriangle size={15} className="text-nodo-warn-tx shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-nodo-warn-tx">Los insumos no tienen precio en Bodega</p>
+                  <p className="text-xs text-nodo-warn-tx mt-0.5 opacity-80">Añade precios a los insumos en el módulo de Bodega para calcular márgenes reales.</p>
+                </div>
+              </div>
+            )}
 
             <div className="bg-nodo-card rounded-3xl border border-nodo-line shadow-sm flex-1 overflow-hidden flex flex-col">
               <div className="overflow-auto flex-1 min-h-0">
@@ -998,27 +1024,27 @@ export function RecetasApp(_props: AppProps) {
                   <thead className="sticky top-0 bg-nodo-card z-10 border-b border-nodo-line">
                     <tr>
                       <th className="text-left px-6 py-4">
-                        <button onClick={() => toggleSort('name')} className="flex items-center gap-1.5 text-[10px] font-bold text-nodo-dim uppercase tracking-wider hover:text-nodo-ink transition-colors">
+                        <button onClick={() => toggleSort('name')} className="flex items-center gap-1.5 text-[10px] font-black text-nodo-dim uppercase tracking-wider hover:text-nodo-ink transition-colors">
                           Nombre {sortBy === 'name' ? <ArrowUpDown size={12} className="text-nodo-ink" /> : <ArrowUpDown size={12} className="opacity-30" />}
                         </button>
                       </th>
                       <th className="text-right px-4 py-4">
-                        <button onClick={() => toggleSort('cost')} className="flex items-center gap-1.5 text-[10px] font-bold text-nodo-dim uppercase tracking-wider hover:text-nodo-ink transition-colors ml-auto">
+                        <button onClick={() => toggleSort('cost')} className="flex items-center gap-1.5 text-[10px] font-black text-nodo-dim uppercase tracking-wider hover:text-nodo-ink transition-colors ml-auto">
                           Costo Lote {sortBy === 'cost' ? <ArrowUpDown size={12} className="text-nodo-ink" /> : <ArrowUpDown size={12} className="opacity-30" />}
                         </button>
                       </th>
                       <th className="text-right px-4 py-4">
-                        <button onClick={() => toggleSort('revenue')} className="flex items-center gap-1.5 text-[10px] font-bold text-nodo-dim uppercase tracking-wider hover:text-nodo-ink transition-colors ml-auto">
+                        <button onClick={() => toggleSort('revenue')} className="flex items-center gap-1.5 text-[10px] font-black text-nodo-dim uppercase tracking-wider hover:text-nodo-ink transition-colors ml-auto">
                           Precio Venta {sortBy === 'revenue' ? <ArrowUpDown size={12} className="text-nodo-ink" /> : <ArrowUpDown size={12} className="opacity-30" />}
                         </button>
                       </th>
-                      <th className="text-right px-4 py-4 text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Ganancia</th>
+                      <th className="text-right px-4 py-4 text-[10px] font-black text-nodo-dim uppercase tracking-wider">Ganancia</th>
                       <th className="text-right px-4 py-4">
-                        <button onClick={() => toggleSort('margin')} className="flex items-center gap-1.5 text-[10px] font-bold text-nodo-dim uppercase tracking-wider hover:text-nodo-ink transition-colors ml-auto">
+                        <button onClick={() => toggleSort('margin')} className="flex items-center gap-1.5 text-[10px] font-black text-nodo-dim uppercase tracking-wider hover:text-nodo-ink transition-colors ml-auto">
                           Margen % {sortBy === 'margin' ? <ArrowUpDown size={12} className="text-nodo-ink" /> : <ArrowUpDown size={12} className="opacity-30" />}
                         </button>
                       </th>
-                      <th className="text-center px-4 py-4 text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Estado</th>
+                      <th className="text-center px-4 py-4 text-[10px] font-black text-nodo-dim uppercase tracking-wider">Estado</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1057,7 +1083,7 @@ export function RecetasApp(_props: AppProps) {
                             {r.margin !== null ? `${r.margin.toFixed(1)}%` : '—'}
                           </td>
                           <td className="px-4 py-3.5 text-center">
-                            <span className={`inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold ${statusLabel.cls}`}>
+                            <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold ${statusLabel.cls}`}>
                               {statusLabel.label}
                             </span>
                           </td>
@@ -1067,8 +1093,10 @@ export function RecetasApp(_props: AppProps) {
                   </tbody>
                 </table>
                 {recipesSorted.length === 0 && (
-                  <div className="flex flex-col items-center justify-center h-40 text-center">
-                    <BarChart3 size={32} className="text-nodo-dim mb-2" />
+                  <div className="flex flex-col items-center justify-center h-40 text-center gap-2">
+                    <div className="w-12 h-12 rounded-2xl bg-nodo-primary-soft flex items-center justify-center">
+                      <BarChart3 size={20} className="text-nodo-primary" />
+                    </div>
                     <p className="text-xs font-bold text-nodo-dim">Sin recetas para analizar</p>
                   </div>
                 )}
@@ -1109,13 +1137,13 @@ export function RecetasApp(_props: AppProps) {
           <div className="flex gap-3">
             <button
               onClick={() => setConfirmDelete(null)}
-              className="flex-1 h-14 rounded-2xl border-2 border-nodo-line text-nodo-sub font-bold text-sm active:scale-[0.97] transition-transform"
+              className="flex-1 h-14 rounded-full border-2 border-nodo-line text-nodo-sub font-bold text-sm active:scale-[0.97] transition-transform"
             >
               Cancelar
             </button>
             <button
               onClick={() => confirmDelete && handleDeleteRecipe(confirmDelete)}
-              className="flex-1 h-14 rounded-2xl bg-nodo-danger-tx text-white font-bold text-sm active:scale-[0.97] transition-transform"
+              className="flex-1 h-14 rounded-full bg-nodo-danger-tx text-white font-bold text-sm active:scale-[0.97] transition-transform"
             >
               Sí, eliminar
             </button>
@@ -1123,7 +1151,7 @@ export function RecetasApp(_props: AppProps) {
         }
       >
         <div className="flex flex-col items-center text-center gap-4 py-4">
-          <div className="w-16 h-16 rounded-2xl bg-nodo-danger-bg border border-nodo-danger-bd flex items-center justify-center">
+          <div className="w-16 h-16 rounded-full bg-nodo-danger-bg border border-nodo-danger-bd flex items-center justify-center">
             <AlertTriangle size={28} className="text-nodo-danger-tx" />
           </div>
           <p className="text-nodo-sub text-sm leading-relaxed">

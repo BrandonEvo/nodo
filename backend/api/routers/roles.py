@@ -19,6 +19,7 @@ class RoleAuditEntry(BaseModel):
     user_id: uuid.UUID
     user_email: str
     user_full_name: Optional[str]
+    is_superuser: bool
     tenant_id: uuid.UUID
     tenant_name: str
     member_type: str
@@ -57,6 +58,7 @@ async def list_roles_audit(
             user_id=user.id,
             user_email=user.email,
             user_full_name=user.full_name,
+            is_superuser=user.is_superuser,
             tenant_id=tenant.id,
             tenant_name=tenant.name,
             member_type=member.member_type,

@@ -24,7 +24,8 @@ api.interceptors.response.use(
       status === 401 &&
       !original._retried &&
       !original.url?.includes('/auth/refresh') &&
-      !original.url?.includes('/auth/cookie-login')
+      !original.url?.includes('/auth/cookie-login') &&
+      !original.url?.includes('/auth/session')
     ) {
       original._retried = true;
 

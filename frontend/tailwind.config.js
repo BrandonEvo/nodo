@@ -19,6 +19,7 @@ export default {
     			surface: 'var(--nodo-canvas)',
     			// Nodo semantic token palette
     			nodo: {
+    				// Superficies y texto
     				accent:  'var(--tenant-color)',
     				canvas:  'var(--nodo-canvas)',
     				card:    'var(--nodo-card)',
@@ -29,7 +30,7 @@ export default {
     				dim:     'var(--nodo-dim)',
     				line:    'var(--nodo-line)',
     				'line-s':'var(--nodo-line-s)',
-    				// semantic states
+    				// Estados semánticos
     				'danger-bg':  'var(--nodo-danger-bg)',
     				'danger-bd':  'var(--nodo-danger-bd)',
     				'danger-tx':  'var(--nodo-danger-tx)',
@@ -39,6 +40,43 @@ export default {
     				'warn-bg':    'var(--nodo-warn-bg)',
     				'warn-bd':    'var(--nodo-warn-bd)',
     				'warn-tx':    'var(--nodo-warn-tx)',
+    				// Manual de Diseño — Primary dinámico (= tenantColor desde Configuración)
+    				primary:          'var(--nodo-primary)',
+    				'primary-soft':   'var(--nodo-primary-soft)',
+    				'primary-softer': 'var(--nodo-primary-softer)',
+    				'primary-deep':   'var(--nodo-primary-deep)',
+    				'on-primary':     'var(--nodo-on-primary)',
+    				// Manual de Diseño — Pasteles funcionales (dark-mode aware)
+    				'pastel-blue':    'var(--nodo-pastel-blue)',
+    				'pastel-pink':    'var(--nodo-pastel-pink)',
+    				'pastel-peach':   'var(--nodo-pastel-peach)',
+    				'pastel-mint':    'var(--nodo-pastel-mint)',
+    				'pastel-yellow':  'var(--nodo-pastel-yellow)',
+    				'pastel-lavender':'var(--nodo-pastel-lavender)',
+				// MASA v2 — Módulo Bodega (azul cielo)
+				'bodega-bg':   'var(--bodega-bg)',
+				'bodega-mid':  'var(--bodega-mid)',
+				'bodega-deep': 'var(--bodega-deep)',
+				'bodega-text': 'var(--bodega-text)',
+				'bodega-tint': 'var(--bodega-tint)',
+				// MASA v2 — Módulo Cocina (durazno cálido)
+				'cocina-bg':   'var(--cocina-bg)',
+				'cocina-mid':  'var(--cocina-mid)',
+				'cocina-deep': 'var(--cocina-deep)',
+				'cocina-text': 'var(--cocina-text)',
+				'cocina-tint': 'var(--cocina-tint)',
+				// MASA v2 — Módulo Mostrador (menta fresca)
+				'mostrador-bg':   'var(--mostrador-bg)',
+				'mostrador-mid':  'var(--mostrador-mid)',
+				'mostrador-deep': 'var(--mostrador-deep)',
+				'mostrador-text': 'var(--mostrador-text)',
+				'mostrador-tint': 'var(--mostrador-tint)',
+				// MASA v2 — Módulo Cierre (lavanda)
+				'cierre-bg':   'var(--cierre-bg)',
+				'cierre-mid':  'var(--cierre-mid)',
+				'cierre-deep': 'var(--cierre-deep)',
+				'cierre-text': 'var(--cierre-text)',
+				'cierre-tint': 'var(--cierre-tint)',
     			},
     			background: 'hsl(var(--background))',
     			foreground: 'hsl(var(--foreground))',

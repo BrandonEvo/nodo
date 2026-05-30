@@ -12,6 +12,7 @@ export interface SaleItemRead {
   id: string;
   recipe_id: string;
   recipe_name: string;
+  recipe_icon: string | null;
   quantity: number;
   price: number;
   freshness_tag: string;
@@ -42,5 +43,9 @@ export const mostradorService = {
   listTodaySales: async (): Promise<Sale[]> => {
     const { data } = await api.get(`${BASE}/sales`);
     return data;
+  },
+
+  cancelSale: async (saleId: string): Promise<void> => {
+    await api.delete(`${BASE}/sales/${saleId}`);
   },
 };

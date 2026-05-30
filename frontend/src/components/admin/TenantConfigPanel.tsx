@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Building2, Palette, Image as ImageIcon, Save, CheckCircle2, Upload, X } from 'lucide-react';
+import { Save, CheckCircle2, Upload, X, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toaster';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { tenantMeService } from '@/services/tenantMe.service';
@@ -77,33 +77,32 @@ export function TenantConfigPanel() {
   }
 
   return (
-    <div className="space-y-8 max-w-3xl">
+    <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl sm:text-3xl font-black text-[#111111] tracking-tight flex items-center gap-3">
-          <Building2 className="text-[#111111] w-7 h-7" /> Configuración de Empresa
-        </h1>
-        <p className="text-gray-400 mt-1 text-sm font-medium">Ajusta los detalles visuales y de identidad de tu organización.</p>
+        <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Configuración de Empresa</h1>
+        <p className="text-nodo-sub text-sm font-medium mt-0.5">Ajusta la identidad visual de tu organización.</p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8 space-y-6">
-        {/* Name */}
-        <div className="space-y-2">
-          <label className="text-sm font-bold text-[#111111] flex items-center gap-2">
-            <Building2 size={16} className="text-gray-400" /> Nombre de la Empresa
+      <div className="bg-nodo-card rounded-3xl border border-nodo-line shadow-sm p-6 flex flex-col gap-6">
+
+        {/* Nombre */}
+        <div>
+          <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+            Nombre de la Empresa
           </label>
           <input
             type="text"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:border-[#111111] focus:ring-1 focus:ring-[#111111] outline-none transition-all"
+            className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim"
             placeholder="Ej. Mi Empresa S.A."
           />
         </div>
 
-        {/* Logo Upload */}
-        <div className="space-y-3">
-          <label className="text-sm font-bold text-[#111111] flex items-center gap-2">
-            <ImageIcon size={16} className="text-gray-400" /> Logo de la Empresa
+        {/* Logo */}
+        <div>
+          <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+            Logo de la Empresa
           </label>
 
           <input
@@ -116,7 +115,7 @@ export function TenantConfigPanel() {
 
           {form.logo_url ? (
             <div className="flex items-start gap-5">
-              <div className="w-28 h-28 shrink-0 rounded-2xl border-2 border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center p-2">
+              <div className="w-24 h-24 shrink-0 rounded-2xl border-2 border-nodo-line overflow-hidden bg-nodo-inset flex items-center justify-center p-2">
                 <img
                   src={form.logo_url}
                   alt="Logo"
@@ -125,19 +124,19 @@ export function TenantConfigPanel() {
                 />
               </div>
               <div className="flex flex-col gap-2 pt-1">
-                <p className="text-xs font-semibold text-[#111111]">Logo actual</p>
-                <p className="text-xs text-gray-400 mb-1">Reemplaza o elimina la imagen.</p>
+                <p className="text-xs font-bold text-nodo-ink">Logo actual</p>
+                <p className="text-xs text-nodo-dim mb-1">Reemplaza o elimina la imagen.</p>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="h-9 px-4 bg-[#111111] text-white text-xs font-bold rounded-xl hover:bg-black transition-all flex items-center gap-2"
+                  className="h-9 px-4 bg-nodo-ink text-nodo-canvas text-xs font-bold rounded-xl active:scale-[0.97] transition-transform flex items-center gap-2"
                 >
                   <Upload size={14} /> Cambiar imagen
                 </button>
                 <button
                   type="button"
                   onClick={() => setForm(prev => ({ ...prev, logo_url: '' }))}
-                  className="h-9 px-4 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100 transition-all flex items-center gap-2 border border-red-100"
+                  className="h-9 px-4 bg-nodo-danger-bg text-nodo-danger-tx text-xs font-bold rounded-xl active:scale-[0.97] transition-transform flex items-center gap-2 border border-nodo-danger-bd"
                 >
                   <X size={14} /> Eliminar logo
                 </button>
@@ -155,65 +154,61 @@ export function TenantConfigPanel() {
                 if (file) handleFile(file);
               }}
               className={`border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
-                dragOver
-                  ? 'border-[#111111] bg-gray-50'
-                  : 'border-gray-200 hover:border-gray-400 hover:bg-gray-50/50'
+                dragOver ? 'border-nodo-ink bg-nodo-inset' : 'border-nodo-line hover:border-nodo-sub hover:bg-nodo-inset'
               }`}
             >
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${dragOver ? 'bg-[#69E7A8]/20' : 'bg-gray-100'}`}>
-                <Upload size={24} className={dragOver ? 'text-[#111111]' : 'text-gray-400'} />
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${dragOver ? 'bg-[#69E7A8]/20' : 'bg-nodo-inset'}`}>
+                <Upload size={24} className={dragOver ? 'text-nodo-ink' : 'text-nodo-dim'} />
               </div>
               <div className="text-center">
-                <p className="text-sm font-bold text-[#111111]">
+                <p className="text-sm font-bold text-nodo-ink">
                   {dragOver ? 'Suelta la imagen aquí' : 'Sube el logo de tu empresa'}
                 </p>
-                <p className="text-xs text-gray-400 mt-1">Arrastra y suelta, o haz clic para seleccionar</p>
-                <p className="text-xs text-gray-300 mt-0.5">PNG, JPG, SVG, WebP — máx. 1MB</p>
+                <p className="text-xs text-nodo-dim mt-1">Arrastra y suelta, o haz clic para seleccionar</p>
+                <p className="text-xs text-nodo-dim/60 mt-0.5">PNG, JPG, SVG, WebP — máx. 1MB</p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Theme Color */}
-        <div className="space-y-2">
-          <label className="text-sm font-bold text-[#111111] flex items-center gap-2">
-            <Palette size={16} className="text-gray-400" /> Color de Tema
+        {/* Color de tema */}
+        <div>
+          <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+            Color de Tema
           </label>
           <div className="flex items-center gap-4">
             <input
               type="color"
               value={form.theme_color}
               onChange={(e) => setForm({ ...form, theme_color: e.target.value })}
-              className="w-11 h-11 rounded-xl cursor-pointer border-0 p-0"
+              className="w-11 h-11 rounded-xl cursor-pointer border-0 p-0 bg-transparent"
             />
             <input
               type="text"
               value={form.theme_color}
               onChange={(e) => setForm({ ...form, theme_color: e.target.value })}
-              className="w-32 h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold uppercase focus:border-[#111111] focus:ring-1 focus:ring-[#111111] outline-none transition-all"
+              className="w-32 h-11 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-bold uppercase text-nodo-ink focus:border-nodo-ink outline-none transition-colors"
               placeholder="#000000"
             />
           </div>
-          <p className="text-xs text-gray-400 font-medium mt-1">Este color se utilizará como acento principal en tu espacio de trabajo.</p>
+          <p className="text-xs text-nodo-dim font-medium mt-2">
+            Color de acento principal en tu espacio de trabajo.
+          </p>
         </div>
 
         {/* Actions */}
-        <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-4">
+        <div className="pt-2 border-t border-nodo-line flex items-center justify-end gap-4">
           {success && (
-            <span className="text-sm font-bold text-[#69E7A8] flex items-center gap-1.5 animate-in fade-in zoom-in">
-              <CheckCircle2 size={16} /> Guardado correctamente
+            <span className="text-sm font-bold text-nodo-success-tx flex items-center gap-1.5 animate-in fade-in zoom-in">
+              <CheckCircle2 size={16} /> Guardado
             </span>
           )}
           <button
             onClick={handleSave}
             disabled={saving}
-            className="h-11 px-6 bg-[#111111] text-white font-bold text-sm rounded-xl hover:bg-black transition-all active:scale-[0.97] disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-black/10"
+            className="h-11 px-6 bg-nodo-ink text-nodo-canvas font-bold text-sm rounded-2xl active:scale-[0.97] transition-transform disabled:opacity-50 flex items-center gap-2 shadow-lg"
           >
-            {saving ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <Save size={16} />
-            )}
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             Guardar Cambios
           </button>
         </div>

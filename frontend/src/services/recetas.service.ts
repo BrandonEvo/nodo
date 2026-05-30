@@ -23,6 +23,7 @@ export interface Recipe {
   bake_temp: number | null;
   bake_time: number | null;
   difficulty: string | null;
+  icon: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -41,6 +42,7 @@ export interface RecipeCreate {
   bake_temp?: number | null;
   bake_time?: number | null;
   difficulty?: string | null;
+  icon?: string | null;
 }
 
 export interface RecipeIngredientCreate {

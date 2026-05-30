@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    },
+    "github": {
+      "command": "/home/bparedes/.claude/scripts/github-mcp.sh"
+    }
+  }
+}

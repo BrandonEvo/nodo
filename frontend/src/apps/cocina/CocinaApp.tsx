@@ -11,22 +11,22 @@ import { BottomSheet } from '@/components/ui/BottomSheet';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const fmtQ  = (n: number) => 'Q' + n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtQ   = (n: number) => 'Q' + n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtLbs = (n: number) => n.toLocaleString('es-GT', { maximumFractionDigits: 1 });
 
 type OrderStatus = 'pending' | 'en_proceso' | 'completed';
 
-const STATUS_CFG: Record<OrderStatus, { label: string; strip: string; badge: string }> = {
-  pending:    { label: 'Pendiente',  strip: 'bg-amber-400',   badge: 'text-amber-700 bg-amber-50 border-amber-200'     },
-  en_proceso: { label: 'En Proceso', strip: 'bg-blue-500',    badge: 'text-blue-700 bg-blue-50 border-blue-200'       },
-  completed:  { label: 'Listo',      strip: 'bg-emerald-500', badge: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+const STATUS_CFG: Record<OrderStatus, { label: string; badge: string; colHeader: string }> = {
+  pending:    { label: 'Pendiente',  badge: 'text-nodo-primary bg-nodo-primary-soft border-nodo-primary-soft',    colHeader: 'bg-nodo-primary-softer' },
+  en_proceso: { label: 'En Proceso', badge: 'text-nodo-warn-tx bg-nodo-warn-bg border-nodo-warn-bd',             colHeader: 'bg-nodo-warn-bg'     },
+  completed:  { label: 'Listo',      badge: 'text-nodo-success-tx bg-nodo-success-bg border-nodo-success-bd',    colHeader: 'bg-nodo-success-bg'  },
 };
 
 // ── MatrizTab ─────────────────────────────────────────────────────────────────
 function MatrizTab() {
   const now = new Date();
-  const [year, setYear]   = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear]     = useState(now.getFullYear());
+  const [month, setMonth]   = useState(now.getMonth() + 1);
   const [matriz, setMatriz] = useState<MatrixResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
@@ -62,14 +62,14 @@ function MatrizTab() {
         <select
           value={month}
           onChange={e => setMonth(Number(e.target.value))}
-          className="h-10 px-3 bg-nodo-inset border border-nodo-line rounded-xl text-sm font-semibold text-nodo-ink focus:outline-none"
+          className="h-10 px-3 bg-nodo-inset border border-nodo-line rounded-full text-sm font-semibold text-nodo-ink focus:outline-none focus:border-nodo-primary"
         >
           {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
         </select>
         <select
           value={year}
           onChange={e => setYear(Number(e.target.value))}
-          className="h-10 px-3 bg-nodo-inset border border-nodo-line rounded-xl text-sm font-semibold text-nodo-ink focus:outline-none"
+          className="h-10 px-3 bg-nodo-inset border border-nodo-line rounded-full text-sm font-semibold text-nodo-ink focus:outline-none focus:border-nodo-primary"
         >
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
@@ -78,11 +78,11 @@ function MatrizTab() {
 
       {loading && (
         <div className="flex items-center justify-center h-48">
-          <Loader2 className="w-8 h-8 animate-spin text-nodo-sub" />
+          <Loader2 className="w-8 h-8 animate-spin text-nodo-primary" />
         </div>
       )}
       {error && (
-        <div className="text-sm text-nodo-danger-tx bg-nodo-danger-bg border border-nodo-danger-bd rounded-xl px-4 py-3">
+        <div className="text-sm text-nodo-danger-tx bg-nodo-danger-bg border border-nodo-danger-bd rounded-2xl px-4 py-3">
           {error}
         </div>
       )}
@@ -90,20 +90,22 @@ function MatrizTab() {
       {!loading && matriz && (
         <>
           {matriz.recipes.length === 0 ? (
-            <div className="text-center py-16 text-nodo-dim">
-              <LayoutGrid className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-medium">Sin producción en {MONTHS[month - 1]} {year}</p>
+            <div className="text-center py-16">
+              <div className="w-16 h-16 rounded-3xl bg-nodo-primary-softer flex items-center justify-center mx-auto mb-3">
+                <LayoutGrid className="w-7 h-7 text-nodo-primary" />
+              </div>
+              <p className="text-sm font-bold text-nodo-dim">Sin producción en {MONTHS[month - 1]} {year}</p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-nodo-line bg-nodo-card">
+            <div className="overflow-x-auto rounded-[20px] border border-nodo-line bg-nodo-card">
               <table className="text-xs w-full border-collapse">
                 <thead>
                   <tr className="border-b border-nodo-line">
-                    <th className="sticky left-0 z-10 bg-nodo-inset px-4 py-2.5 text-left font-bold text-nodo-sub min-w-[140px]">Producto</th>
+                    <th className="sticky left-0 z-10 bg-nodo-primary-softer px-4 py-2.5 text-left font-black text-nodo-primary min-w-[140px]">Producto</th>
                     {matriz.days.map(d => (
                       <th key={d} className="px-2 py-2.5 text-center font-bold text-nodo-dim min-w-[56px]">{d}</th>
                     ))}
-                    <th className="px-3 py-2.5 text-right font-bold text-nodo-ink min-w-[72px]">Total</th>
+                    <th className="px-3 py-2.5 text-right font-black text-nodo-ink min-w-[72px]">Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-nodo-line">
@@ -135,7 +137,7 @@ function MatrizTab() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-nodo-line-s bg-nodo-raised">
-                    <td className="sticky left-0 z-10 bg-nodo-raised px-4 py-2.5 text-nodo-sub text-[10px] font-black uppercase tracking-wider">TOTAL DÍA</td>
+                    <td className="sticky left-0 z-10 bg-nodo-raised px-4 py-2.5 text-nodo-sub text-[10px] font-black uppercase tracking-wider">Total Día</td>
                     {matriz.days.map(d => {
                       const cell = matriz.daily_totals[String(d)];
                       const val  = cell ? cell[view] : null;
@@ -154,22 +156,33 @@ function MatrizTab() {
             </div>
           )}
 
-          {/* Grand total cards */}
+          {/* Grand total cards — asimétrico MASA v2 */}
           {matriz.recipes.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: 'Harina Total', val: fmtLbs(matriz.grand_totals.harina_lbs) + ' lbs', accent: null },
-                { label: 'Costo Total',  val: fmtQ(matriz.grand_totals.costo),                  accent: null },
-                { label: 'Venta Total',  val: fmtQ(matriz.grand_totals.venta),                  accent: null },
-                { label: 'Utilidad',     val: fmtQ(matriz.grand_totals.utilidad),                accent: matriz.grand_totals.utilidad >= 0 },
-              ].map(({ label, val, accent }) => (
-                <div key={label} className="bg-nodo-card rounded-2xl border border-nodo-line px-4 py-3">
-                  <p className="text-xs text-nodo-sub mb-1">{label}</p>
-                  <p className={`text-sm font-bold font-mono ${
-                    accent === false ? 'text-nodo-danger-tx' : accent === true ? 'text-nodo-success-tx' : 'text-nodo-ink'
-                  }`}>{val}</p>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Utilidad — hero full-width */}
+              <div className={`col-span-2 rounded-3xl p-5 ${matriz.grand_totals.utilidad >= 0 ? 'bg-nodo-success-bg' : 'bg-nodo-danger-bg'}`}>
+                <p className={`text-[10px] font-black uppercase tracking-wider ${matriz.grand_totals.utilidad >= 0 ? 'text-nodo-success-tx' : 'text-nodo-danger-tx'}`}>
+                  Utilidad del Período
+                </p>
+                <p className={`text-[48px] font-black tabular-nums tracking-tight leading-none mt-2 ${matriz.grand_totals.utilidad >= 0 ? 'text-nodo-success-tx' : 'text-nodo-danger-tx'}`}>
+                  {fmtQ(matriz.grand_totals.utilidad)}
+                </p>
+              </div>
+              {/* Venta */}
+              <div className="bg-nodo-primary-soft rounded-3xl p-4">
+                <p className="text-[10px] font-black text-nodo-primary uppercase tracking-wider">Venta Total</p>
+                <p className="text-2xl font-black text-nodo-primary tabular-nums mt-1">{fmtQ(matriz.grand_totals.venta)}</p>
+              </div>
+              {/* Costo */}
+              <div className="bg-nodo-primary-softer rounded-3xl p-4">
+                <p className="text-[10px] font-black text-nodo-primary uppercase tracking-wider">Costo Total</p>
+                <p className="text-2xl font-black text-nodo-primary tabular-nums mt-1">{fmtQ(matriz.grand_totals.costo)}</p>
+              </div>
+              {/* Harina — fila completa */}
+              <div className="col-span-2 bg-nodo-primary-softer rounded-3xl px-5 py-4 flex items-center justify-between">
+                <p className="text-[10px] font-black text-nodo-primary uppercase tracking-wider">Harina Total</p>
+                <p className="text-xl font-black text-nodo-primary tabular-nums">{fmtLbs(matriz.grand_totals.harina_lbs)} lbs</p>
+              </div>
             </div>
           )}
         </>
@@ -281,6 +294,8 @@ export function CocinaApp(_props: AppProps) {
   const columns: OrderStatus[]  = ['pending', 'en_proceso', 'completed'];
   const filteredOrders = activeFilter === 'all' ? orders : orders.filter(o => o.status === activeFilter);
   const hasStockWarning = preview?.ingredients.some(i => !i.sufficient) ?? false;
+  const pendingCount    = orders.filter(o => o.status === 'pending').length;
+  const inProgressCount = orders.filter(o => o.status === 'en_proceso').length;
 
   const TAB_OPTS = [
     { value: 'produccion' as const, label: 'Producción', icon: <ChefHat size={13} /> },
@@ -297,56 +312,66 @@ export function CocinaApp(_props: AppProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-nodo-sub" />
+        <Loader2 className="w-8 h-8 animate-spin text-nodo-primary" />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {/* Error banner */}
+
+      {/* Toast error */}
       {error && (
-        <div className="bg-nodo-danger-bg border border-nodo-danger-bd text-nodo-danger-tx text-sm font-medium px-4 py-3 rounded-2xl flex items-center justify-between">
-          {error}
-          <button onClick={() => setError(null)} className="ml-2 shrink-0"><X size={16} /></button>
+        <div className="fixed top-4 right-4 z-[70] flex items-center gap-3 bg-nodo-danger-bg border border-nodo-danger-bd text-nodo-danger-tx text-sm font-bold px-4 py-3 rounded-2xl shadow-lg max-w-xs">
+          <AlertTriangle size={16} className="shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)}><X size={14} /></button>
         </div>
       )}
 
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-3 pt-1">
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-[28px] font-black text-nodo-ink leading-tight tracking-tight">Cocina</h1>
+          {/* Módulo pill */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-nodo-primary-soft mb-2">
+            <ChefHat size={12} className="text-nodo-primary" />
+            <span className="text-[11px] font-black text-nodo-primary uppercase tracking-wider">Cocina</span>
+          </div>
+          <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Producción</h1>
           <p className="text-sm text-nodo-sub font-medium mt-0.5">
             {orders.filter(o => o.status !== 'completed').length} órdenes activas
           </p>
         </div>
 
-        <div className="flex items-center gap-2 pt-1">
-          {/* Status counters — desktop */}
-          <div className="hidden sm:flex items-center gap-2">
-            {columns.map(status => {
-              const cfg   = STATUS_CFG[status];
-              const count = orders.filter(o => o.status === status).length;
-              return (
-                <div key={status} className={`px-3 py-1.5 rounded-xl border ${cfg.badge} text-center min-w-[52px]`}>
-                  <p className="text-sm font-black">{count}</p>
-                  <p className="text-[9px] font-bold uppercase tracking-wider">{cfg.label}</p>
-                </div>
-              );
-            })}
-          </div>
-
-          {activeTab === 'produccion' && (
-            <button
-              onClick={() => setShowNewOrder(true)}
-              className="w-11 h-11 rounded-full bg-nodo-ink text-nodo-canvas flex items-center justify-center active:scale-95 transition-transform shadow-md"
-              aria-label="Nueva orden"
-            >
-              <Plus size={20} />
-            </button>
-          )}
-        </div>
+        {activeTab === 'produccion' && (
+          <button
+            onClick={() => setShowNewOrder(true)}
+            className="w-12 h-12 rounded-full text-white flex items-center justify-center active:scale-90 transition-transform shrink-0 mt-1"
+            style={{ backgroundColor: 'var(--nodo-primary)', boxShadow: '0 6px 20px var(--nodo-shadow-fab)' }}
+            aria-label="Nueva orden"
+          >
+            <Plus size={20} />
+          </button>
+        )}
       </div>
+
+      {/* ── KPI cards (órdenes activas) ──────────────────────────────────────── */}
+      {orders.length > 0 && activeTab === 'produccion' && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-nodo-primary-soft rounded-3xl p-4">
+            <p className="text-[10px] font-black text-nodo-primary uppercase tracking-wider">Pendientes</p>
+            <p className="text-[40px] font-black text-nodo-primary tabular-nums tracking-tight leading-none mt-1">{pendingCount}</p>
+          </div>
+          <div className={`rounded-3xl p-4 ${inProgressCount > 0 ? 'bg-nodo-warn-bg' : 'bg-nodo-success-bg'}`}>
+            <p className={`text-[10px] font-black uppercase tracking-wider ${inProgressCount > 0 ? 'text-nodo-warn-tx' : 'text-nodo-success-tx'}`}>
+              En Proceso
+            </p>
+            <p className={`text-[40px] font-black tabular-nums tracking-tight leading-none mt-1 ${inProgressCount > 0 ? 'text-nodo-warn-tx' : 'text-nodo-success-tx'}`}>
+              {inProgressCount}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Tab selector ── */}
       <SegmentedControl options={TAB_OPTS} value={activeTab} onChange={setActiveTab} />
@@ -361,7 +386,6 @@ export function CocinaApp(_props: AppProps) {
       {/* ── Tab: Producción ── */}
       {activeTab === 'produccion' && (
         <>
-          {/* Status filter */}
           <SegmentedControl options={FILTER_OPTS} value={activeFilter} onChange={setActiveFilter} size="sm" />
 
           {/* Desktop Kanban */}
@@ -370,11 +394,10 @@ export function CocinaApp(_props: AppProps) {
               const cfg       = STATUS_CFG[status];
               const colOrders = orders.filter(o => o.status === status);
               return (
-                <div key={status} className="flex flex-col bg-nodo-inset rounded-2xl border border-nodo-line overflow-hidden">
-                  <div className="flex items-center gap-2.5 px-4 py-3 border-b border-nodo-line">
-                    <div className={`w-2 h-2 rounded-full ${cfg.strip}`} />
+                <div key={status} className="flex flex-col bg-nodo-inset rounded-[20px] border border-nodo-line overflow-hidden">
+                  <div className={`flex items-center gap-2.5 px-4 py-3 border-b border-nodo-line ${cfg.colHeader}`}>
                     <span className="text-sm font-black text-nodo-ink">{cfg.label}</span>
-                    <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full border ${cfg.badge}`}>
+                    <span className={`ml-auto text-xs font-bold px-2.5 py-0.5 rounded-full border ${cfg.badge}`}>
                       {colOrders.length}
                     </span>
                   </div>
@@ -409,9 +432,11 @@ export function CocinaApp(_props: AppProps) {
           {/* Mobile list */}
           <div className="lg:hidden flex-1 overflow-y-auto min-h-0 space-y-2 pb-2">
             {filteredOrders.length === 0 ? (
-              <div className="text-center py-16 text-nodo-dim">
-                <ChefHat size={40} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm font-bold">Sin órdenes</p>
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="w-16 h-16 rounded-3xl bg-nodo-primary-softer flex items-center justify-center">
+                  <ChefHat size={28} className="text-nodo-primary" />
+                </div>
+                <p className="text-sm font-bold text-nodo-dim">Sin órdenes</p>
               </div>
             ) : filteredOrders.map(order => (
               <OrderCard
@@ -442,55 +467,57 @@ export function CocinaApp(_props: AppProps) {
           <button
             onClick={handleCreateOrder}
             disabled={!newOrder.recipe_id || saving === 'new'}
-            className="w-full h-14 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-base transition-all active:scale-[0.97] disabled:opacity-40 flex items-center justify-center gap-2"
+            className="w-full h-14 rounded-full text-white font-black text-base transition-all active:scale-[0.97] disabled:opacity-40 flex items-center justify-center gap-2"
+            style={{ backgroundColor: 'var(--nodo-primary)', boxShadow: '0 6px 20px var(--nodo-shadow-fab)' }}
           >
             {saving === 'new' ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-            CREAR ORDEN
+            Crear orden
           </button>
         }
       >
-        {/* Recipe selector */}
+        {/* Receta */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-nodo-sub uppercase tracking-wider block">Receta</label>
+          <label className="text-[10px] font-black text-nodo-dim uppercase tracking-wider block">Receta</label>
           <select
             value={newOrder.recipe_id}
             onChange={e => setNewOrder(prev => ({ ...prev, recipe_id: e.target.value }))}
-            className="w-full h-12 px-4 bg-nodo-inset border border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:outline-none focus:border-nodo-line-s"
+            className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:outline-none focus:border-nodo-primary transition-colors"
           >
             <option value="">Seleccionar receta…</option>
             {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
         </div>
 
-        {/* Quantity stepper */}
+        {/* Stepper de lotes */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-nodo-sub uppercase tracking-wider block">Lotes a producir</label>
+          <label className="text-[10px] font-black text-nodo-dim uppercase tracking-wider block">Lotes a producir</label>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setNewOrder(prev => ({ ...prev, quantity: Math.max(1, prev.quantity - 1) }))}
-              className="w-14 h-14 rounded-2xl bg-nodo-inset border border-nodo-line flex items-center justify-center active:scale-95 transition-transform text-nodo-ink"
+              className="w-14 h-14 rounded-full bg-nodo-raised border border-nodo-line flex items-center justify-center active:scale-95 transition-transform text-nodo-ink"
             >
               <Minus size={20} />
             </button>
             <div className="flex-1 text-center">
-              <span className="text-4xl font-black text-nodo-ink">{newOrder.quantity}</span>
+              <span className="text-4xl font-black text-nodo-ink tabular-nums">{newOrder.quantity}</span>
               <span className="text-sm text-nodo-sub ml-2">{newOrder.quantity === 1 ? 'lote' : 'lotes'}</span>
             </div>
             <button
               onClick={() => setNewOrder(prev => ({ ...prev, quantity: prev.quantity + 1 }))}
-              className="w-14 h-14 rounded-2xl bg-nodo-inset border border-nodo-line flex items-center justify-center active:scale-95 transition-transform text-nodo-ink"
+              className="w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-transform text-white"
+              style={{ backgroundColor: 'var(--nodo-primary)' }}
             >
               <Plus size={20} />
             </button>
           </div>
         </div>
 
-        {/* Ingredient preview */}
+        {/* Ingredientes preview */}
         {newOrder.recipe_id && (
-          <div className="bg-nodo-inset rounded-2xl border border-nodo-line overflow-hidden">
+          <div className="bg-nodo-inset rounded-[20px] border border-nodo-line overflow-hidden">
             {previewLoading ? (
               <div className="flex items-center justify-center py-6 gap-2 text-nodo-sub">
-                <Loader2 size={16} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin text-nodo-primary" />
                 <span className="text-xs font-bold">Verificando stock…</span>
               </div>
             ) : preview ? (
@@ -521,7 +548,7 @@ export function CocinaApp(_props: AppProps) {
                   {preview.ingredients.map((ing, i) => (
                     <div key={i} className="flex items-center justify-between px-4 py-2.5">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${ing.sufficient ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${ing.sufficient ? 'bg-nodo-success-tx' : 'bg-nodo-danger-tx'}`} />
                         <span className="text-xs font-semibold text-nodo-ink truncate">{ing.name}</span>
                       </div>
                       <div className="text-right shrink-0 ml-3">
@@ -552,41 +579,41 @@ export function CocinaApp(_props: AppProps) {
           <button
             onClick={() => showWaste && handleLogWaste(showWaste)}
             disabled={saving === 'waste'}
-            className="w-full h-14 rounded-2xl bg-nodo-danger-tx text-white font-black text-base transition-all active:scale-[0.97] disabled:opacity-40 flex items-center justify-center gap-2"
+            className="w-full h-14 rounded-full bg-nodo-danger-tx text-white font-black text-base transition-all active:scale-[0.97] disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {saving === 'waste' ? <Loader2 size={18} className="animate-spin" /> : <AlertTriangle size={18} />}
-            REGISTRAR MERMA
+            Registrar merma
           </button>
         }
       >
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-nodo-sub uppercase tracking-wider block">Cantidad dañada</label>
+          <label className="text-[10px] font-black text-nodo-dim uppercase tracking-wider block">Cantidad dañada</label>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setWaste(prev => ({ ...prev, quantity: Math.max(1, prev.quantity - 1) }))}
-              className="w-14 h-14 rounded-2xl bg-nodo-inset border border-nodo-line flex items-center justify-center active:scale-95 transition-transform text-nodo-ink"
+              className="w-14 h-14 rounded-full bg-nodo-raised border border-nodo-line flex items-center justify-center active:scale-95 transition-transform text-nodo-ink"
             >
               <Minus size={20} />
             </button>
             <div className="flex-1 text-center">
-              <span className="text-4xl font-black text-nodo-ink">{waste.quantity}</span>
+              <span className="text-4xl font-black text-nodo-ink tabular-nums">{waste.quantity}</span>
             </div>
             <button
               onClick={() => setWaste(prev => ({ ...prev, quantity: prev.quantity + 1 }))}
-              className="w-14 h-14 rounded-2xl bg-nodo-inset border border-nodo-line flex items-center justify-center active:scale-95 transition-transform text-nodo-ink"
+              className="w-14 h-14 rounded-full bg-nodo-danger-tx text-white flex items-center justify-center active:scale-95 transition-transform"
             >
               <Plus size={20} />
             </button>
           </div>
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-nodo-sub uppercase tracking-wider block">Motivo (opcional)</label>
+          <label className="text-[10px] font-black text-nodo-dim uppercase tracking-wider block">Motivo (opcional)</label>
           <input
             type="text"
             value={waste.reason}
             onChange={e => setWaste(prev => ({ ...prev, reason: e.target.value }))}
             placeholder="Ej: Quemado en horno"
-            className="w-full h-12 px-4 bg-nodo-inset border border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:outline-none focus:border-nodo-line-s"
+            className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink placeholder:text-nodo-dim focus:outline-none focus:border-nodo-danger-tx transition-colors"
           />
         </div>
       </BottomSheet>
@@ -611,42 +638,55 @@ function OrderCard({
   onWaste: () => void;
   onDelete: () => void;
 }) {
-  const cfg          = STATUS_CFG[order.status];
+  const cfg           = STATUS_CFG[order.status];
   const expectedUnits = recipe ? Math.round(recipe.estimated_yield * order.quantity) : null;
   const displayUnits  = actualUnits ?? expectedUnits ?? 0;
 
+  const iconBg =
+    order.status === 'pending'    ? 'bg-nodo-primary-softer'  :
+    order.status === 'en_proceso' ? 'bg-nodo-warn-bg'       :
+    'bg-nodo-success-bg';
+
+  const iconColor =
+    order.status === 'pending'    ? 'text-nodo-primary' :
+    order.status === 'en_proceso' ? 'text-nodo-warn-tx'     :
+    'text-nodo-success-tx';
+
+  const IconComp = order.status === 'pending' ? ChefHat : order.status === 'en_proceso' ? Clock : CheckCircle2;
+
   return (
-    <div className={`bg-nodo-card rounded-2xl border overflow-hidden transition-shadow ${
-      expanded ? 'border-nodo-line-s shadow-md' : 'border-nodo-line'
+    <div className={`bg-nodo-card rounded-[20px] border overflow-hidden transition-shadow ${
+      expanded ? 'border-nodo-line-s shadow-md' : 'border-nodo-line shadow-sm'
     }`}>
       {/* Row header */}
-      <button onClick={onToggle} className="w-full flex items-center text-left">
-        <div className={`w-[3px] self-stretch shrink-0 ${cfg.strip}`} />
-        <div className="flex-1 flex items-center justify-between px-4 py-3.5 gap-3 min-w-0">
-          <div className="min-w-0">
-            <p className="text-sm font-black text-nodo-ink truncate">{order.recipe_name}</p>
-            <p className="text-xs text-nodo-sub font-medium mt-0.5">
-              ×{order.quantity} {order.quantity === 1 ? 'lote' : 'lotes'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${cfg.badge}`}>
-              {cfg.label}
-            </span>
-            {order.status === 'pending' && (
-              <button
-                onClick={e => { e.stopPropagation(); onStart(); }}
-                disabled={saving}
-                className="px-3 py-1.5 rounded-xl bg-blue-500 text-white text-[11px] font-bold active:scale-95 transition-transform disabled:opacity-50"
-              >
-                INICIAR
-              </button>
-            )}
-            {expanded
-              ? <ChevronUp size={16} className="text-nodo-dim" />
-              : <ChevronDown size={16} className="text-nodo-dim" />
-            }
-          </div>
+      <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3.5 text-left">
+        {/* Ícono de estado flotante */}
+        <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center ${iconBg}`}>
+          <IconComp size={17} className={iconColor} />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black text-nodo-ink truncate">{order.recipe_name}</p>
+          <p className="text-xs text-nodo-sub font-medium mt-0.5">
+            ×{order.quantity} {order.quantity === 1 ? 'lote' : 'lotes'}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${cfg.badge}`}>
+            {cfg.label}
+          </span>
+          {order.status === 'pending' && (
+            <button
+              onClick={e => { e.stopPropagation(); onStart(); }}
+              disabled={saving}
+              className="px-3 py-1.5 rounded-full text-white text-[11px] font-bold active:scale-95 transition-transform disabled:opacity-50"
+              style={{ backgroundColor: 'var(--nodo-primary)' }}
+            >
+              Iniciar
+            </button>
+          )}
+          {expanded ? <ChevronUp size={16} className="text-nodo-dim" /> : <ChevronDown size={16} className="text-nodo-dim" />}
         </div>
       </button>
 
@@ -668,19 +708,19 @@ function OrderCard({
             </p>
           )}
 
-          {/* Units stepper — en proceso */}
+          {/* Stepper unidades — en proceso */}
           {order.status === 'en_proceso' && (
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-nodo-sub uppercase tracking-wider block">
+              <label className="text-[10px] font-black text-nodo-dim uppercase tracking-wider block">
                 Unidades producidas
                 {expectedUnits && (
-                  <span className="ml-1.5 font-medium normal-case text-nodo-dim">(estimado: {expectedUnits})</span>
+                  <span className="ml-1.5 font-medium normal-case text-nodo-dim">(est. {expectedUnits})</span>
                 )}
               </label>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => onActualUnitsChange(Math.max(0, displayUnits - 1))}
-                  className="w-12 h-12 rounded-xl bg-nodo-inset border border-nodo-line flex items-center justify-center active:scale-95 transition-transform text-nodo-ink"
+                  className="w-12 h-12 rounded-full bg-nodo-raised border border-nodo-line flex items-center justify-center active:scale-95 transition-transform text-nodo-ink"
                 >
                   <Minus size={18} />
                 </button>
@@ -689,11 +729,12 @@ function OrderCard({
                   min="0"
                   value={displayUnits}
                   onChange={e => onActualUnitsChange(parseInt(e.target.value) || 0)}
-                  className="flex-1 h-12 px-3 bg-nodo-inset border border-nodo-line rounded-xl text-center text-base font-black text-nodo-ink focus:outline-none focus:border-nodo-line-s [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="flex-1 h-12 px-3 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-center text-base font-black text-nodo-ink focus:outline-none focus:border-nodo-primary transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <button
                   onClick={() => onActualUnitsChange(displayUnits + 1)}
-                  className="w-12 h-12 rounded-xl bg-nodo-inset border border-nodo-line flex items-center justify-center active:scale-95 transition-transform text-nodo-ink"
+                  className="w-12 h-12 rounded-full flex items-center justify-center active:scale-95 transition-transform text-white"
+                  style={{ backgroundColor: 'var(--nodo-primary)' }}
                 >
                   <Plus size={18} />
                 </button>
@@ -701,50 +742,52 @@ function OrderCard({
             </div>
           )}
 
-          {/* Actual units — completed */}
+          {/* Completado — unidades reales */}
           {order.status === 'completed' && order.actual_units != null && (
-            <div className="flex items-center justify-between bg-nodo-success-bg border border-nodo-success-bd rounded-xl px-4 py-2.5">
-              <span className="text-xs font-bold text-nodo-success-tx uppercase tracking-wider">Producido</span>
+            <div className="flex items-center justify-between bg-nodo-success-bg border border-nodo-success-bd rounded-full px-5 py-3">
+              <span className="text-xs font-black text-nodo-success-tx uppercase tracking-wider">Producido</span>
               <span className="text-sm font-black text-nodo-success-tx">{order.actual_units} uds.</span>
             </div>
           )}
 
-          {/* Primary action */}
+          {/* Acción primaria */}
           {order.status === 'en_proceso' && (
             <button
               onClick={onComplete}
               disabled={saving}
-              className="w-full h-14 rounded-2xl bg-emerald-500 text-white font-black text-base tracking-wide transition-all active:scale-[0.97] flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full h-14 rounded-full text-white font-black text-base tracking-wide transition-all active:scale-[0.97] flex items-center justify-center gap-2 disabled:opacity-50 bg-nodo-success-tx"
+              style={{ boxShadow: '0 6px 20px rgba(22,163,74,0.30)' }}
             >
               {saving ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle2 size={20} strokeWidth={2.5} />}
-              REGISTRAR HORNEADA OK
+              Horneada OK
             </button>
           )}
           {order.status === 'pending' && (
             <button
               onClick={onStart}
               disabled={saving}
-              className="w-full h-14 rounded-2xl bg-blue-500 text-white font-black text-base tracking-wide transition-all active:scale-[0.97] flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full h-14 rounded-full text-white font-black text-base tracking-wide transition-all active:scale-[0.97] flex items-center justify-center gap-2 disabled:opacity-50"
+              style={{ backgroundColor: 'var(--nodo-primary)', boxShadow: '0 6px 20px var(--nodo-shadow-fab)' }}
             >
               {saving ? <Loader2 size={20} className="animate-spin" /> : <PlayCircle size={20} strokeWidth={2.5} />}
-              INICIAR PRODUCCIÓN
+              Iniciar producción
             </button>
           )}
 
-          {/* Secondary actions */}
+          {/* Acciones secundarias */}
           <div className="flex gap-2">
             {order.status !== 'completed' && (
               <button
                 onClick={onWaste}
-                className="flex-1 h-11 rounded-xl border-2 border-nodo-danger-bd text-nodo-danger-tx text-sm font-bold active:scale-95 transition-transform flex items-center justify-center gap-1.5"
+                className="flex-1 h-11 rounded-full border-2 border-nodo-danger-bd text-nodo-danger-tx text-sm font-bold active:scale-95 transition-transform flex items-center justify-center gap-1.5"
               >
-                <AlertTriangle size={15} /> MERMA
+                <AlertTriangle size={15} /> Merma
               </button>
             )}
             {order.status !== 'en_proceso' && (
               <button
                 onClick={onDelete}
-                className="p-3 rounded-xl border border-nodo-line text-nodo-dim active:scale-95 transition-transform"
+                className="p-3 rounded-full border border-nodo-line text-nodo-dim active:scale-95 transition-transform"
               >
                 <Trash2 size={16} />
               </button>

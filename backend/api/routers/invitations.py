@@ -17,7 +17,7 @@ from db.session import get_session
 from api.deps import current_active_user
 from models import User, Tenant, TenantMember, Invitation
 from models.platform_config import PlatformConfig
-from models.schemas import InvitationCreate, InvitationRead, InvitationRespond
+from models.schemas import InvitationCreate, InvitationRead, InvitationRespond, InvitationPreview
 
 router = APIRouter(tags=["Invitations (Gestión de Equipo)"])
 
@@ -54,6 +54,38 @@ async def _get_config_value(session: AsyncSession, key: str, default: str) -> st
     result = await session.execute(select(PlatformConfig).where(PlatformConfig.key == key))
     config = result.scalar_one_or_none()
     return config.value if config else default
+
+
+@router.get("/preview/{token}", response_model=InvitationPreview)
+async def preview_invitation(token: str, session: AsyncSession = Depends(get_session)):
+    """
+    Endpoint público (sin auth) — muestra el contexto de una invitación por token.
+    Usado por la página /invite/:token del frontend antes de que el usuario haga login.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    result = await session.execute(
+        select(Invitation).where(
+            Invitation.token  == token,
+            Invitation.status == "pending",
+        )
+    )
+    invitation = result.scalar_one_or_none()
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitación no encontrada o ya utilizada.")
+    if now > invitation.expires_at:
+        invitation.status = "expired"
+        session.add(invitation)
+        await session.commit()
+        raise HTTPException(status_code=410, detail="Esta invitación ha expirado.")
+
+    tenant = await session.get(Tenant, invitation.tenant_id)
+    return InvitationPreview(
+        id=invitation.id,
+        tenant_name=tenant.name if tenant else "Empresa desconocida",
+        member_type=invitation.member_type,
+        email=invitation.email,
+        expires_at=invitation.expires_at,
+    )
 
 
 @router.post("/", response_model=InvitationRead, status_code=status.HTTP_201_CREATED)
@@ -130,9 +162,9 @@ async def list_invitations(
     current_user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """Lista todas las invitaciones del tenant del admin actual."""
+    """Lista todas las invitaciones del tenant del admin actual. Marca las expiradas al vuelo."""
     membership = await _get_admin_membership(current_user, session)
-    
+
     result = await session.execute(
         select(Invitation).where(
             Invitation.tenant_id == membership.tenant_id
@@ -140,11 +172,20 @@ async def list_invitations(
     )
     invitations = result.scalars().all()
 
-    # Enriquecer con nombres
-    tenant = await session.get(Tenant, membership.tenant_id)
-    enriched = []
+    # Marcar como expiradas las pendientes que ya vencieron
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    dirty = False
     for inv in invitations:
-        enriched.append(InvitationRead(
+        if inv.status == "pending" and now > inv.expires_at:
+            inv.status = "expired"
+            session.add(inv)
+            dirty = True
+    if dirty:
+        await session.commit()
+
+    tenant = await session.get(Tenant, membership.tenant_id)
+    return [
+        InvitationRead(
             id=inv.id,
             email=inv.email,
             tenant_id=inv.tenant_id,
@@ -154,8 +195,9 @@ async def list_invitations(
             expires_at=inv.expires_at,
             created_at=inv.created_at,
             tenant_name=tenant.name if tenant else None,
-        ))
-    return enriched
+        )
+        for inv in invitations
+    ]
 
 
 @router.post("/{invitation_id}/respond")

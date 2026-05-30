@@ -53,10 +53,10 @@ export interface PricingInputs {
 
 export const DEFAULT_INPUTS: PricingInputs = {
   qty: 1,
-  unitCostUSD: 0,
+  unitCostUSD: 1,
   declaredCostUSD: 0,
   useDeclaredValue: false,
-  totalWeightLbs: 0.1,
+  totalWeightLbs: 1,
   itemCategory: 'ropa',
   mode: 'margin',
   targetMargin: 35,

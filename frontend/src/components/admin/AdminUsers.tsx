@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
-import { Plus, Users, Search, Edit2, Trash2, PowerOff, Shield, User as UserIcon, CheckCircle2, XCircle, X, Save, ShieldAlert, Loader2, Check } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, PowerOff, Shield, User as UserIcon, CheckCircle2, XCircle, ShieldAlert, Loader2, Check } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useToast } from "@/components/ui/Toaster";
 import { tenantsService, type Tenant, type TenantUser } from "@/services/tenants.service";
-import { modulesService, type ModuleRead } from "@/services/modules.service";
 
 export function AdminUsers() {
   const toast = useToast();
@@ -22,9 +21,6 @@ export function AdminUsers() {
   const [isSuperuser, setIsSuperuser] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const [tenantModules, setTenantModules] = useState<ModuleRead[]>([]);
-  const [userModules, setUserModules] = useState<Set<string>>(new Set());
 
   const [hardDeletingUser, setHardDeletingUser] = useState<{ id: string; tenantId: string } | null>(null);
   const [superAdminPassword, setSuperAdminPassword] = useState("");
@@ -57,18 +53,7 @@ export function AdminUsers() {
   }, [selectedTenant, tenants]);
 
   useEffect(() => {
-    if (!tenantId) {
-      setRoleId(""); setTenantModules([]); setUserModules(new Set());
-    } else {
-      modulesService.listByTenant(tenantId).then(setTenantModules).catch(() => setTenantModules([]));
-      if (selectedUser?.member_type === 'employee') {
-        tenantsService.getUserModules(tenantId, selectedUser.id)
-          .then(mods => setUserModules(new Set(mods)))
-          .catch(() => setUserModules(new Set()));
-      } else {
-        setUserModules(new Set());
-      }
-    }
+    if (!tenantId) setRoleId("");
   }, [tenantId, selectedUser]);
 
   const doSave = async () => {
@@ -84,16 +69,10 @@ export function AdminUsers() {
       };
       if (password && !selectedUser?.is_google_user) payload.password = password;
 
-      let finalUserId = "";
       if (selectedUser) {
         await tenantsService.updateUser(selectedUser.id, payload);
-        finalUserId = selectedUser.id;
       } else {
-        const newUser = await tenantsService.createUser(tenantId, payload);
-        finalUserId = newUser.id;
-      }
-      if (roleId === 'employee') {
-        await tenantsService.updateUserModules(tenantId, finalUserId, Array.from(userModules));
+        await tenantsService.createUser(tenantId, payload);
       }
       toast.success(selectedUser ? "Usuario actualizado correctamente" : "Usuario creado correctamente");
       closeForm();
@@ -165,7 +144,7 @@ export function AdminUsers() {
     setSelectedUser(null);
     setEmail(""); setPassword("");
     setTenantId(selectedTenant !== "all" ? selectedTenant : "");
-    setRoleId(""); setUserModules(new Set());
+    setRoleId("");
     setIsSuperuser(false); setIsActive(true);
   };
 
@@ -247,6 +226,30 @@ export function AdminUsers() {
             </button>
           </div>
         </div>
+
+        {/* KPI row */}
+        {!loading && (
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Total',       value: users.length,                                       accent: '#60a5fa', pastel: '#60a5fa1a', icon: UserIcon  },
+              { label: 'Activos',     value: users.filter(u => u.is_active !== false).length,    accent: '#69E7A8', pastel: '#69E7A81a', icon: CheckCircle2 },
+              { label: 'Superadmins', value: users.filter(u => u.is_superuser).length,           accent: '#f87171', pastel: '#f871711a', icon: Shield     },
+            ].map((c) => {
+              const Icon = c.icon;
+              return (
+                <div key={c.label} className="flex flex-col gap-3 p-4 rounded-[20px]" style={{ backgroundColor: c.pastel }}>
+                  <div className="w-9 h-9 rounded-[11px] flex items-center justify-center" style={{ background: `${c.accent}22` }}>
+                    <Icon size={16} style={{ color: c.accent }} strokeWidth={2} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-nodo-ink tabular-nums leading-none">{c.value}</p>
+                    <p className="text-[10px] font-semibold text-nodo-sub mt-1 leading-tight">{c.label}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* User list */}
         {loading ? (
@@ -398,7 +401,7 @@ export function AdminUsers() {
                 onClick={() => setIsSuperuser(v => !v)}
                 className={`relative w-[51px] h-[31px] rounded-full transition-colors duration-200 shrink-0 ${isSuperuser ? 'bg-[#30D158]' : 'bg-nodo-raised'}`}
               >
-                <span className={`absolute top-[2px] left-[2px] w-[27px] h-[27px] bg-white rounded-full shadow-sm transition-transform duration-200 ${isSuperuser ? 'translate-x-[20px]' : 'translate-x-0'}`} />
+                <span className={`absolute top-[2px] left-[2px] w-[27px] h-[27px] bg-nodo-canvas rounded-full shadow-sm transition-transform duration-200 ${isSuperuser ? 'translate-x-[20px]' : 'translate-x-0'}`} />
               </button>
             </label>
             {/* Cuenta activa */}
@@ -412,47 +415,18 @@ export function AdminUsers() {
                 onClick={() => setIsActive(v => !v)}
                 className={`relative w-[51px] h-[31px] rounded-full transition-colors duration-200 shrink-0 ${isActive ? 'bg-[#30D158]' : 'bg-nodo-raised'}`}
               >
-                <span className={`absolute top-[2px] left-[2px] w-[27px] h-[27px] bg-white rounded-full shadow-sm transition-transform duration-200 ${isActive ? 'translate-x-[20px]' : 'translate-x-0'}`} />
+                <span className={`absolute top-[2px] left-[2px] w-[27px] h-[27px] bg-nodo-canvas rounded-full shadow-sm transition-transform duration-200 ${isActive ? 'translate-x-[20px]' : 'translate-x-0'}`} />
               </button>
             </label>
           </div>
 
-          {/* Module access */}
-          {roleId === 'employee' && tenantModules.length > 0 && (
-            <div>
-              <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">Acceso a Módulos</label>
-              <div className="bg-nodo-inset rounded-2xl border border-nodo-line divide-y divide-nodo-line overflow-hidden">
-                {tenantModules.map(mod => {
-                  const checked = userModules.has(mod.id);
-                  return (
-                    <label key={mod.id} className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-nodo-raised transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-nodo-raised flex items-center justify-center">
-                          {mod.icon
-                            ? <span className="text-base">{mod.icon}</span>
-                            : <Shield size={15} className="text-nodo-sub" />
-                          }
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-nodo-ink">{mod.name}</p>
-                          <p className="text-[10px] text-nodo-dim uppercase tracking-wider">{mod.code}</p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const s = new Set(userModules);
-                          checked ? s.delete(mod.id) : s.add(mod.id);
-                          setUserModules(s);
-                        }}
-                        className={`relative w-[51px] h-[31px] rounded-full transition-colors duration-200 shrink-0 ${checked ? 'bg-[#30D158]' : 'bg-nodo-raised'}`}
-                      >
-                        <span className={`absolute top-[2px] left-[2px] w-[27px] h-[27px] bg-white rounded-full shadow-sm transition-transform duration-200 ${checked ? 'translate-x-[20px]' : 'translate-x-0'}`} />
-                      </button>
-                    </label>
-                  );
-                })}
-              </div>
+          {/* El acceso a módulos se gestiona desde Auditoría de Roles */}
+          {roleId === 'employee' && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-nodo-inset rounded-2xl border border-nodo-line">
+              <Shield size={16} className="text-nodo-dim shrink-0" />
+              <p className="text-xs text-nodo-sub font-medium">
+                El acceso a módulos se configura desde <span className="font-bold text-nodo-ink">Auditoría de Roles</span>.
+              </p>
             </div>
           )}
         </form>

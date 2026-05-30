@@ -1,4 +1,11 @@
-import { Bell, Eye, ChevronDown, Sun, Moon } from 'lucide-react';
+import { Bell, Eye, ChevronDown, Sun, Moon, Building2, ChevronsUpDown } from 'lucide-react';
+
+export interface TenantOption {
+  tenant_id: string;
+  tenant_name: string;
+  member_type: string;
+  is_active: boolean;
+}
 
 interface TopbarProps {
   displayName: string;
@@ -10,6 +17,8 @@ interface TopbarProps {
   tenantColor?: string;
   isDark?: boolean;
   onToggleDark?: () => void;
+  availableTenants?: TenantOption[];
+  onSwitchTenant?: (tenantId: string) => void;
 }
 
 export function Topbar({
@@ -22,11 +31,32 @@ export function Topbar({
   tenantColor = '#69E7A8',
   isDark = false,
   onToggleDark,
+  availableTenants = [],
+  onSwitchTenant,
 }: TopbarProps) {
+  const showSwitcher = availableTenants.length > 1 && !!onSwitchTenant;
+
   return (
     <header className="hidden lg:flex items-center justify-end h-[72px] px-8 bg-nodo-card border-b border-nodo-line sticky top-0 z-30">
 
       <div className="flex items-center gap-4">
+
+        {/* Workspace Switcher */}
+        {showSwitcher && (
+          <div className="flex items-center gap-2 bg-nodo-inset border border-nodo-line px-3 py-2 rounded-xl">
+            <Building2 className="w-4 h-4 text-nodo-sub shrink-0" />
+            <select
+              value={availableTenants.find(t => t.is_active)?.tenant_id ?? ''}
+              onChange={e => onSwitchTenant!(e.target.value)}
+              className="bg-transparent text-sm font-bold text-nodo-ink outline-none cursor-pointer appearance-none max-w-[160px] truncate"
+            >
+              {availableTenants.map(t => (
+                <option key={t.tenant_id} value={t.tenant_id}>{t.tenant_name}</option>
+              ))}
+            </select>
+            <ChevronsUpDown className="w-3.5 h-3.5 text-nodo-sub -ml-1 pointer-events-none shrink-0" />
+          </div>
+        )}
 
         {/* Impersonation Selector (SuperAdmin only) */}
         {realIsSuperAdmin && (

@@ -1,10 +1,10 @@
-import { useState } from 'react';
 import {
   Home, Shield, Building2, Users, Package,
   ShoppingCart, Settings, LogOut, ChevronLeft,
-  ChevronRight, BarChart3, Briefcase, User, Send,
+  ChevronRight, Briefcase, User, Send,
   SlidersHorizontal, Warehouse, ChefHat, Store, Lock, BookOpen,
 } from 'lucide-react';
+import { resolveModuleIcon } from '@/lib/module-icons';
 
 export type TabId = string;
 
@@ -25,6 +25,8 @@ interface SidebarProps {
   tenantColor?: string;
   tenantLogo?: string | null;
   tenantName?: string;
+  collapsed?: boolean;
+  onCollapse?: (collapsed: boolean) => void;
 }
 
 export function Sidebar({
@@ -37,8 +39,10 @@ export function Sidebar({
   tenantColor = '#69E7A8',
   tenantLogo = null,
   tenantName = 'NODO',
+  collapsed = false,
+  onCollapse,
 }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const setCollapsed = (v: boolean) => onCollapse?.(v);
 
   const accentColor = isSuperAdmin ? '#69E7A8' : tenantColor;
 
@@ -46,7 +50,6 @@ export function Sidebar({
     if (isSuperAdmin) {
       return [
         { id: 'admin_home',          icon: Shield,           label: 'Panel Maestro',  section: 'Principal' },
-        { id: 'metrics',             icon: BarChart3,        label: 'Métricas',        section: 'Principal' },
         { id: 'admin_tenants',       icon: Building2,        label: 'Empresas',        section: 'Gestión'   },
         { id: 'admin_users',         icon: Users,            label: 'Usuarios',        section: 'Gestión'   },
         { id: 'admin_roles',         icon: Shield,           label: 'Roles',           section: 'Gestión'   },
@@ -60,20 +63,17 @@ export function Sidebar({
       { id: 'home', icon: Home, label: 'Inicio', section: 'Principal' },
     ];
 
-    if (isTenantAdmin) {
-      items.push({ id: 'metrics', icon: BarChart3, label: 'Métricas', section: 'Principal' });
-    }
 
     activeModules.forEach((m: any) => {
-      let icon = Package;
-      if      (m.code === 'POS')              icon = ShoppingCart;
-      else if (m.code === 'INVENTORY')        icon = Package;
-      else if (m.code === 'HR')               icon = Users;
-      else if (m.code === 'BODEGA')           icon = Warehouse;
-      else if (m.code === 'COCINA')           icon = ChefHat;
-      else if (m.code === 'MOSTRADOR')        icon = Store;
-      else if (m.code === 'CIERRE')           icon = Lock;
-      else if (m.code === 'RECETAS')          icon = BookOpen;
+      let fallback = Package;
+      if      (m.code === 'POS')       fallback = ShoppingCart;
+      else if (m.code === 'HR')        fallback = Users;
+      else if (m.code === 'BODEGA')    fallback = Warehouse;
+      else if (m.code === 'COCINA')    fallback = ChefHat;
+      else if (m.code === 'MOSTRADOR') fallback = Store;
+      else if (m.code === 'CIERRE')    fallback = Lock;
+      else if (m.code === 'RECETAS')   fallback = BookOpen;
+      const icon = m.icon ? resolveModuleIcon(m.icon) : fallback;
       items.push({ id: m.code.toLowerCase(), icon, label: m.name, section: 'Aplicaciones' });
     });
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Plus, CreditCard, Check, Tag, Pencil, PowerOff, Trash2, ShieldAlert, Loader2 } from "lucide-react";
+import { Plus, Check, Tag, Pencil, PowerOff, Trash2, ShieldAlert, Loader2 } from "lucide-react";
+import { resolveModuleIcon } from "@/lib/module-icons";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useToast } from "@/components/ui/Toaster";
 import { subscriptionsService, type SubscriptionPlan } from "@/services/subscriptions.service";
@@ -132,6 +133,13 @@ export function AdminSubscriptions() {
 
   const formValid = name.trim().length > 0 && price.length > 0;
 
+  const palette = [
+    { bg: 'linear-gradient(140deg, #0a0f1e 0%, #0d1f2f 60%, #0a2b1a 100%)', accent: '#69E7A8' },
+    { bg: 'linear-gradient(140deg, #0a0f1e 0%, #0d1a2f 60%, #0a1a3a 100%)', accent: '#60a5fa' },
+    { bg: 'linear-gradient(140deg, #100a1e 0%, #1a0f2f 60%, #2a0a3a 100%)', accent: '#a78bfa' },
+    { bg: 'linear-gradient(140deg, #1a0f0a 0%, #2a1a0a 60%, #2f1a05 100%)', accent: '#fb923c' },
+  ];
+
   return (
     <>
       <div className="flex flex-col flex-1 overflow-hidden gap-6">
@@ -139,15 +147,17 @@ export function AdminSubscriptions() {
         {/* Header */}
         <div className="flex items-start justify-between gap-4 shrink-0">
           <div>
-            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Planes de Suscripción</h1>
-            <p className="text-nodo-sub text-sm font-medium mt-0.5">Configura qué módulos incluye cada plan.</p>
+            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Planes</h1>
+            <p className="text-nodo-sub text-sm font-medium mt-0.5">
+              {loading ? '…' : `${plans.filter(p => p.is_active).length} activos · ${plans.length} total`}
+            </p>
           </div>
           <button
             onClick={openCreate}
             className="h-11 px-5 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-sm flex items-center gap-2 active:scale-[0.97] transition-transform shadow-lg shrink-0"
           >
             <Plus size={16} />
-            Crear
+            Nuevo plan
           </button>
         </div>
 
@@ -164,100 +174,100 @@ export function AdminSubscriptions() {
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {plans.map(plan => {
+              {plans.map((plan, idx) => {
                 const inactive = !plan.is_active;
+                const colors = palette[idx % palette.length];
+                const planModules = (plan.module_ids || [])
+                  .map(mid => modules.find(m => m.id === mid))
+                  .filter((m): m is typeof modules[0] => !!m);
+
                 return (
                   <div
                     key={plan.id}
-                    className={`bg-nodo-card border border-nodo-line rounded-3xl p-6 shadow-sm flex flex-col gap-5 relative transition-opacity ${inactive ? "opacity-50" : ""}`}
+                    className={`rounded-[24px] overflow-hidden shadow-md transition-opacity ${inactive ? 'opacity-55' : ''}`}
                   >
-                    {/* Actions */}
-                    <div className="absolute top-4 right-4 flex items-center gap-1">
-                      <button
-                        onClick={() => openEdit(plan)}
-                        className="p-2 text-nodo-dim hover:text-nodo-ink hover:bg-nodo-raised rounded-full transition-colors"
-                        title="Editar"
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      {plan.is_active ? (
-                        <button
-                          onClick={() => handleDeactivate(plan.id)}
-                          className="p-2 text-nodo-warn-tx hover:bg-nodo-warn-bg rounded-full transition-colors"
-                          title="Desactivar"
-                        >
-                          <PowerOff size={15} />
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => handleReactivate(plan.id)}
-                            className="p-2 text-nodo-success-tx hover:bg-nodo-success-bg rounded-full transition-colors"
-                            title="Reactivar"
-                          >
-                            <PowerOff size={15} />
-                          </button>
-                          <button
-                            onClick={() => { setDeleteTarget(plan.id); setMasterPassword(""); }}
-                            className="p-2 text-nodo-danger-tx hover:bg-nodo-danger-bg rounded-full transition-colors"
-                            title="Destruir"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    {/* Gradient header */}
+                    <div className="relative p-6" style={{ background: colors.bg }}>
+                      <div
+                        className="absolute -right-10 -top-10 w-44 h-44 rounded-full pointer-events-none"
+                        style={{ background: `radial-gradient(circle, ${colors.accent} 0%, transparent 70%)`, opacity: 0.13 }}
+                      />
 
-                    {/* Plan header */}
-                    <div className="pr-24">
-                      <h3 className="text-xl font-black text-nodo-ink leading-tight">{plan.name}</h3>
-                      <div className="flex items-baseline gap-1 mt-1">
-                        <span className="text-3xl font-black text-nodo-ink tabular-nums">Q{plan.price}</span>
-                        <span className="text-sm font-bold text-nodo-dim">{plan.currency} / mes</span>
+                      {/* Status + actions */}
+                      <div className="flex items-center justify-between mb-5">
+                        <span
+                          className="px-2.5 py-1 rounded-full text-[9px] font-black tracking-widest uppercase"
+                          style={plan.is_active
+                            ? { background: `${colors.accent}22`, color: colors.accent }
+                            : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.35)' }
+                          }
+                        >
+                          {plan.is_active ? 'Activo' : 'Inactivo'}
+                        </span>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openEdit(plan)}
+                            className="p-2 rounded-xl bg-white/10 hover:bg-white/15 text-white/60 hover:text-white transition-colors active:scale-90"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          {plan.is_active ? (
+                            <button
+                              onClick={() => handleDeactivate(plan.id)}
+                              className="p-2 rounded-xl bg-white/10 hover:bg-white/15 text-white/60 hover:text-white transition-colors active:scale-90"
+                            >
+                              <PowerOff size={13} />
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleReactivate(plan.id)}
+                                className="p-2 rounded-xl bg-white/10 hover:bg-white/15 text-white/60 hover:text-white transition-colors active:scale-90"
+                              >
+                                <PowerOff size={13} />
+                              </button>
+                              <button
+                                onClick={() => { setDeleteTarget(plan.id); setMasterPassword(""); }}
+                                className="p-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors active:scale-90"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Name + price */}
+                      <p className="text-white/50 text-sm font-semibold mb-1">{plan.name}</p>
+                      <div className="flex items-end gap-2">
+                        <span className="text-[44px] font-black text-white leading-none tabular-nums">Q{plan.price}</span>
+                        <span className="text-white/30 text-sm font-medium pb-1.5">{plan.currency} / mes</span>
                       </div>
                     </div>
 
-                    {/* Status badge */}
-                    <div>
-                      {plan.is_active ? (
-                        <span className="bg-nodo-success-bg text-nodo-success-tx px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">
-                          Activo
-                        </span>
-                      ) : (
-                        <span className="bg-nodo-inset text-nodo-dim px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">
-                          Inactivo
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Modules */}
-                    <div className="flex-1">
+                    {/* Modules section */}
+                    <div className="bg-nodo-inset p-5">
                       <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-3">
-                        Módulos Incluidos
+                        Módulos incluidos · {planModules.length}
                       </p>
-                      {!plan.module_ids?.length ? (
-                        <p className="text-sm text-nodo-dim italic">Sin módulos asignados</p>
+                      {planModules.length === 0 ? (
+                        <p className="text-xs text-nodo-dim italic">Sin módulos asignados</p>
                       ) : (
-                        <ul className="space-y-2">
-                          {plan.module_ids.map(mid => {
-                            const mod = modules.find(m => m.id === mid);
+                        <div className="flex flex-wrap gap-2">
+                          {planModules.map(mod => {
+                            const ModIcon = resolveModuleIcon(mod.icon);
                             return (
-                              <li key={mid} className="flex items-center gap-3">
-                                <div className="w-5 h-5 rounded-full bg-nodo-success-bg flex items-center justify-center shrink-0">
-                                  <Check size={11} className="text-nodo-success-tx" />
-                                </div>
-                                <span className="text-sm font-semibold text-nodo-ink">
-                                  {mod ? (
-                                    <span className="flex items-center gap-1.5">
-                                      {mod.icon && <span>{mod.icon}</span>}
-                                      {mod.name}
-                                    </span>
-                                  ) : mid}
-                                </span>
-                              </li>
+                              <span
+                                key={mod.id}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-nodo-card rounded-xl text-xs font-semibold text-nodo-ink"
+                              >
+                                <ModIcon size={13} className="text-nodo-sub shrink-0" strokeWidth={2} />
+                                {mod.name}
+                              </span>
                             );
                           })}
-                        </ul>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -347,7 +357,7 @@ export function AdminSubscriptions() {
                         {selected && <Check size={11} className="text-nodo-canvas" />}
                       </div>
                       <span className="flex items-center gap-2 text-sm font-semibold text-nodo-ink">
-                        {m.icon && <span>{m.icon}</span>}
+                        {(() => { const I = resolveModuleIcon(m.icon); return <I size={15} className="text-nodo-sub shrink-0" strokeWidth={2} />; })()}
                         {m.name}
                       </span>
                       <span className="ml-auto font-mono text-[10px] text-nodo-dim">{m.code}</span>

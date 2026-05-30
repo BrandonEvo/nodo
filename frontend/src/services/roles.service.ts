@@ -5,6 +5,7 @@ export interface RoleAuditEntry {
   user_id: string;
   user_email: string;
   user_full_name: string | null;
+  is_superuser: boolean;
   tenant_id: string;
   tenant_name: string;
   member_type: 'owner' | 'admin' | 'employee';

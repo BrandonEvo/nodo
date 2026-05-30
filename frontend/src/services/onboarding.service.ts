@@ -1,10 +1,10 @@
 import api from '@/lib/api';
 
 export const onboardingService = {
-  /** Completa el onboarding del dueño: actualiza nombre del tenant y marca como completado */
-  async complete(companyName: string): Promise<{ detail: string; tenant_name: string; onboarding_completed: boolean }> {
+  async complete(opts: { moduleCodes: string[]; companyName?: string }) {
     const { data } = await api.patch('/api/onboarding/complete', {
-      company_name: companyName,
+      company_name: opts.companyName || null,
+      module_codes: opts.moduleCodes,
     });
     return data;
   },

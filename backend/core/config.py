@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     VERIFICATION_TOKEN_SECRET: str
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_CLIENT_ID: str = "833836638249-q9p0ahfn0l4h938ui8acd8psksb08no5.apps.googleusercontent.com"
+    FRONTEND_URL: str = "http://localhost:5173"
+    BACKEND_URL: str = "http://localhost:8000"
 
     @property
     def cors_origins_list(self) -> List[str]:

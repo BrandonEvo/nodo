@@ -7,6 +7,7 @@ from .iam import TenantMember, TenantMemberModuleAccess
 from .audit import AuditLog
 from .invitations import Invitation
 from .platform_config import PlatformConfig
+from .importaciones import ImportCotizacion
 from .bakery import (
     InventoryItem,
     Recipe,
@@ -31,6 +32,8 @@ __all__ = [
     "AuditLog",
     "Invitation",
     "PlatformConfig",
+    # Importaciones
+    "ImportCotizacion",
     # Bakery modules
     "InventoryItem",
     "Recipe",

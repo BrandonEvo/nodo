@@ -24,6 +24,9 @@ class Tenant(AuditBase, table=True):
     # Plan de suscripción asignado (opcional si es trial o free tier sin plan)
     plan_id: Optional[uuid.UUID] = Field(default=None, foreign_key="subscription_plans.id", index=True)
 
+    # Tenant del sistema — jamás se puede desactivar ni eliminar
+    is_system: bool = Field(default=False)
+
     # Relaciones
     members: List["TenantMember"] = Relationship(back_populates="tenant")
     subscriptions: List["Subscription"] = Relationship(back_populates="tenant")

@@ -1,5 +1,13 @@
 import api from '@/lib/api';
 
+export interface InvitationPreview {
+  id: string;
+  tenant_name: string;
+  member_type: string;
+  email: string;
+  expires_at: string;
+}
+
 export interface InvitationData {
   id: string;
   email: string;
@@ -52,6 +60,12 @@ export const invitationsService = {
     const { data } = await api.post<{ detail: string }>(
       `/api/invitations/${invitationId}/resend`
     );
+    return data;
+  },
+
+  /** Obtiene contexto público de una invitación por token (sin auth) */
+  async preview(token: string): Promise<InvitationPreview> {
+    const { data } = await api.get<InvitationPreview>(`/api/invitations/preview/${token}`);
     return data;
   },
 };
