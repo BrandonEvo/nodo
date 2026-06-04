@@ -1,0 +1,248 @@
+================================================================================
+  NODO — CHECKLIST DE PRODUCCIÓN
+  Servidor: 35.208.20.242 (GCP)
+  Stack: FastAPI + PostgreSQL 16 + React/Vite + Nginx
+  Actualizado: 2026-05-30
+================================================================================
+
+ARQUITECTURA
+------------
+  Internet (80/443)
+       ↓
+  nodo_proxy  [nginx:1.25-alpine]   — sirve static + proxying
+       ↓                ↓
+  /api/*        ./frontend/dist/
+       ↓
+  nodo_backend [python:3.12-slim]   — FastAPI en :8000 (interno)
+       ↓
+  nodo_db      [postgres:16-alpine] — :5432 (interno)
+
+  Red interna: nodo_network (bridge)
+  Volumen persistente: postgres_data
+
+ARCHIVOS CLAVE
+--------------
+  docker-compose.yml          Base: db + backend
+  docker-compose.prod.yml     Prod: restart=always + nginx proxy
+  docker-compose.override.yml Dev: Vite en :5173, backend con --reload en :8000
+  nginx/conf.d/default.conf   Config nginx (rate limits + rutas)
+  backend/entrypoint.sh       Espera DB → alembic upgrade head → seed → uvicorn
+  frontend/dist/              Build estático (generado, no en git)
+  .env                        Variables secretas (no commitear)
+
+================================================================================
+PASOS EJECUTADOS (2026-05-30)
+================================================================================
+
+[1] CORRECCIÓN NGINX — proxy_pass trailing slash
+    Archivo: nginx/conf.d/default.conf
+    Problema: `proxy_pass http://backend:8000/;` eliminaba el prefijo /api/
+              causando 404 en todos los endpoints generales.
+    Fix aplicado:
+      - location /api/         → proxy_pass http://backend:8000;   (sin /)
+      - location /api/stream   → proxy_pass http://backend:8000/api/stream;
+      - server_name localhost  → server_name 35.208.20.242;
+
+[2] ENVIRONMENT → production
+    Archivo: .env
+    Cambio: ENVIRONMENT=development → ENVIRONMENT=production
+    Efecto: deshabilita /docs y /redoc de FastAPI en producción.
+
+[3] CORRECCIÓN ERRORES TYPESCRIPT (previo al build)
+    Archivos modificados:
+      frontend/package.json
+        - "build": "tsc -b && vite build"  →  "build": "vite build"
+          (tsc -b en composite mode es incompatible con noEmit+allowImportingTsExtensions;
+           Vite maneja la transpilación, tsc solo se usa para type-check en dev)
+
+      frontend/src/apps/cocina/CocinaApp.tsx
+        - Eliminado import `Clock` (no usado)
+        - view type: 'harina' → 'harina_lbs' (DayCell tiene harina_lbs, no harina)
+        - VIEW_OPTS value y comparaciones actualizadas a 'harina_lbs'
+
+      frontend/src/apps/reportes/ReportesApp.tsx
+        - PLRow: label: string → label?: string
+          (permite <PLRow separator /> sin label obligatorio)
+
+      frontend/src/components/Launcher.tsx
+        - Eliminados imports no usados: ShoppingCart, Users, Settings, CheckCircle2
+
+      frontend/src/components/admin/AdminSubscriptions.tsx
+        - Eliminado import no usado: CreditCard
+
+      frontend/src/components/admin/AdminUsers.tsx
+        - Eliminados imports no usados: Users (icono), X, Save
+
+      frontend/src/components/admin/TeamManagement.tsx
+        - Eliminado import no usado: EmptyState
+
+[4] BUILD FRONTEND
+    Comando (ejecutado dentro de contenedor node:20-alpine):
+      docker run --rm \
+        -v $(pwd)/frontend:/app \
+        -w /app \
+        node:20-alpine \
+        sh -c "npm install --silent && npm run build"
+    Salida: frontend/dist/   (montado en nodo_proxy como volumen ro)
+
+[5] RECARGAR NGINX (sin downtime)
+    Comando: docker exec nodo_proxy nginx -t && docker exec nodo_proxy nginx -s reload
+    Efecto: nginx carga la nueva config sin cerrar conexiones activas.
+
+[6] VERIFICACIÓN FINAL (2026-05-30)
+    Contenedores en producción (correctos):
+      nodo_proxy   nginx:1.25-alpine    puertos 80/443 expuestos ✓
+      nodo_backend nodo-backend         sin puerto externo (solo via proxy) ✓
+      nodo_db      postgres:16-alpine   solo red interna ✓
+      (sin nodo_frontend_dev — correcto, no es dev)
+
+    Pruebas de humo:
+      GET http://localhost/          → 200 (React index.html) ✓
+      GET http://localhost/api/      → 404 FastAPI (proxy llega al backend) ✓
+      docker exec nodo_proxy nginx -t → syntax ok ✓
+
+================================================================================
+CÓMO LEVANTAR EL STACK DESDE CERO
+================================================================================
+
+  # 0. Clonar repo y copiar .env
+  git clone <repo-url> /home/bparedesc1/Docker/nodo
+  cd /home/bparedesc1/Docker/nodo
+  cp .env.example .env
+  # Editar .env con los valores reales (ver sección VARIABLES más abajo)
+
+  # 1. Compilar frontend (npm NO está en el host)
+  docker run --rm \
+    -v $(pwd)/frontend:/app \
+    -w /app \
+    node:20-alpine \
+    sh -c "npm install --silent && npm run build"
+
+  # 2. Levantar stack de producción
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+  # El backend entrypoint.sh hace automáticamente:
+  #   - Espera a que PostgreSQL esté listo (nc -z db 5432)
+  #   - alembic upgrade head  (migraciones)
+  #   - python seed.py        (datos maestros)
+  #   - uvicorn main:app      (servidor)
+
+  # 3. Verificar que todo está healthy
+  docker ps
+  curl http://35.208.20.242/health          # debe responder {"status":"ok"}
+  curl http://35.208.20.242/                # debe servir index.html de React
+
+================================================================================
+COMANDOS DE OPERACIÓN
+================================================================================
+
+  # Ver estado
+  docker ps
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+
+  # Ver logs
+  docker logs nodo_backend --tail 50 -f
+  docker logs nodo_proxy   --tail 50 -f
+  docker logs nodo_db      --tail 50 -f
+
+  # Recargar nginx sin downtime (tras cambiar nginx/conf.d/default.conf)
+  docker exec nodo_proxy nginx -s reload
+
+  # Redesplegar backend (tras cambio de código)
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build backend
+
+  # Redesplegar frontend (tras cambio de código)
+  docker run --rm -v $(pwd)/frontend:/app -w /app node:20-alpine \
+    sh -c "npm install --silent && npm run build"
+  # nginx sirve el dist/ directamente, no necesita reiniciar
+
+  # Ejecutar migración manualmente
+  docker exec nodo_backend alembic upgrade head
+
+  # Acceder a psql
+  docker exec -it nodo_db psql -U nodo_admin -d nodo_db
+
+  # Apagar el stack (sin borrar datos)
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+
+  # Apagar Y borrar base de datos (DESTRUCTIVO)
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v
+
+================================================================================
+VARIABLES DE ENTORNO (.env)
+================================================================================
+
+  ENVIRONMENT=production                  # development | production
+  SECRET_KEY=<hex 32 bytes>               # JWT signing key
+  POSTGRES_USER=nodo_admin
+  POSTGRES_PASSWORD=<secure password>
+  POSTGRES_DB=nodo_db
+  DATABASE_URL=postgresql+asyncpg://nodo_admin:<pass>@db:5432/nodo_db
+  SUPERADMIN_PASSWORD_HASH=<bcrypt hash>  # generar: python -c "from passlib.hash import bcrypt; print(bcrypt.hash('TuPassword'))"
+  RESET_PASSWORD_SECRET=<random string>
+  VERIFICATION_TOKEN_SECRET=<random string>
+  GOOGLE_CLIENT_SECRET=<google oauth secret>
+  CORS_ORIGINS=http://35.208.20.242       # dominio(s) separados por coma
+
+================================================================================
+FIXES ADICIONALES (2026-05-30) — Login externo + Google OAuth
+================================================================================
+
+PROBLEMA 1: API URL hardcodeada en el bundle
+  Síntoma: login no responde desde afuera (el browser llamaba a localhost:8000 del cliente).
+  Causa:   api.ts usaba `|| 'http://localhost:8000'` como fallback. El build sin
+           VITE_API_URL incrustaba esa URL en el JS. El || no distingue '' de undefined.
+  Fix:     frontend/src/lib/api.ts
+             import.meta.env.VITE_API_URL || 'http://localhost:8000'
+             →  import.meta.env.VITE_API_URL ?? ''
+           Con baseURL='' axios usa URLs relativas → nginx las proxea a backend. ✓
+           En dev, VITE_API_URL=http://localhost:8000/api sigue funcionando. ✓
+
+PROBLEMA 2: Google OAuth redirige a localhost
+  Síntoma: al hacer login con Google aparece redirect a localhost:5173/dashboard.
+  Causa:   auth_google.py tenía FRONTEND_URL y BACKEND_URL hardcodeados a localhost.
+  Fix:     backend/core/config.py — agregar settings:
+             BASE_URL: str = "http://localhost:8000"   (default dev)
+             FRONTEND_URL: str = "http://localhost:5173" (default dev)
+           backend/api/routers/auth_google.py — usar settings:
+             FRONTEND_URL = settings.FRONTEND_URL
+             BACKEND_URL  = settings.BASE_URL
+           .env — agregar para producción:
+             BASE_URL=http://35.208.20.242
+             FRONTEND_URL=http://35.208.20.242
+
+  ACCION MANUAL REQUERIDA EN GOOGLE CLOUD CONSOLE:
+  → APIs & Services → Credentials → tu OAuth 2.0 Client ID
+  → Authorized redirect URIs: agregar  http://35.208.20.242/api/auth/google/callback
+  → Authorized JavaScript origins: agregar  http://35.208.20.242
+  (El redirect_uri actual estaba en localhost:8000, Google lo rechaza en producción)
+
+================================================================================
+PENDIENTES PARA PRODUCCIÓN SEGURA
+================================================================================
+
+  [ ] HTTPS / SSL
+      - Obtener certificado (Let's Encrypt recomendado con certbot)
+      - Agregar bloque `listen 443 ssl;` en nginx/conf.d/default.conf
+      - Configurar redirect 80 → 443
+      - Actualizar CORS_ORIGINS a https://tudominio.com en .env
+      Guía rápida con certbot + nginx (una vez que el dominio apunte al servidor):
+        docker run -it --rm -p 80:80 \
+          -v /etc/letsencrypt:/etc/letsencrypt \
+          certbot/certbot certonly --standalone -d tudominio.com
+
+  [ ] Dominio real
+      - Registrar dominio y apuntar A record a 35.208.20.242
+      - Actualizar server_name en nginx/conf.d/default.conf
+      - Actualizar CORS_ORIGINS en .env
+
+  [ ] Backups de base de datos
+      pg_dump -U nodo_admin nodo_db > backup_$(date +%Y%m%d).sql
+      (automatizar con cron en el host o Cloud Scheduler en GCP)
+
+  [ ] Firewall GCP
+      - Puerto 80 abierto: sí (requerido)
+      - Puerto 443 abierto: pendiente (para HTTPS)
+      - Puerto 8000 cerrado externamente: verificar reglas de firewall GCP
+
+================================================================================

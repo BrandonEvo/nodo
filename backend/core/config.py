@@ -3,6 +3,13 @@ from typing import List
 
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
+    # Flag Secure de las cookies de sesión. DEBE ser False mientras se sirva por
+    # HTTP plano (el navegador descarta cookies Secure sin TLS). Poner en True
+    # solo cuando el sitio esté detrás de HTTPS.
+    COOKIE_SECURE: bool = False
+    # Logging verboso de cada sentencia SQL. Off por defecto: en este VM pequeño
+    # el echo añade overhead notable por request. Activar solo para depurar.
+    SQL_ECHO: bool = False
     SECRET_KEY: str
     DATABASE_URL: str
     SUPERADMIN_PASSWORD_HASH: str

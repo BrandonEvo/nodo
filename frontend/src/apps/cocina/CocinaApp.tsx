@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { haptic } from '@/utils/haptic';
 import {
-  ChefHat, Clock, PlayCircle, CheckCircle2, Plus, Minus, AlertTriangle,
+  ChefHat, PlayCircle, CheckCircle2, Plus, Minus, AlertTriangle,
   Loader2, Trash2, Package, TrendingUp, ChevronDown, ChevronUp, LayoutGrid, X,
+  Clock,
 } from 'lucide-react';
 import type { AppProps } from '../index';
 import { cocinaService, type ProductionOrder, type OrderPreview, type MatrixResponse } from '@/services/cocina.service';
@@ -30,7 +31,7 @@ function MatrizTab() {
   const [matriz, setMatriz] = useState<MatrixResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
-  const [view, setView] = useState<'venta' | 'utilidad' | 'costo' | 'harina'>('venta');
+  const [view, setView] = useState<'venta' | 'utilidad' | 'costo' | 'harina_lbs'>('venta');
   const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - i);
 
   const load = useCallback(async () => {
@@ -46,13 +47,13 @@ function MatrizTab() {
     { value: 'venta'    as const, label: 'Venta'    },
     { value: 'utilidad' as const, label: 'Utilidad' },
     { value: 'costo'    as const, label: 'Costo'    },
-    { value: 'harina'   as const, label: 'Harina'   },
+    { value: 'harina_lbs' as const, label: 'Harina'   },
   ];
 
   const cellVal = (cell: MatrixResponse['grand_totals'] | undefined) => {
     if (!cell) return null;
     const v = cell[view];
-    return view === 'harina' ? fmtLbs(v) + ' lbs' : fmtQ(v);
+    return view === 'harina_lbs' ? fmtLbs(v) + ' lbs' : fmtQ(v);
   };
 
   return (
@@ -121,7 +122,7 @@ function MatrizTab() {
                           <td key={d} className="px-2 py-2 text-center font-mono">
                             {val != null && val > 0 ? (
                               <span className={view === 'utilidad' && val < 0 ? 'text-nodo-danger-tx' : 'text-nodo-ink'}>
-                                {view === 'harina' ? fmtLbs(val) : fmtQ(val)}
+                                {view === 'harina_lbs' ? fmtLbs(val) : fmtQ(val)}
                               </span>
                             ) : (
                               <span className="text-nodo-dim opacity-40">—</span>
@@ -143,7 +144,7 @@ function MatrizTab() {
                       const val  = cell ? cell[view] : null;
                       return (
                         <td key={d} className="px-2 py-2.5 text-center font-mono font-bold text-nodo-ink">
-                          {val != null && val > 0 ? (view === 'harina' ? fmtLbs(val) : fmtQ(val)) : '—'}
+                          {val != null && val > 0 ? (view === 'harina_lbs' ? fmtLbs(val) : fmtQ(val)) : '—'}
                         </td>
                       );
                     })}

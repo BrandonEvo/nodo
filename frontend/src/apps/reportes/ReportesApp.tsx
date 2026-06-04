@@ -51,7 +51,7 @@ function KpiCard({
 function PLRow({
   label, value, indent = false, bold = false, negative = false, separator = false,
 }: {
-  label: string;
+  label?: string;
   value?: number;
   indent?: boolean;
   bold?: boolean;

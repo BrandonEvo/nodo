@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Package2, Truck, CheckCircle2, DollarSign, Clock, AlertTriangle,
   ChevronRight, RotateCcw, Pencil, X, Check, Loader2, MapPin,
-  Calendar, FileText, Calculator, Share2,
+  Calendar, FileText, Calculator, Share2, User,
 } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import { ShareSheet } from './ShareSheet';
 import {
   importacionesService,
   type Cotizacion,
@@ -13,6 +14,7 @@ import {
   type RenovarPayload,
   STATUS_LABEL,
   NEXT_STATUS,
+  NEXT_STATUS_ACTION,
 } from '@/services/importaciones.service';
 import {
   fmtGTQ, fmtPct, CATEGORY_DAI_RATE,
@@ -23,7 +25,8 @@ import { usePricingEngine } from './usePricingEngine';
 // ── Status badge config ───────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<CotizacionStatus, { icon: React.ReactNode; cls: string }> = {
-  pendiente:   { icon: <Clock size={10} />,        cls: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+  cotizado:    { icon: <Clock size={10} />,        cls: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+  confirmado:  { icon: <CheckCircle2 size={10} />, cls: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20' },
   comprado:    { icon: <Package2 size={10} />,     cls: 'bg-nodo-warn-bg text-nodo-warn-tx border-nodo-warn-bd' },
   en_transito: { icon: <Truck size={10} />,        cls: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20' },
   entregado:   { icon: <CheckCircle2 size={10} />, cls: 'bg-nodo-success-bg text-nodo-success-tx border-nodo-success-bd' },
@@ -34,7 +37,7 @@ const STATUS_CONFIG: Record<CotizacionStatus, { icon: React.ReactNode; cls: stri
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function isExpired(c: Cotizacion): boolean {
-  return c.status === 'pendiente' && new Date(c.expires_at) < new Date();
+  return c.status === 'cotizado' && new Date(c.expires_at) < new Date();
 }
 
 function expiryLabel(c: Cotizacion): string {
@@ -419,15 +422,9 @@ function CotizacionCard({
   const [renovating, setRenovating]       = useState(false);
   const [showLogistics, setShowLogistics] = useState(false);
   const [showEdit, setShowEdit]           = useState(false);
-  const [copied, setCopied]               = useState(false);
+  const [showShare, setShowShare]         = useState(false);
 
-  function handleShare() {
-    const url = `${window.location.origin}/import-tracking/${cotizacion.share_token}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
+  const trackingUrl = `${window.location.origin}/import-tracking/${cotizacion.share_token}`;
 
   const expired   = isExpired(cotizacion);
   const nextStatus = NEXT_STATUS[cotizacion.status];
@@ -501,6 +498,12 @@ function CotizacionCard({
               <p className="text-[13px] font-black text-nodo-ink leading-tight line-clamp-2">
                 {cotizacion.product_name}
               </p>
+              {cotizacion.cliente && (
+                <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-nodo-sub bg-nodo-inset border border-nodo-line rounded-lg px-1.5 py-0.5">
+                  <User size={9} />
+                  {cotizacion.cliente.name}
+                </span>
+              )}
               {cotizacion.amazon_asin && (
                 <p className="text-[10px] text-nodo-dim font-medium mt-0.5">ASIN {cotizacion.amazon_asin}</p>
               )}
@@ -509,14 +512,14 @@ function CotizacionCard({
               <div className="flex items-center gap-1.5">
                 <StatusBadge status={cotizacion.status} />
                 <button
-                  onClick={handleShare}
-                  title="Copiar link de tracking"
+                  onClick={() => setShowShare(true)}
+                  title="Compartir link de tracking"
                   className="w-6 h-6 rounded-lg flex items-center justify-center text-nodo-dim hover:text-nodo-ink hover:bg-nodo-inset active:scale-90 transition-all"
                 >
-                  {copied ? <Check size={12} className="text-nodo-success-tx" /> : <Share2 size={12} />}
+                  <Share2 size={12} />
                 </button>
               </div>
-              {cotizacion.status === 'pendiente' && !expired && (
+              {cotizacion.status === 'cotizado' && !expired && (
                 <span className="text-[9px] font-bold text-nodo-dim tabular-nums">{expiryLabel(cotizacion)}</span>
               )}
             </div>
@@ -579,7 +582,7 @@ function CotizacionCard({
                     ? <Loader2 size={13} className="animate-spin" />
                     : <ChevronRight size={13} />
                   }
-                  {STATUS_LABEL[nextStatus]}
+                  {NEXT_STATUS_ACTION[cotizacion.status] ?? STATUS_LABEL[nextStatus]}
                 </button>
               )}
               <button
@@ -621,6 +624,14 @@ function CotizacionCard({
         open={showEdit}
         onClose={() => setShowEdit(false)}
         onSaved={onUpdate}
+      />
+      <ShareSheet
+        open={showShare}
+        onClose={() => setShowShare(false)}
+        url={trackingUrl}
+        productName={cotizacion.product_name}
+        clienteName={cotizacion.cliente?.name}
+        clientePhone={cotizacion.cliente?.phone}
       />
     </>
   );

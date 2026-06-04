@@ -35,7 +35,7 @@ def _new_refresh_token() -> tuple[str, str]:
 
 
 def _set_auth_cookies(response: Response, jwt: str, refresh_raw: str) -> None:
-    secure = settings.ENVIRONMENT == "production"
+    secure = settings.COOKIE_SECURE
     response.set_cookie(
         key="access_token", value=jwt,
         httponly=True, max_age=_JWT_LIFETIME, samesite="lax", secure=secure,

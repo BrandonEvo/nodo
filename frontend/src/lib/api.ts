@@ -1,13 +1,29 @@
 import axios from 'axios';
 
-const base = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const base = import.meta.env.VITE_API_URL ?? '';
 
 // withCredentials: true envía la httpOnly cookie automáticamente en cada request.
 // El CookieToBearerMiddleware del backend la convierte en Authorization: Bearer <token>.
 const api = axios.create({
   baseURL: base.endsWith('/api') ? base.replace(/\/api\/?$/, '') : base,
   withCredentials: true,
+  // Tras inactividad la 1ª request puede tardar (cold start). 45s da margen;
+  // si lo supera, tratamos al servidor como no disponible y mostramos aviso.
+  timeout: 45000,
 });
+
+/**
+ * Distingue "el servidor no respondió" (red caída, timeout, o 502/503/504 del
+ * proxy) de un error real de la app. Útil para mostrar "reintenta" en vez de
+ * un mensaje engañoso como "credenciales inválidas".
+ */
+export function isServerUnreachable(error: any): boolean {
+  if (error?.code === 'ECONNABORTED') return true;   // timeout de axios
+  if (error?.code === 'ERR_NETWORK') return true;    // sin red / DNS / CORS
+  if (!error?.response) return true;                  // sin respuesta del backend
+  const s = error.response.status;
+  return s === 502 || s === 503 || s === 504;
+}
 
 // ── Refresh silencioso ────────────────────────────────────────────────────────
 let _refreshing = false;

@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card"
-import { Package, Trash2, ChefHat, ShoppingCart, Users, Settings, LogOut, Building2, CheckCircle2 } from "lucide-react"
+import { Package, Trash2, ChefHat, LogOut, Building2 } from "lucide-react"
 
 export function Launcher({ org, onSwitchOrg, onLogout }: any) {
   // Lista maestra de módulos. Se filtrarán según los permisos del Tenant (org).

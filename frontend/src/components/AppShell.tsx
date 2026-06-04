@@ -6,33 +6,13 @@ import { BottomNav } from './navigation/BottomNav';
 import { DashboardCanvas } from './dashboard/DashboardCanvas';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { authService } from '@/services/auth.service';
+import { hexToRgb, darkenHex, luminance } from '@/lib/utils';
 
 interface AppShellProps {
     userSession: any;
     activeModules?: any[];
     onLogout: () => void;
     onReloadSession?: () => void;
-}
-
-/** Convert hex to RGB object */
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-    const h = hex.replace('#', '');
-    const bigint = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
-    return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
-}
-
-/** Darken a hex color by mixing with black (amount 0–1) */
-function darkenHex(hex: string, amount: number): string {
-    const { r, g, b } = hexToRgb(hex);
-    const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
-    const d = (c: number) => clamp(c * (1 - amount)).toString(16).padStart(2, '0');
-    return `#${d(r)}${d(g)}${d(b)}`;
-}
-
-/** Relative luminance (0–1) — determines if text on this bg should be dark or light */
-function luminance(hex: string): number {
-    const { r, g, b } = hexToRgb(hex);
-    return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
 export function AppShell({ userSession, activeModules = [], onLogout, onReloadSession }: AppShellProps) {

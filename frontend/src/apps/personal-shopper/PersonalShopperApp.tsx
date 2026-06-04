@@ -7,6 +7,7 @@ import {
 import type { AppProps } from '../index';
 import { ShopperCalculator, type CalcResult } from './ShopperCalculator';
 import { TrackingTimeline, TrackingMiniBar } from './TrackingTimeline';
+import { copyToClipboard } from '@/lib/utils';
 import {
   personalShopperService,
   type ShopperOrder,
@@ -918,14 +919,15 @@ function OrderCard({
   const hasTracking = order.tracking_status !== null;
   const [copied, setCopied] = useState(false);
 
-  const copyTrackingLink = (e: React.MouseEvent) => {
+  const copyTrackingLink = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!order.tracking_token) return;
     const url = `${window.location.origin}/tracking/${order.tracking_token}`;
-    navigator.clipboard.writeText(url).then(() => {
+    const ok = await copyToClipboard(url);
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    }
   };
 
   return (

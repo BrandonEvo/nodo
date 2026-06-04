@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Package2, Truck, CheckCircle2, ShoppingCart, Clock } from 'lucide-react';
 import { importacionesService, type PublicCotizacion, type CotizacionStatus } from '@/services/importaciones.service';
+import { brandTheme } from '@/lib/utils';
 
 // ── Pasos visibles al cliente (sin "pagado" — es info interna) ────────────────
 
@@ -12,11 +13,18 @@ const STEPS: Array<{
   color: { ring: string; bg: string; text: string; light: string };
 }> = [
   {
-    key: 'pendiente',
+    key: 'cotizado',
     label: 'Cotizado',
     sub: 'Precio calculado y en revisión',
     icon: <Clock className="w-4 h-4" />,
     color: { ring: 'ring-blue-400', bg: 'bg-blue-500', text: 'text-blue-600', light: 'bg-blue-50' },
+  },
+  {
+    key: 'confirmado',
+    label: 'Confirmado',
+    sub: 'Pedido confirmado, pendiente de compra',
+    icon: <CheckCircle2 className="w-4 h-4" />,
+    color: { ring: 'ring-violet-400', bg: 'bg-violet-500', text: 'text-violet-600', light: 'bg-violet-50' },
   },
   {
     key: 'comprado',
@@ -61,7 +69,8 @@ function fmtDateShort(iso: string | null): string | null {
 }
 
 const TS_FOR_STEP: Record<string, keyof PublicCotizacion> = {
-  pendiente:   'created_at',
+  cotizado:    'created_at',
+  confirmado:  'confirmado_at',
   comprado:    'comprado_at',
   en_transito: 'en_transito_at',
   entregado:   'entregado_at',
@@ -105,13 +114,28 @@ export function ImportTrackingPage({ token }: Props) {
 
   const isCancelled = data.status === 'cancelado';
   const currentIdx  = currentStepIndex(data.status);
+  const brand       = brandTheme(data.business_color);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-gradient-to-br from-slate-700 via-slate-800 to-[#1a2540] px-6 pt-14 pb-8 text-white">
+      {/* Header — personalizado con el branding del negocio */}
+      <div className="px-6 pt-14 pb-8" style={{ background: brand.gradient, color: brand.onBrand }}>
         <div className="max-w-md mx-auto">
-          <div className="flex items-center gap-2 mb-4 opacity-70">
+          {(data.business_logo_url || data.business_name) && (
+            <div className="flex items-center gap-3 mb-5">
+              {data.business_logo_url && (
+                <img
+                  src={data.business_logo_url}
+                  alt={data.business_name ?? ''}
+                  className="w-10 h-10 rounded-xl object-contain bg-white/90 p-1 shadow-sm shrink-0"
+                />
+              )}
+              {data.business_name && (
+                <span className="text-base font-black tracking-tight leading-tight">{data.business_name}</span>
+              )}
+            </div>
+          )}
+          <div className="flex items-center gap-2 mb-4" style={{ opacity: 0.7 }}>
             <Package2 className="w-4 h-4" />
             <span className="text-sm font-medium uppercase tracking-wide">Seguimiento de importación</span>
           </div>
@@ -119,7 +143,7 @@ export function ImportTrackingPage({ token }: Props) {
             {data.product_name}
           </h1>
           {data.estimated_delivery && (
-            <p className="text-white/60 text-xs mt-1">
+            <p className="text-xs mt-1" style={{ opacity: 0.6 }}>
               Entrega estimada: {fmtDateShort(data.estimated_delivery)}
             </p>
           )}
@@ -129,8 +153,11 @@ export function ImportTrackingPage({ token }: Props) {
               Cancelado
             </div>
           ) : (
-            <div className="mt-4 inline-flex items-center gap-1.5 bg-white/20 backdrop-blur rounded-full px-3 py-1.5 text-xs font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+            <div
+              className="mt-4 inline-flex items-center gap-1.5 backdrop-blur rounded-full px-3 py-1.5 text-xs font-semibold"
+              style={{ background: brand.overlay }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: brand.onBrand }} />
               {STEPS[currentIdx]?.label ?? 'En proceso'}
             </div>
           )}

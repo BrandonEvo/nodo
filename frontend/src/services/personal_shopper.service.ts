@@ -71,7 +71,6 @@ export interface ShopperOrder {
 }
 
 export interface PublicTrackingData {
-  client_name: string;
   product_description: string;
   quantity: number;
   unit: string;
@@ -80,6 +79,9 @@ export interface PublicTrackingData {
   tracking_status: TrackingStatus | null;
   tracking_note: string | null;
   tracking_updated_at: string | null;
+  business_name: string | null;
+  business_logo_url: string | null;
+  business_color: string | null;
 }
 
 export interface ShopperOrderCreate {

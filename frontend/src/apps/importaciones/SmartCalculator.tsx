@@ -3,7 +3,7 @@ import {
   Plane, Package2, Receipt, Settings2, ChevronDown, ChevronRight,
   RotateCcw, TrendingUp, TrendingDown, DollarSign, Plus, Minus,
   Info, FileText, Sparkles, Search, Loader2, X, ArrowRight,
-  BookmarkPlus, Check, ClipboardList,
+  BookmarkPlus, Check, ClipboardList, Users,
 } from 'lucide-react';
 import api from '@/lib/api';
 import type { AppProps } from '../index';
@@ -15,7 +15,11 @@ import {
   type ItemCategory,
 } from './pricingEngine';
 import { importacionesService } from '@/services/importaciones.service';
+import { useNumericField } from './useNumericField';
 import { CotizacionesTab } from './CotizacionesTab';
+import { ClientesTab } from './ClientesTab';
+import { ClientePicker } from './ClientePicker';
+import type { Cliente } from '@/services/import_clientes.service';
 
 // ─── iOS Switch ───────────────────────────────────────────────────────────────
 
@@ -43,6 +47,7 @@ function InlineStepper({
 }) {
   const dec = decimals ?? (step < 1 ? Math.max(1, -Math.floor(Math.log10(step))) : 0);
   const snap = (n: number) => parseFloat(n.toFixed(dec));
+  const field = useNumericField({ value, onChange, min, decimals: dec });
 
   return (
     <div className="flex items-center gap-2 shrink-0">
@@ -53,8 +58,16 @@ function InlineStepper({
       >
         <Minus size={13} />
       </button>
-      <div className="min-w-[4rem] text-center">
-        <span className="text-base font-black text-nodo-ink tabular-nums">{value.toFixed(dec)}</span>
+      <div className="min-w-[4rem] flex items-baseline justify-center">
+        <input
+          type="text"
+          inputMode="decimal"
+          value={field.text}
+          onChange={field.onChange}
+          onFocus={field.onFocus}
+          onBlur={field.onBlur}
+          className="w-12 text-center bg-transparent text-base font-black text-nodo-ink tabular-nums outline-none"
+        />
         {suffix && <span className="text-[10px] text-nodo-dim font-bold ml-1">{suffix}</span>}
       </div>
       <button
@@ -374,11 +387,12 @@ function FL({ children }: { children: React.ReactNode }) {
 // ─── NumInput (desktop) ───────────────────────────────────────────────────────
 
 function NumInput({
-  prefix, suffix, value, onChange, step = 0.01, min = 0, autoFocus, disabled, xl,
+  prefix, suffix, value, onChange, min = 0, autoFocus, disabled, xl,
 }: {
   prefix?: string; suffix?: string; value: number; onChange: (v: number) => void;
   step?: number; min?: number; autoFocus?: boolean; disabled?: boolean; xl?: boolean;
 }) {
+  const field = useNumericField({ value, onChange, min });
   return (
     <div className="relative">
       {prefix && (
@@ -387,11 +401,12 @@ function NumInput({
         </span>
       )}
       <input
-        type="number" inputMode="decimal" autoFocus={autoFocus} min={min} step={step}
+        type="text" inputMode="decimal" autoFocus={autoFocus}
         disabled={disabled}
-        value={Number.isFinite(value) ? value : 0}
-        onChange={e => onChange(parseFloat(e.target.value) || 0)}
-        onFocus={e => e.target.select()}
+        value={field.text}
+        onChange={field.onChange}
+        onFocus={field.onFocus}
+        onBlur={field.onBlur}
         className={[
           'w-full rounded-2xl font-bold text-nodo-ink bg-nodo-inset border-2 border-nodo-line',
           'focus:border-nodo-ink outline-none transition-colors',
@@ -411,6 +426,27 @@ function NumInput({
   );
 }
 
+// ─── Input numérico "desnudo" para filas iOS (sin borde propio) ──────────────
+
+function BareNum({
+  value, onChange, min = 0, className,
+}: {
+  value: number; onChange: (v: number) => void; min?: number; className?: string;
+}) {
+  const field = useNumericField({ value, onChange, min });
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={field.text}
+      onChange={field.onChange}
+      onFocus={field.onFocus}
+      onBlur={field.onBlur}
+      className={className}
+    />
+  );
+}
+
 // ─── MiniStepper (desktop) ────────────────────────────────────────────────────
 
 function MiniStepper({
@@ -421,11 +457,12 @@ function MiniStepper({
 }) {
   const dec = decimals ?? (step < 1 ? Math.max(1, -Math.floor(Math.log10(step))) : 0);
   const snap = (n: number) => parseFloat(n.toFixed(dec));
+  const field = useNumericField({ value, onChange, min, decimals: dec });
 
   return (
     <div className="flex flex-col gap-1.5">
       {label && <FL>{label}</FL>}
-      <div className="flex items-center h-12 bg-nodo-inset border-2 border-nodo-line rounded-2xl overflow-hidden">
+      <div className="flex items-center h-12 bg-nodo-inset border-2 border-nodo-line rounded-2xl overflow-hidden focus-within:border-nodo-ink transition-colors">
         <button
           type="button"
           onClick={() => onChange(snap(Math.max(min, value - step)))}
@@ -433,8 +470,16 @@ function MiniStepper({
         >
           <Minus size={15} />
         </button>
-        <div className="flex-1 flex flex-col items-center justify-center leading-none">
-          <span className="text-base font-black text-nodo-ink tabular-nums">{value.toFixed(dec)}</span>
+        <div className="flex-1 flex flex-col items-center justify-center leading-none min-w-0">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={field.text}
+            onChange={field.onChange}
+            onFocus={field.onFocus}
+            onBlur={field.onBlur}
+            className="w-full text-center bg-transparent text-base font-black text-nodo-ink tabular-nums outline-none"
+          />
           {suffix && <span className="text-[9px] font-bold text-nodo-dim mt-0.5 uppercase tracking-wide">{suffix}</span>}
         </div>
         <button
@@ -474,13 +519,15 @@ function Toggle({ on, onLabel, offLabel, onChange }: {
 // ─── Componente Principal ─────────────────────────────────────────────────────
 
 const TAB_OPTS = [
-  { value: 'calc',   label: 'Calculadora',  icon: <Plane size={14} /> },
-  { value: 'quotes', label: 'Cotizaciones', icon: <ClipboardList size={14} /> },
+  { value: 'calc',    label: 'Calculadora',  icon: <Plane size={14} /> },
+  { value: 'quotes',  label: 'Cotizaciones', icon: <ClipboardList size={14} /> },
+  { value: 'clients', label: 'Clientes',     icon: <Users size={14} /> },
 ];
 
 export function SmartCalculator(_props: AppProps) {
   const { inputs, config, result, updateInput, updateConfig, reset } = usePricingEngine();
-  const [activeTab, setActiveTab]         = useState<'calc' | 'quotes'>('calc');
+  const [activeTab, setActiveTab]         = useState<'calc' | 'quotes' | 'clients'>('calc');
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showReceipt, setShowReceipt]     = useState(false);
   const [showConfig, setShowConfig]       = useState(false);
@@ -560,6 +607,7 @@ export function SmartCalculator(_props: AppProps) {
       await importacionesService.create({
         product_name:    saveName.trim(),
         amazon_asin:     amazonProduct?.asin ?? null,
+        cliente_id:      selectedCliente?.id ?? null,
         inputs_snapshot: inputs as unknown as Record<string, unknown>,
         config_snapshot: config as unknown as Record<string, unknown>,
         result_snapshot: result as unknown as Record<string, unknown>,
@@ -567,6 +615,7 @@ export function SmartCalculator(_props: AppProps) {
       setSaveSuccess(true);
       setTimeout(() => {
         setShowSaveSheet(false);
+        setSelectedCliente(null);
         setActiveTab('quotes');
       }, 900);
     } catch {
@@ -588,6 +637,15 @@ export function SmartCalculator(_props: AppProps) {
       />
 
       {activeTab === 'quotes' && <CotizacionesTab />}
+
+      {activeTab === 'clients' && (
+        <ClientesTab
+          onNewCotizacion={(cliente) => {
+            setSelectedCliente(cliente);
+            setActiveTab('calc');
+          }}
+        />
+      )}
 
       {activeTab === 'calc' && <>
 
@@ -773,15 +831,10 @@ export function SmartCalculator(_props: AppProps) {
             <FormRow label="Precio en USA">
               <div className="flex items-center gap-1 justify-end">
                 <span className="text-[15px] font-semibold text-nodo-dim">$</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step={0.01}
-                  value={Number.isFinite(inputs.unitCostUSD) ? inputs.unitCostUSD : 0}
-                  onChange={e => updateInput('unitCostUSD', parseFloat(e.target.value) || 0)}
-                  onFocus={e => e.target.select()}
-                  className="w-28 text-right text-[17px] font-black text-nodo-ink bg-transparent outline-none tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                <BareNum
+                  value={inputs.unitCostUSD}
+                  onChange={v => updateInput('unitCostUSD', v)}
+                  className="w-28 text-right text-[17px] font-black text-nodo-ink bg-transparent outline-none tabular-nums"
                 />
               </div>
             </FormRow>
@@ -877,12 +930,10 @@ export function SmartCalculator(_props: AppProps) {
               <FormRow label="Precio de venta" last>
                 <div className="flex items-center gap-1 justify-end">
                   <span className="text-[15px] font-semibold text-nodo-dim">Q</span>
-                  <input
-                    type="number" inputMode="decimal" min={0} step={0.01}
-                    value={Number.isFinite(inputs.fixedSalePrice) ? inputs.fixedSalePrice : 0}
-                    onChange={e => updateInput('fixedSalePrice', parseFloat(e.target.value) || 0)}
-                    onFocus={e => e.target.select()}
-                    className="w-28 text-right text-[17px] font-black text-nodo-ink bg-transparent outline-none tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  <BareNum
+                    value={inputs.fixedSalePrice}
+                    onChange={v => updateInput('fixedSalePrice', v)}
+                    className="w-28 text-right text-[17px] font-black text-nodo-ink bg-transparent outline-none tabular-nums"
                   />
                 </div>
               </FormRow>
@@ -919,12 +970,10 @@ export function SmartCalculator(_props: AppProps) {
                 <FormRow label="Valor declarado" last>
                   <div className="flex items-center gap-1 justify-end">
                     <span className="text-[15px] font-semibold text-nodo-dim">$</span>
-                    <input
-                      type="number" inputMode="decimal" min={0} step={0.01}
-                      value={Number.isFinite(inputs.declaredCostUSD) ? inputs.declaredCostUSD : 0}
-                      onChange={e => updateInput('declaredCostUSD', parseFloat(e.target.value) || 0)}
-                      onFocus={e => e.target.select()}
-                      className="w-28 text-right text-[17px] font-black text-nodo-ink bg-transparent outline-none tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    <BareNum
+                      value={inputs.declaredCostUSD}
+                      onChange={v => updateInput('declaredCostUSD', v)}
+                      className="w-28 text-right text-[17px] font-black text-nodo-ink bg-transparent outline-none tabular-nums"
                     />
                   </div>
                 </FormRow>
@@ -1200,6 +1249,13 @@ export function SmartCalculator(_props: AppProps) {
               </div>
             </div>
           </div>
+          {/* Cliente */}
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Cliente <span className="text-nodo-dim normal-case font-medium">(opcional)</span>
+            </label>
+            <ClientePicker value={selectedCliente} onChange={setSelectedCliente} />
+          </div>
           {/* Nombre del producto */}
           <div>
             <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
@@ -1210,7 +1266,6 @@ export function SmartCalculator(_props: AppProps) {
               value={saveName}
               onChange={e => setSaveName(e.target.value)}
               placeholder="Ej. Audífonos Sony WH-1000XM5"
-              autoFocus
               className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim"
             />
           </div>

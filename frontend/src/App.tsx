@@ -9,6 +9,8 @@ import { InvitePage } from '@/components/InvitePage'
 import { ToastProvider } from '@/components/ui/Toaster'
 import { authService, SessionData } from '@/services/auth.service'
 import { modulesService } from '@/services/modules.service'
+import { isServerUnreachable } from '@/lib/api'
+import { WifiOff, RefreshCw } from 'lucide-react'
 
 function getTrackingToken(): string | null {
   const match = window.location.pathname.match(/^\/tracking\/([0-9a-f-]{36})$/i);
@@ -26,7 +28,7 @@ function getInviteToken(): string | null {
   return match ? match[1] : null;
 }
 
-type AuthState = 'loading' | 'unauth' | 'auth';
+type AuthState = 'loading' | 'unauth' | 'auth' | 'offline';
 
 // ── Authenticated app shell ──────────────────────────────────────────────────
 function AuthedApp() {
@@ -54,12 +56,30 @@ function AuthedApp() {
     }
   };
 
+  // Chequeo inicial de sesión. Distingue "no autenticado" (→ login) de
+  // "servidor no responde" (→ pantalla de reintento), para no confundir un
+  // problema de conectividad con un cierre de sesión.
+  const checkSession = async () => {
+    setAuthState('loading');
+    try {
+      const session = await authService.session();
+      setUserSession(session);
+      if (session.tenant_id) {
+        try {
+          const modules = await modulesService.getMyActiveModules(session.tenant_id);
+          setActiveModules(modules);
+        } catch {
+          setActiveModules([]);
+        }
+      }
+      setAuthState('auth');
+    } catch (err) {
+      setAuthState(isServerUnreachable(err) ? 'offline' : 'unauth');
+    }
+  };
+
   useEffect(() => {
-    const verifySession = async () => {
-      const session = await loadSession();
-      setAuthState(session ? 'auth' : 'unauth');
-    };
-    verifySession();
+    checkSession();
   }, []);
 
   const handleLoginSuccess = async () => {
@@ -90,6 +110,32 @@ function AuthedApp() {
         <div className="flex flex-col items-center gap-3">
           <span className="text-3xl font-black text-nodo-ink italic tracking-tighter">N.</span>
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-nodo-ink" />
+        </div>
+      </div>
+    );
+  }
+
+  // ── OFFLINE / servidor no responde ──
+  if (authState === 'offline') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-nodo-canvas p-6">
+        <div className="max-w-sm w-full flex flex-col items-center text-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-nodo-inset flex items-center justify-center">
+            <WifiOff className="w-7 h-7 text-nodo-sub" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-nodo-ink">No se pudo conectar</h1>
+            <p className="text-sm text-nodo-sub font-medium mt-1 leading-relaxed">
+              El servidor no responde. Puede estar iniciando tras un periodo inactivo
+              —suele tardar unos segundos—. No es un fallo de tus datos ni de tu sesión.
+            </p>
+          </div>
+          <button
+            onClick={checkSession}
+            className="w-full h-12 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-sm active:scale-[0.97] transition-transform flex items-center justify-center gap-2"
+          >
+            <RefreshCw className="w-4 h-4" /> Reintentar
+          </button>
         </div>
       </div>
     );

@@ -3,10 +3,11 @@ from sqlalchemy.orm import sessionmaker
 from core.config import settings
 
 # 1. Configuración del Motor Asíncrono
-# echo=True imprime las sentencias SQL en consola solo si estamos en desarrollo
+# echo controlado por SQL_ECHO (off por defecto): en este VM el logging por
+# sentencia añade latencia perceptible en cada request.
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=(settings.ENVIRONMENT == "development"),
+    echo=settings.SQL_ECHO,
     future=True,
     pool_size=10,        # Conexiones persistentes mantenidas en memoria
     max_overflow=20      # Conexiones extra permitidas bajo picos de tráfico

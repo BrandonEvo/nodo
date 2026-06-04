@@ -6,6 +6,7 @@ import {
   type PublicTrackingData,
   personalShopperService,
 } from '@/services/personal_shopper.service';
+import { brandTheme } from '@/lib/utils';
 
 const STEP_COLORS = [
   { bg: 'bg-blue-500',    text: 'text-blue-600',    lightBg: 'bg-blue-50'    },
@@ -78,34 +79,48 @@ export function PublicTrackingPage({ token }: Props) {
   const currentIdx = stepIndex(data.tracking_status);
   const isComplete = data.tracking_status === 'entregado';
   const hasTracking = data.tracking_status !== null;
+  const brand = brandTheme(data.business_color);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-gradient-to-br from-slate-700 via-slate-800 to-[#1a2540] px-6 pt-14 pb-8 text-white">
+      {/* Header — personalizado con el branding del negocio */}
+      <div className="px-6 pt-14 pb-8" style={{ background: brand.gradient, color: brand.onBrand }}>
         <div className="max-w-md mx-auto">
-          <div className="flex items-center gap-2 mb-4 opacity-80">
+          {(data.business_logo_url || data.business_name) && (
+            <div className="flex items-center gap-3 mb-5">
+              {data.business_logo_url && (
+                <img
+                  src={data.business_logo_url}
+                  alt={data.business_name ?? ''}
+                  className="w-10 h-10 rounded-xl object-contain bg-white/90 p-1 shadow-sm shrink-0"
+                />
+              )}
+              {data.business_name && (
+                <span className="text-base font-black tracking-tight leading-tight">{data.business_name}</span>
+              )}
+            </div>
+          )}
+          <div className="flex items-center gap-2 mb-4" style={{ opacity: 0.8 }}>
             <Package className="w-4 h-4" />
             <span className="text-sm font-medium uppercase tracking-wide">Seguimiento de pedido</span>
           </div>
           <h1 className="text-xl font-bold leading-snug mb-1 line-clamp-2">
             {data.product_description}
           </h1>
-          <p className="text-white/70 text-sm">
-            Para {data.client_name}
-            {data.quantity !== 1
-              ? ` · ${data.quantity} ${data.unit}`
-              : ''}
+          <p className="text-sm" style={{ opacity: 0.7 }}>
+            {data.quantity} {data.unit}
           </p>
           {data.delivery_date && (
-            <p className="text-white/60 text-xs mt-1">
+            <p className="text-xs mt-1" style={{ opacity: 0.6 }}>
               Entrega estimada: {new Date(data.delivery_date).toLocaleDateString('es-GT', { day: 'numeric', month: 'long' })}
             </p>
           )}
           {/* Status pill */}
-          <div className="mt-4 inline-flex items-center gap-1.5 bg-white/20 backdrop-blur
-                          rounded-full px-3 py-1.5 text-xs font-semibold">
-            <span className="w-1.5 h-1.5 rounded-full bg-white" />
+          <div
+            className="mt-4 inline-flex items-center gap-1.5 backdrop-blur rounded-full px-3 py-1.5 text-xs font-semibold"
+            style={{ background: brand.overlay }}
+          >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: brand.onBrand }} />
             {STATUS_LABELS[data.status] ?? data.status}
           </div>
         </div>

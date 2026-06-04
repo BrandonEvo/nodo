@@ -1,7 +1,8 @@
 import api from '@/lib/api';
 
 export type CotizacionStatus =
-  | 'pendiente'
+  | 'cotizado'
+  | 'confirmado'
   | 'comprado'
   | 'en_transito'
   | 'entregado'
@@ -9,7 +10,8 @@ export type CotizacionStatus =
   | 'cancelado';
 
 export const STATUS_LABEL: Record<CotizacionStatus, string> = {
-  pendiente:   'Pendiente',
+  cotizado:    'Cotizado',
+  confirmado:  'Confirmado',
   comprado:    'Comprado',
   en_transito: 'En tránsito',
   entregado:   'Entregado',
@@ -18,37 +20,63 @@ export const STATUS_LABEL: Record<CotizacionStatus, string> = {
 };
 
 export const NEXT_STATUS: Partial<Record<CotizacionStatus, CotizacionStatus>> = {
-  pendiente:   'comprado',
+  cotizado:    'confirmado',
+  confirmado:  'comprado',
   comprado:    'en_transito',
   en_transito: 'entregado',
   entregado:   'pagado',
 };
 
+/** Verbo de acción para el botón "avanzar al siguiente estado". */
+export const NEXT_STATUS_ACTION: Partial<Record<CotizacionStatus, string>> = {
+  cotizado:    'Confirmar pedido',
+  confirmado:  'Marcar comprado',
+  comprado:    'Marcar en tránsito',
+  en_transito: 'Marcar entregado',
+  entregado:   'Marcar pagado',
+};
+
+export interface ClienteMini {
+  id: string;
+  name: string;
+  phone: string | null;
+}
+
 export interface PublicCotizacion {
   product_name: string;
+  cliente_name: string | null;
   status: CotizacionStatus;
   tracking_number: string | null;
   estimated_delivery: string | null;
   created_at: string;
+  confirmado_at: string | null;
   comprado_at: string | null;
   en_transito_at: string | null;
   entregado_at: string | null;
+  business_name: string | null;
+  business_logo_url: string | null;
+  business_color: string | null;
 }
 
 export interface Cotizacion {
   id: string;
   share_token: string;
   tenant_id: string;
+  cliente_id: string | null;
+  cliente: ClienteMini | null;
   product_name: string;
   amazon_asin: string | null;
   inputs_snapshot: Record<string, unknown>;
   config_snapshot: Record<string, unknown>;
   result_snapshot: Record<string, unknown>;
+  sale_price_gtq: string | null;
+  landed_cost_gtq: string | null;
   status: CotizacionStatus;
   expires_at: string;
   tracking_number: string | null;
   estimated_delivery: string | null;
   notes: string | null;
+  confirmado_at: string | null;
   comprado_at: string | null;
   en_transito_at: string | null;
   entregado_at: string | null;
@@ -60,6 +88,7 @@ export interface Cotizacion {
 export interface CotizacionCreate {
   product_name: string;
   amazon_asin?: string | null;
+  cliente_id?: string | null;
   inputs_snapshot: Record<string, unknown>;
   config_snapshot: Record<string, unknown>;
   result_snapshot: Record<string, unknown>;
