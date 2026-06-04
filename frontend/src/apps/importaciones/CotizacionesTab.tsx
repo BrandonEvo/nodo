@@ -37,7 +37,8 @@ const STATUS_CONFIG: Record<CotizacionStatus, { icon: React.ReactNode; cls: stri
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function isExpired(c: Cotizacion): boolean {
-  return c.status === 'cotizado' && new Date(c.expires_at) < new Date();
+  return (c.status as string === 'cotizado' || c.status as string === 'pendiente')
+    && new Date(c.expires_at) < new Date();
 }
 
 function expiryLabel(c: Cotizacion): string {
@@ -60,12 +61,19 @@ function fmtDate(iso: string | null): string {
 
 // ── StatusBadge ───────────────────────────────────────────────────────────────
 
+// Tolera cotizaciones legacy con estado 'pendiente' (antes de la migración de
+// estados) para que el render no reviente si el backend aún no se actualizó.
+function displayStatus(status: CotizacionStatus): CotizacionStatus {
+  return (status as string) === 'pendiente' ? 'cotizado' : status;
+}
+
 function StatusBadge({ status }: { status: CotizacionStatus }) {
-  const cfg = STATUS_CONFIG[status];
+  const s = displayStatus(status);
+  const cfg = STATUS_CONFIG[s] ?? STATUS_CONFIG.cotizado;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase border ${cfg.cls}`}>
       {cfg.icon}
-      {STATUS_LABEL[status]}
+      {STATUS_LABEL[s] ?? s}
     </span>
   );
 }
@@ -426,8 +434,9 @@ function CotizacionCard({
 
   const trackingUrl = `${window.location.origin}/import-tracking/${cotizacion.share_token}`;
 
-  const expired   = isExpired(cotizacion);
-  const nextStatus = NEXT_STATUS[cotizacion.status];
+  const status     = displayStatus(cotizacion.status);
+  const expired    = isExpired(cotizacion);
+  const nextStatus = NEXT_STATUS[status];
   const salePrice  = resultField<number>(cotizacion, 'salePriceGTQ');
   const landed     = resultField<number>(cotizacion, 'totalLandedCostGTQ');
   const margin     = resultField<number>(cotizacion, 'actualMargin');
@@ -469,7 +478,7 @@ function CotizacionCard({
     }
   }
 
-  const isClosed = cotizacion.status === 'pagado' || cotizacion.status === 'cancelado';
+  const isClosed = status === 'pagado' || status === 'cancelado';
 
   return (
     <>
@@ -510,7 +519,7 @@ function CotizacionCard({
             </div>
             <div className="flex flex-col items-end gap-1 shrink-0">
               <div className="flex items-center gap-1.5">
-                <StatusBadge status={cotizacion.status} />
+                <StatusBadge status={status} />
                 <button
                   onClick={() => setShowShare(true)}
                   title="Compartir link de tracking"
@@ -519,7 +528,7 @@ function CotizacionCard({
                   <Share2 size={12} />
                 </button>
               </div>
-              {cotizacion.status === 'cotizado' && !expired && (
+              {status === 'cotizado' && !expired && (
                 <span className="text-[9px] font-bold text-nodo-dim tabular-nums">{expiryLabel(cotizacion)}</span>
               )}
             </div>
@@ -582,7 +591,7 @@ function CotizacionCard({
                     ? <Loader2 size={13} className="animate-spin" />
                     : <ChevronRight size={13} />
                   }
-                  {NEXT_STATUS_ACTION[cotizacion.status] ?? STATUS_LABEL[nextStatus]}
+                  {NEXT_STATUS_ACTION[status] ?? STATUS_LABEL[nextStatus]}
                 </button>
               )}
               <button
@@ -599,7 +608,7 @@ function CotizacionCard({
                 <Calculator size={12} />
                 Cálculo
               </button>
-              {cotizacion.status !== 'entregado' && (
+              {status !== 'entregado' && (
                 <button
                   onClick={handleCancel}
                   disabled={advancing}

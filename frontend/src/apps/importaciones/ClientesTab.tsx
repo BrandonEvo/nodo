@@ -129,7 +129,7 @@ function MiniCotizacion({ c }: { c: Cotizacion }) {
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-[13px] font-bold text-nodo-ink truncate">{c.product_name}</p>
-        <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">{STATUS_LABEL[c.status]}</p>
+        <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">{STATUS_LABEL[c.status] ?? c.status}</p>
       </div>
       {c.sale_price_gtq && (
         <p className="text-sm font-black tabular-nums text-nodo-ink shrink-0">{fmtMoney(c.sale_price_gtq)}</p>
