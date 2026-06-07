@@ -5,6 +5,7 @@ import { useToast } from "@/components/ui/Toaster"
 import { authService } from "@/services/auth.service"
 import { isServerUnreachable } from "@/lib/api"
 import { CheckCircle2, EyeOff, Eye, Mail, Lock, Store, ArrowLeft } from "lucide-react"
+import { PrivacyPolicyModal } from "@/components/PrivacyPolicyModal"
 
 const SERVER_DOWN_MSG = "El servidor no responde (puede estar iniciando tras un rato inactivo). Espera unos segundos y vuelve a intentar — no es un problema de tus datos."
 
@@ -22,6 +23,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
   const [tenantName, setTenantName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [showPrivacy, setShowPrivacy] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -73,6 +75,8 @@ export function Login({ onLoginSuccess }: LoginProps) {
   }
 
   return (
+    <>
+    <PrivacyPolicyModal open={showPrivacy} onClose={() => setShowPrivacy(false)} />
     <div className="min-h-screen w-full flex bg-[#F8F9FA] selection:bg-[#69E7A8] selection:text-[#111111] font-sans">
 
       {/* PANEL IZQUIERDO: Branding (Se oculta en móviles) */}
@@ -92,8 +96,15 @@ export function Login({ onLoginSuccess }: LoginProps) {
           </p>
         </div>
 
-        <div className="text-xs text-gray-500 font-bold tracking-[0.2em] uppercase relative z-10">
-          © 2026 Nodo Enterprise Framework
+        <div className="flex items-center gap-4 relative z-10">
+          <span className="text-xs text-gray-500 font-bold tracking-[0.2em] uppercase">© 2026 Nodo</span>
+          <button
+            type="button"
+            onClick={() => setShowPrivacy(true)}
+            className="text-xs text-gray-500 hover:text-white transition-colors underline underline-offset-2"
+          >
+            Política de Privacidad
+          </button>
         </div>
       </div>
 
@@ -151,7 +162,10 @@ export function Login({ onLoginSuccess }: LoginProps) {
 
                 <Button 
                   type="button" 
-                  onClick={() => window.location.href = '/api/auth/google/login'}
+                  onClick={() => {
+                    const base = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api').replace(/\/api\/?$/, '');
+                    window.location.href = `${base}/api/auth/google/login`;
+                  }}
                   className="w-full h-14 bg-white hover:bg-gray-50 text-[#111111] border-2 border-gray-200 font-bold text-lg rounded-2xl shadow-sm transition-transform active:scale-[0.98] flex items-center justify-center gap-3"
                 >
                   <svg viewBox="0 0 24 24" className="w-6 h-6">
@@ -260,5 +274,6 @@ export function Login({ onLoginSuccess }: LoginProps) {
         </div>
       </div>
     </div>
+    </>
   )
 }

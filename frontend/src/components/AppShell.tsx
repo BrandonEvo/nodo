@@ -4,7 +4,9 @@ import { Sidebar } from './navigation/Sidebar';
 import { Topbar } from './navigation/Topbar';
 import { BottomNav } from './navigation/BottomNav';
 import { DashboardCanvas } from './dashboard/DashboardCanvas';
+import { PushBanner } from './ui/PushBanner';
 import { useDarkMode } from '@/hooks/useDarkMode';
+import { usePushPermission } from '@/hooks/usePushPermission';
 import { authService } from '@/services/auth.service';
 import { hexToRgb, darkenHex, luminance } from '@/lib/utils';
 
@@ -17,6 +19,15 @@ interface AppShellProps {
 
 export function AppShell({ userSession, activeModules = [], onLogout, onReloadSession }: AppShellProps) {
     const { isDark, toggle: toggleDark } = useDarkMode();
+    const { state: pushState, subscribing, subscribe, dismiss } = usePushPermission();
+    // Mostrar banner 45s después del login — el usuario ya conoce la app en ese punto
+    const [showPushBanner, setShowPushBanner] = useState(false);
+    useEffect(() => {
+        if (pushState !== 'eligible') return;
+        const t = setTimeout(() => setShowPushBanner(true), 45_000);
+        return () => clearTimeout(t);
+    }, [pushState]);
+
     const realIsSuperAdmin  = userSession?.is_superuser;
     const availableTenants  = userSession?.available_tenants ?? [];
 
@@ -59,6 +70,12 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
             '--nodo-on-primary':       onPrimary,
             '--nodo-shadow-fab':       `0 8px 20px -4px rgba(${r},${g},${b},0.35)`,
         } as React.CSSProperties;
+    }, [tenantColor]);
+
+    // Sincronizar theme-color del navegador con el color del tenant
+    useEffect(() => {
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', tenantColor);
     }, [tenantColor]);
 
     // ── ACTIVE TAB STATE ──
@@ -181,6 +198,21 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
 
                 {/* ── CONTENT CANVAS ── */}
                 <main className="flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 pb-28 lg:pb-10 overflow-y-auto flex flex-col">
+                    {showPushBanner && (
+                        <div className="mb-5">
+                            <PushBanner
+                                subscribing={subscribing}
+                                onAccept={async () => {
+                                    await subscribe();
+                                    setShowPushBanner(false);
+                                }}
+                                onDismiss={() => {
+                                    dismiss();
+                                    setShowPushBanner(false);
+                                }}
+                            />
+                        </div>
+                    )}
                     <DashboardCanvas
                         activeTab={activeTab}
                         setActiveTab={setActiveTab}

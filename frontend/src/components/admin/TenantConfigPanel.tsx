@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { Save, CheckCircle2, Upload, X, Loader2 } from 'lucide-react';
+import { Save, CheckCircle2, Upload, X, Loader2, Bell, BellOff, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/components/ui/Toaster';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { tenantMeService } from '@/services/tenantMe.service';
+import { usePushPermission } from '@/hooks/usePushPermission';
+import { PrivacyPolicyModal } from '@/components/PrivacyPolicyModal';
 
 export function TenantConfigPanel() {
   const toast = useToast();
+  const { state: pushState, subscribing, subscribe, unsubscribe } = usePushPermission();
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -77,6 +81,8 @@ export function TenantConfigPanel() {
   }
 
   return (
+    <>
+    <PrivacyPolicyModal open={showPrivacy} onClose={() => setShowPrivacy(false)} />
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Configuración de Empresa</h1>
@@ -196,6 +202,55 @@ export function TenantConfigPanel() {
           </p>
         </div>
 
+        {/* Notificaciones push */}
+        {pushState !== 'unsupported' && (
+          <div className="pt-4 border-t border-nodo-line">
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-3 block">
+              Notificaciones Push
+            </label>
+            <div className="flex items-center justify-between gap-4 bg-nodo-inset rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-3">
+                {pushState === 'granted'
+                  ? <Bell size={18} className="text-nodo-success-tx shrink-0" />
+                  : <BellOff size={18} className="text-nodo-dim shrink-0" />
+                }
+                <div>
+                  <p className="text-sm font-bold text-nodo-ink leading-none">
+                    {pushState === 'granted' ? 'Notificaciones activas' : 'Notificaciones desactivadas'}
+                  </p>
+                  <p className="text-xs text-nodo-sub font-medium mt-0.5">
+                    {pushState === 'granted'
+                      ? 'Recibirás alertas de stock, órdenes y pedidos.'
+                      : pushState === 'denied'
+                        ? 'Bloqueadas en el navegador — habilitá permisos en Configuración del sistema.'
+                        : 'Activá para recibir alertas de stock, órdenes y pedidos.'}
+                  </p>
+                </div>
+              </div>
+              {pushState === 'granted' ? (
+                <button
+                  onClick={async () => { await unsubscribe(); toast.success('Notificaciones desactivadas'); }}
+                  className="shrink-0 h-9 px-4 rounded-xl border-2 border-nodo-danger-bd text-nodo-danger-tx text-xs font-bold active:scale-[0.97] transition-transform"
+                >
+                  Desactivar
+                </button>
+              ) : pushState !== 'denied' ? (
+                <button
+                  onClick={async () => {
+                    await subscribe();
+                    toast.success('Notificaciones activadas');
+                  }}
+                  disabled={subscribing}
+                  className="shrink-0 h-9 px-4 rounded-xl bg-nodo-ink text-nodo-canvas text-xs font-bold active:scale-[0.97] transition-transform disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {subscribing ? <Loader2 size={13} className="animate-spin" /> : <Bell size={13} />}
+                  Activar
+                </button>
+              ) : null}
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="pt-2 border-t border-nodo-line flex items-center justify-end gap-4">
           {success && (
@@ -213,6 +268,17 @@ export function TenantConfigPanel() {
           </button>
         </div>
       </div>
+
+      {/* Privacidad */}
+      <button
+        type="button"
+        onClick={() => setShowPrivacy(true)}
+        className="flex items-center gap-2 text-xs text-nodo-dim hover:text-nodo-sub transition-colors font-medium"
+      >
+        <ShieldCheck size={13} />
+        Política de Privacidad y datos personales
+      </button>
     </div>
+    </>
   );
 }

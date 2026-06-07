@@ -81,6 +81,10 @@ export const tenantsService = {
     return data;
   },
 
+  async grantTrial(tenantId: string, days: number, planId?: string): Promise<void> {
+    await api.post(`/api/tenants/${tenantId}/grant-trial`, { days, plan_id: planId ?? null });
+  },
+
   async hardDeleteUser(tenantId: string, userId: string, password: string): Promise<void> {
     await api.post(`/api/tenants/${tenantId}/users/${userId}/hard-delete`, { password });
   },

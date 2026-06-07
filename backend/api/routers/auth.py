@@ -14,6 +14,7 @@ from db.session import get_session
 from models import Tenant, User, TenantMember
 from models.iam import RefreshToken
 from models.invitations import Invitation
+from models.platform_config import PushSubscription
 from models.schemas import MemberRegisterRequest
 from passlib.context import CryptContext
 from core.limiter import limiter
@@ -239,7 +240,7 @@ async def cookie_logout(
     response: Response,
     session: AsyncSession = Depends(get_session),
 ):
-    """Revoca el refresh token y borra ambas cookies."""
+    """Revoca el refresh token, borra ambas cookies y elimina suscripciones push del dispositivo."""
     raw = request.cookies.get("refresh_token")
     if raw:
         token_hash = hashlib.sha256(raw.encode()).hexdigest()
@@ -250,6 +251,12 @@ async def cookie_logout(
         if rt:
             rt.revoked = True
             session.add(rt)
+            # Eliminar todas las suscripciones push del usuario al cerrar sesión
+            subs = await session.execute(
+                select(PushSubscription).where(PushSubscription.user_id == rt.user_id)
+            )
+            for sub in subs.scalars().all():
+                await session.delete(sub)
             await session.commit()
 
     response.delete_cookie("access_token", samesite="lax")

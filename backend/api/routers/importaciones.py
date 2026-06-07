@@ -29,6 +29,15 @@ from models.importaciones import (
 )
 from models.tenants import Tenant
 from models import User
+from api.services.push_service import send_push_to_tenant
+
+# Estados que merecen notificación al equipo
+_PUSH_ON_STATUS: dict[str, tuple[str, str]] = {
+    "aprobada":     ("✓ Cotización aprobada", "El cliente aprobó la cotización"),
+    "en_transito":  ("🚢 Importación en tránsito", "El envío está en camino"),
+    "en_aduana":    ("📋 En aduana", "El paquete está en proceso aduanal"),
+    "entregada":    ("✓ Importación entregada", "El pedido fue entregado al cliente"),
+}
 
 router = APIRouter(tags=["Importaciones"])
 
@@ -295,6 +304,18 @@ async def advance_status(
     session.add(cotizacion)
     await session.commit()
     await session.refresh(cotizacion)
+
+    if body.status in _PUSH_ON_STATUS:
+        title, base_body = _PUSH_ON_STATUS[body.status]
+        client_suffix = f" — {cotizacion.client_name}" if cotizacion.client_name else ""
+        await send_push_to_tenant(
+            session=session,
+            tenant_id=tenant_id,
+            title=title,
+            body=base_body + client_suffix,
+            data={"module": "importaciones", "cotizacion_id": str(cotizacion.id)},
+        )
+
     return (await _serialize([cotizacion], tenant_id, session))[0]
 
 

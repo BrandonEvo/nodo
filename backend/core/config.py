@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = "833836638249-q9p0ahfn0l4h938ui8acd8psksb08no5.apps.googleusercontent.com"
     FRONTEND_URL: str = "http://localhost:5173"
     BACKEND_URL: str = "http://localhost:8000"
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_PRIVATE_KEY_PEM: str = ""
+    VAPID_CONTACT_EMAIL: str = "admin@nodo.app"
 
     @property
     def cors_origins_list(self) -> List[str]:

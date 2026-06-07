@@ -16,6 +16,16 @@ from db.session import get_session
 from api.deps import get_current_tenant_id
 from models.bakery import ShopperOrder, ShopperOrderStatus
 from models.schemas import ShopperOrderCreate, ShopperOrderUpdate, ShopperOrderRead
+from api.services.push_service import send_push_to_tenant
+
+# Mensajes legibles para cada estado de tracking
+_TRACKING_LABELS: dict[str, str] = {
+    "en_proceso":  "Pedido en proceso",
+    "en_camino":   "Pedido en camino 🚚",
+    "en_aduana":   "En aduana",
+    "entregado":   "¡Pedido entregado! ✓",
+    "cancelado":   "Pedido cancelado",
+}
 
 router = APIRouter(tags=["Personal Shopper"])
 
@@ -147,13 +157,25 @@ async def update_order(
         else:
             setattr(order, field, value)
 
-    if "tracking_status" in changes:
+    new_tracking = changes.get("tracking_status")
+    if new_tracking:
         order.tracking_updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     order.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     session.add(order)
     await session.commit()
     await session.refresh(order)
+
+    if new_tracking:
+        label = _TRACKING_LABELS.get(new_tracking, f"Estado: {new_tracking}")
+        await send_push_to_tenant(
+            session=session,
+            tenant_id=tenant_id,
+            title=label,
+            body=f"Pedido de {order.client_name}",
+            data={"module": "personal-shopper", "order_id": str(order.id)},
+        )
+
     return _to_read(order)
 
 

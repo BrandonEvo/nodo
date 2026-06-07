@@ -1,0 +1,130 @@
+========================================================
+NODO — HTTPS + DOMINIO PARA PWA EN PRODUCCIÓN
+========================================================
+
+POR QUÉ SE NECESITA
+-------------------
+- El service worker (PWA) requiere HTTPS en producción (localhost es excepción de desarrollo)
+- Las push notifications requieren HTTPS obligatoriamente
+- Las cookies con flag Secure (recomendado para JWT) requieren HTTPS
+- iOS solo permite instalar PWAs desde HTTPS
+
+OPCIONES (de más simple a más recomendada)
+------------------------------------------
+
+OPCIÓN A — nip.io + Let's Encrypt (sin comprar dominio, temporal/dev)
+----------------------------------------------------------------------
+Ya tenés 35.208.20.242.nip.io configurado en nginx.
+Let's Encrypt puede emitir certificado para eso.
+
+1. Instalar Certbot en el servidor:
+   sudo apt update
+   sudo apt install certbot python3-certbot-nginx
+
+2. Obtener certificado:
+   sudo certbot --nginx -d 35.208.20.242.nip.io
+
+3. Certbot modifica nginx automáticamente para redirigir HTTP → HTTPS.
+
+4. Renovación automática (ya viene configurada por certbot):
+   sudo systemctl enable certbot.timer
+
+5. Verificar que renovación funciona:
+   sudo certbot renew --dry-run
+
+OPCIÓN B — Dominio propio + Let's Encrypt (recomendado para producción)
+-----------------------------------------------------------------------
+Costo: ~$10-15 USD/año en namecheap, porkbun, cloudflare, o similar.
+Certificado SSL: gratis con Let's Encrypt.
+
+1. Comprar dominio (ej: nodo-app.com o el nombre que elijas)
+
+2. En el panel DNS del registrar, crear registro tipo A:
+   Nombre: @  (o el subdominio que quieras, ej: app)
+   Valor: 35.208.20.242
+   TTL: 300
+
+3. Esperar propagación DNS (5 min - 2 horas, verificar con: dig tu-dominio.com)
+
+4. En el servidor, actualizar nginx:
+   Cambiar "server_name 35.208.20.242 35.208.20.242.nip.io;"
+   por "server_name tu-dominio.com www.tu-dominio.com;"
+
+5. Instalar Certbot:
+   sudo apt update
+   sudo apt install certbot python3-certbot-nginx
+
+6. Obtener certificado:
+   sudo certbot --nginx -d tu-dominio.com -d www.tu-dominio.com
+
+7. Certbot agrega automáticamente el bloque HTTPS a nginx.
+
+8. Renovación automática:
+   sudo systemctl enable certbot.timer
+   sudo certbot renew --dry-run
+
+
+CAMBIOS EN EL PROYECTO DESPUÉS DE TENER HTTPS
+----------------------------------------------
+
+1. backend/.env — actualizar variables:
+   COOKIE_SECURE=true
+   FRONTEND_URL=https://tu-dominio.com
+   BACKEND_URL=https://tu-dominio.com
+   CORS_ORIGINS=https://tu-dominio.com
+
+2. backend/core/config.py — COOKIE_SECURE ya está preparado para esto:
+   COOKIE_SECURE: bool = False   →  cambiar default a True,
+   o simplemente setear COOKIE_SECURE=true en .env (tiene prioridad)
+
+3. nginx/conf.d/default.conf — agregar header HSTS después de tener HTTPS estable:
+   En el bloque server de HTTPS (puerto 443) agregar:
+   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+   ADVERTENCIA: No agregar HSTS hasta estar seguro de que HTTPS funciona
+   correctamente. Si se activa con un certificado roto, el navegador bloquea
+   el sitio por hasta 1 año sin forma de acceder.
+
+4. Docker Compose — si tenés el certificado en el host, montarlo en el contenedor nginx:
+   volumes:
+     - /etc/letsencrypt:/etc/letsencrypt:ro
+
+   Y en nginx.conf referenciar:
+   ssl_certificate /etc/letsencrypt/live/tu-dominio.com/fullchain.pem;
+   ssl_certificate_key /etc/letsencrypt/live/tu-dominio.com/privkey.pem;
+
+   (Certbot con --nginx hace esto automáticamente si nginx corre en el host,
+    no en Docker. Si nginx corre en Docker ver nota abajo.)
+
+
+NOTA: CERTBOT CON NGINX EN DOCKER
+----------------------------------
+Si nginx corre dentro de un contenedor Docker, certbot no puede modificar
+la config directamente. Dos opciones:
+
+Opción simple: correr certbot en el host (no en el contenedor) con --webroot:
+  1. En nginx agregar location para el challenge:
+     location /.well-known/acme-challenge/ {
+         root /var/www/certbot;
+     }
+  2. Montar ese volumen en el contenedor nginx
+  3. sudo certbot certonly --webroot -w /var/www/certbot -d tu-dominio.com
+  4. Montar /etc/letsencrypt en el contenedor nginx como :ro
+  5. Configurar ssl_certificate manualmente en nginx.conf
+
+Opción alternativa: usar la imagen certbot oficial como servicio en docker-compose
+y seguir la guía: https://pentacent.medium.com/nginx-and-lets-encrypt-with-docker
+
+
+VERIFICACIÓN FINAL
+------------------
+Después de configurar HTTPS, verificar:
+
+1. https://tu-dominio.com carga la app sin advertencias SSL
+2. http://tu-dominio.com redirige automáticamente a https://
+3. En DevTools → Application → Service Workers: sin errores
+4. En DevTools → Application → Manifest: sin errores de mixed content
+5. Las cookies de sesión muestran el flag "Secure" en DevTools → Application → Cookies
+6. Test SSL: https://www.ssllabs.com/ssltest/ (debería dar A o A+)
+
+========================================================

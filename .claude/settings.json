@@ -1,5 +1,4 @@
 {
-  "enabledMcpjsonServers": ["playwright"],
   "permissions": {
     "allow": [
       "Bash(docker-compose exec *)",
@@ -14,7 +13,49 @@
       "Bash(flatpak-spawn --host docker compose -f /home/bparedes/Docker/nodo/docker-compose.yml exec backend alembic upgrade head)",
       "Bash(flatpak-spawn --host docker compose -f /home/bparedes/Docker/nodo/docker-compose.yml exec backend alembic current)",
       "Bash(python -c ' *)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(curl -sv http://localhost:8000/api/auth/google/login)",
+      "Bash(curl -v --max-redirs 0 http://localhost:8000/api/auth/google/login)",
+      "Bash(curl -s --max-time 3 ifconfig.me)",
+      "Bash(convert --version)",
+      "Bash(npm list *)",
+      "Bash(node -e \"const {createCanvas}=require\\('canvas'\\); console.log\\('canvas ok'\\)\")",
+      "Bash(node -e \"require\\('sharp'\\); console.log\\('sharp ok'\\)\")",
+      "Bash(npm run *)",
+      "Bash(NODE_OPTIONS=--experimental-global-webcrypto npm run build)",
+      "Bash(pip show *)",
+      "Bash(chmod +x /home/bparedes/Docker/nodo/scripts/backup_nodo.sh)",
+      "Bash(curl -s http://localhost:8000/api/push/vapid-public-key)",
+      "Bash(curl -s http://35.208.20.242/api/push/vapid-public-key)",
+      "Bash(BACKUP_ROOT=/home/bparedes/backups/nodo LOG_FILE=/home/bparedes/backups/nodo_backup.log bash /home/bparedes/Docker/nodo/scripts/backup_nodo.sh)",
+      "Bash(sudo nginx -t)",
+      "Bash(sudo cat /etc/nginx/conf.d/default.conf)",
+      "Bash(sudo cat /etc/nginx/sites-enabled/default)",
+      "Bash(nginx -v)",
+      "Bash(curl -s http://127.0.0.1:8000/api/push/vapid-public-key)",
+      "Bash(curl -s http://127.0.0.1:5173/api/push/vapid-public-key)",
+      "Bash(curl -v http://35.208.20.242/api/push/vapid-public-key)",
+      "Bash(awk '{print $NF, $2, $7}')",
+      "Bash(curl -s http://172.18.0.4:8000/api/push/vapid-public-key)",
+      "Bash(curl -s http://172.18.0.1:8000/api/push/vapid-public-key)",
+      "Bash(cat /proc/net/tcp6 2>/dev/null | grep \" 0050 \" | head -5 *)",
+      "Read(//proc/76970/net/**)",
+      "Read(//proc/**)",
+      "Bash(xargs -I{} readlink {})",
+      "Bash(systemctl list-units *)",
+      "Bash(docker context *)",
+      "Bash(ip addr *)",
+      "Bash(curl -s -I http://localhost:8000/api/auth/session)",
+      "Bash(curl -s -I -H \"Origin: http://localhost:5173\" http://localhost:8000/api/auth/session)",
+      "Bash(curl -s -X GET -H \"Origin: http://localhost:5173\" http://localhost:8000/api/auth/session)",
+      "Bash(curl -s -v -X OPTIONS -H \"Origin: http://localhost:5173\" -H \"Access-Control-Request-Method: GET\" http://localhost:8000/api/auth/session)",
+      "Bash(git -C /home/bparedes/Docker/nodo status)",
+      "Bash(git -C /home/bparedes/Docker/nodo log --oneline -5)",
+      "Bash(git -C /home/bparedes/Docker/nodo diff --stat HEAD)",
+      "Bash(git -C /home/bparedes/Docker/nodo add backend/api/routers/auth.py backend/api/routers/bodega.py backend/api/routers/cocina.py backend/api/routers/importaciones.py backend/api/routers/personal_shopper.py backend/api/routers/tenants.py backend/api/routers/onboarding.py backend/core/config.py backend/main.py backend/models/platform_config.py backend/requirements.txt backend/api/routers/push.py backend/api/services/push_service.py backend/migrations/versions/aa1b2c3d4e5f_add_push_subscriptions.py docker-compose.yml frontend/index.html frontend/package.json frontend/package-lock.json frontend/vite.config.ts frontend/src/components/AppShell.tsx frontend/src/components/Login.tsx frontend/src/components/OnboardingModal.tsx frontend/src/components/admin/AdminTenants.tsx frontend/src/components/admin/TenantConfigPanel.tsx frontend/src/services/onboarding.service.ts frontend/src/services/tenants.service.ts frontend/src/components/PrivacyPolicyModal.tsx frontend/src/components/ui/PushBanner.tsx frontend/src/hooks/usePushPermission.ts frontend/src/services/push.service.ts frontend/public/icon.svg frontend/public/sw-push.js nginx/conf.d/default.conf docs/ .claude/settings.json)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "playwright"
+  ]
 }

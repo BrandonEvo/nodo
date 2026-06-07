@@ -19,6 +19,7 @@ from models.schemas import (
     InventoryItemCreate, InventoryItemUpdate, InventoryItemRead, StockAdjust, PriceHistoryRead, StockMovementRead
 )
 from api.helpers import recalculate_recipes_using_item
+from api.services.push_service import send_push_to_tenant
 
 router = APIRouter(tags=["Bodega (Inventario)"])
 
@@ -109,6 +110,22 @@ async def adjust_stock(
         await recalculate_recipes_using_item(item.id, tenant_id, session)
 
     await session.commit()
+
+    # Alerta de stock bajo: solo en salidas y solo si cruza el umbral mínimo
+    if (
+        body.adjust_type == "salida"
+        and item.minimum_stock > 0
+        and item.current_stock < item.minimum_stock
+    ):
+        stock_fmt = f"{item.current_stock:.1f}".rstrip("0").rstrip(".")
+        await send_push_to_tenant(
+            session=session,
+            tenant_id=tenant_id,
+            title="⚠ Stock bajo",
+            body=f"{item.name} — quedan {stock_fmt} {item.unit}",
+            data={"module": "bodega", "item_id": str(item.id)},
+        )
+
     return item
 
 

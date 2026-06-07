@@ -287,3 +287,6 @@ app.include_router(amazon_scrape_router.router, prefix="/api/amazon")
 
 from api.routers import importaciones as importaciones_router
 app.include_router(importaciones_router.router, prefix="/api/importaciones")
+
+from api.routers import push as push_router
+app.include_router(push_router.router, prefix="/api/push")

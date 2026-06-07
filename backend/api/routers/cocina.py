@@ -24,6 +24,7 @@ from models.schemas import (
     DailySummaryRead, MatrixResponse, MatrixRecipeRow, DayCell,
 )
 from api.services.recipe_calculator import RecipeCalculator
+from api.services.push_service import send_push_to_tenant
 
 router = APIRouter(tags=["Cocina (Producción)"])
 
@@ -221,6 +222,16 @@ async def complete_order(
     session.add(order)
     await session.commit()
     await session.refresh(order)
+
+    recipe_name = recipe.name if recipe else "Receta"
+    await send_push_to_tenant(
+        session=session,
+        tenant_id=tenant_id,
+        title="✓ Lote completado",
+        body=f"{recipe_name} — {int(actual_units)} unidades listas",
+        data={"module": "cocina"},
+    )
+
     return await _build_order_read(order, session)
 
 

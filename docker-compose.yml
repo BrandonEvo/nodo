@@ -39,6 +39,9 @@ services:
       - BACKEND_URL=${BACKEND_URL}
       - FRONTEND_URL=${FRONTEND_URL}
       - CORS_ORIGINS=${CORS_ORIGINS}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY_PEM=${VAPID_PRIVATE_KEY_PEM}
+      - VAPID_CONTACT_EMAIL=${VAPID_CONTACT_EMAIL}
     networks:
       - nodo_network
     depends_on:

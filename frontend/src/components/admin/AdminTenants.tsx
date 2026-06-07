@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Building2, Package, Pencil, PowerOff, Trash2, ShieldAlert, Loader2, Check, CreditCard, LayoutGrid } from "lucide-react";
+import { Plus, Building2, Package, Pencil, PowerOff, Trash2, ShieldAlert, Loader2, Check, CreditCard, LayoutGrid, Gift, Calendar } from "lucide-react";
 import { resolveModuleIcon } from "@/lib/module-icons";
 import { useToast } from "@/components/ui/Toaster";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -32,6 +32,11 @@ export function AdminTenants() {
   const [activeModuleIds, setActiveModuleIds] = useState<Set<string>>(new Set());
   const [loadingModules, setLoadingModules] = useState(false);
   const [savingModules, setSavingModules] = useState(false);
+
+  const [trialTenant, setTrialTenant] = useState<Tenant | null>(null);
+  const [trialDays, setTrialDays] = useState("14");
+  const [trialPlanId, setTrialPlanId] = useState<string | null>(null);
+  const [savingTrial, setSavingTrial] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -190,6 +195,33 @@ export function AdminTenants() {
     }
   };
 
+  const openTrial = (t: Tenant) => {
+    setTrialTenant(t);
+    setTrialDays("14");
+    setTrialPlanId(t.plan_id || null);
+  };
+
+  const handleGrantTrial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!trialTenant) return;
+    const days = parseInt(trialDays);
+    if (isNaN(days) || days < 1 || days > 365) {
+      toast.error("Ingresa un número de días entre 1 y 365.");
+      return;
+    }
+    setSavingTrial(true);
+    try {
+      await tenantsService.grantTrial(trialTenant.id, days, trialPlanId ?? undefined);
+      toast.success(`Trial de ${days} días otorgado a ${trialTenant.name}.`);
+      setTrialTenant(null);
+      await loadData();
+    } catch (e: any) {
+      toast.error(e.response?.data?.detail || e.message || "Error al otorgar trial");
+    } finally {
+      setSavingTrial(false);
+    }
+  };
+
   const isProtected = (t: Tenant) => !!t.is_system;
 
   return (
@@ -306,6 +338,14 @@ export function AdminTenants() {
                         title="Asignar plan"
                       >
                         <Package size={15} />
+                      </button>
+                      <button
+                        onClick={() => openTrial(t)}
+                        disabled={inactive || protected_}
+                        className="p-2 text-[#69E7A8] hover:bg-[#69E7A8]/10 rounded-full transition-colors disabled:opacity-30"
+                        title="Otorgar trial"
+                      >
+                        <Gift size={15} />
                       </button>
 
                       {!protected_ && (
@@ -507,6 +547,93 @@ export function AdminTenants() {
             </div>
           )}
         </div>
+      </BottomSheet>
+
+      {/* Grant Trial BottomSheet */}
+      <BottomSheet
+        open={!!trialTenant}
+        onClose={() => setTrialTenant(null)}
+        title="Otorgar Trial"
+        footer={
+          <button
+            form="grant-trial-form"
+            type="submit"
+            disabled={savingTrial || !trialDays}
+            className="w-full h-14 rounded-2xl bg-[#69E7A8] text-[#111111] font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2 shadow-lg"
+          >
+            {savingTrial ? <Loader2 size={18} className="animate-spin" /> : <Gift size={18} />}
+            ACTIVAR TRIAL
+          </button>
+        }
+      >
+        <form id="grant-trial-form" onSubmit={handleGrantTrial} className="flex flex-col gap-5">
+          {trialTenant && (
+            <div className="flex items-center gap-3 bg-nodo-inset rounded-2xl border border-nodo-line px-4 py-3">
+              <div className="w-9 h-9 rounded-xl bg-[#69E7A8]/15 flex items-center justify-center text-sm font-black text-[#69E7A8] shrink-0">
+                {trialTenant.name.charAt(0).toUpperCase()}
+              </div>
+              <p className="text-sm font-black text-nodo-ink">{trialTenant.name}</p>
+            </div>
+          )}
+
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Días de acceso
+            </label>
+            <div className="relative">
+              <Calendar size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-nodo-dim" />
+              <input
+                type="number"
+                min="1"
+                max="365"
+                placeholder="14"
+                value={trialDays}
+                onChange={e => setTrialDays(e.target.value)}
+                required
+                disabled={savingTrial}
+                className="w-full h-12 pl-10 pr-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-black text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50 tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
+            <p className="text-[10px] text-nodo-dim font-medium mt-1.5">Entre 1 y 365 días.</p>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Plan a activar <span className="normal-case font-medium">(opcional — sin plan activa todos los módulos)</span>
+            </label>
+            <div className="bg-nodo-inset rounded-2xl border border-nodo-line overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setTrialPlanId(null)}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-nodo-line transition-colors active:bg-nodo-raised ${trialPlanId === null ? "bg-nodo-raised" : ""}`}
+              >
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${trialPlanId === null ? "bg-nodo-ink border-nodo-ink" : "border-nodo-line-s"}`}>
+                  {trialPlanId === null && <Check size={11} className="text-nodo-canvas" />}
+                </div>
+                <span className="text-sm font-bold text-nodo-ink">Todos los módulos</span>
+              </button>
+              {plans.filter(p => p.is_active).map((p, i, arr) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setTrialPlanId(p.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-nodo-raised ${i < arr.length - 1 ? "border-b border-nodo-line" : ""} ${trialPlanId === p.id ? "bg-nodo-raised" : ""}`}
+                >
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${trialPlanId === p.id ? "bg-nodo-ink border-nodo-ink" : "border-nodo-line-s"}`}>
+                    {trialPlanId === p.id && <Check size={11} className="text-nodo-canvas" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-nodo-ink">{p.name}</p>
+                    <p className="text-xs text-nodo-sub">{p.module_ids.length} módulos</p>
+                  </div>
+                  <span className="text-xs font-black text-nodo-sub tabular-nums shrink-0">
+                    {p.price === 0 ? "Gratis" : `${p.currency} ${p.price}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </form>
       </BottomSheet>
 
       {/* Hard delete BottomSheet */}
