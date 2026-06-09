@@ -26,16 +26,15 @@ export function AdminSubscriptions() {
 
   const loadData = async () => {
     setLoading(true);
-    try {
-      const [plansList, modulesList] = await Promise.all([
-        subscriptionsService.list(),
-        modulesService.list().catch(() => []),
-      ]);
-      setPlans(plansList);
-      setModules(modulesList);
-    } finally {
-      setLoading(false);
-    }
+    // Cada carga es independiente: un fallo al listar planes no debe dejar sin
+    // módulos al formulario (ni al revés).
+    const [plansList, modulesList] = await Promise.all([
+      subscriptionsService.list().catch(() => [] as SubscriptionPlan[]),
+      modulesService.list().catch(() => [] as ModuleRead[]),
+    ]);
+    setPlans(plansList);
+    setModules(modulesList);
+    setLoading(false);
   };
 
   useEffect(() => { loadData(); }, []);

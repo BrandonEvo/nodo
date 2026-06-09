@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# Config de build del frontend (no secreta, necesaria para compilar en prod)
+!frontend/.env.production
 *.pem
 *.key
 superadmin_secrets.json

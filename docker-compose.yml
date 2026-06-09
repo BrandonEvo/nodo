@@ -29,6 +29,8 @@ services:
       dockerfile: Dockerfile
     container_name: nodo_backend
     environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - COOKIE_SECURE=${COOKIE_SECURE}
       - DATABASE_URL=${DATABASE_URL}
       - SECRET_KEY=${SECRET_KEY}
       - SUPERADMIN_PASSWORD_HASH=${SUPERADMIN_PASSWORD_HASH}
@@ -42,6 +44,8 @@ services:
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY_PEM=${VAPID_PRIVATE_KEY_PEM}
       - VAPID_CONTACT_EMAIL=${VAPID_CONTACT_EMAIL}
+      - AMAZON_RELAY_URL=${AMAZON_RELAY_URL}
+      - AMAZON_RELAY_TOKEN=${AMAZON_RELAY_TOKEN}
     networks:
       - nodo_network
     depends_on:

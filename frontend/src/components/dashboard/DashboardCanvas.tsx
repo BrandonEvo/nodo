@@ -4,7 +4,7 @@ import {
   LogOut, User, Moon, ChevronRight, Briefcase,
   Settings, Send, SlidersHorizontal, Shield,
   Warehouse, ChefHat, Store, Lock, BookOpen,
-  Zap, Activity, RefreshCw,
+  Zap, Activity, RefreshCw, Clock,
 } from 'lucide-react';
 import { useState, useEffect, Suspense } from 'react';
 import { AdminTenants } from '../admin/AdminTenants';
@@ -38,13 +38,18 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
   type HealthStatus = { status: 'ok' | 'error' | null; database: string | null; environment: string | null; ms: number | null; checkedAt: Date | null };
   const [health, setHealth] = useState<HealthStatus>({ status: null, database: null, environment: null, ms: null, checkedAt: null });
   const [healthLoading, setHealthLoading] = useState(false);
+  // Reloj del servidor: guardamos el desfase (hora servidor − hora local) en el
+  // último fetch y lo aplicamos cada segundo para mostrar la hora en vivo.
+  const [serverOffsetMs, setServerOffsetMs] = useState<number | null>(null);
+  const [serverClock, setServerClock] = useState<Date | null>(null);
 
   const fetchHealth = async () => {
     setHealthLoading(true);
     const t0 = performance.now();
     try {
-      const { data } = await api.get('/health');
+      const { data } = await api.get('/api/admin/config/status');
       setHealth({ status: data.status === 'ok' ? 'ok' : 'error', database: data.database, environment: data.environment, ms: Math.round(performance.now() - t0), checkedAt: new Date() });
+      if (data.server_time) setServerOffsetMs(new Date(data.server_time).getTime() - Date.now());
     } catch {
       setHealth({ status: 'error', database: null, environment: null, ms: null, checkedAt: new Date() });
     } finally {
@@ -67,6 +72,22 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
     const interval = setInterval(fetchHealth, 30_000);
     return () => clearInterval(interval);
   }, []);
+
+  // Tick del reloj del servidor cada segundo, basado en el desfase medido.
+  useEffect(() => {
+    if (serverOffsetMs === null) return;
+    const tick = () => setServerClock(new Date(Date.now() + serverOffsetMs));
+    tick();
+    const id = setInterval(tick, 1_000);
+    return () => clearInterval(id);
+  }, [serverOffsetMs]);
+
+  const serverTimeStr = serverClock
+    ? serverClock.toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC' })
+    : '--:--:--';
+  const serverDateStr = serverClock
+    ? serverClock.toLocaleDateString('es-GT', { weekday: 'long', day: '2-digit', month: 'long', timeZone: 'UTC' })
+    : '';
 
   const fmt = (n: number | null) => n === null ? '—' : String(n);
 
@@ -224,10 +245,21 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
           </div>
         </div>
 
-        {/* 2 — Próximo widget */}
-        <div className="bg-nodo-card border border-nodo-line border-dashed rounded-[20px] p-5 flex flex-col items-center justify-center gap-2 min-h-[140px]">
-          <BarChart3 size={24} className="text-nodo-dim" strokeWidth={1.5} />
-          <p className="text-xs font-bold text-nodo-dim">Próximamente</p>
+        {/* 2 — Hora del servidor */}
+        <div className="bg-nodo-card border border-nodo-line rounded-[20px] p-5 flex flex-col min-h-[140px]">
+          <div className="flex items-center gap-1.5 mb-4">
+            <Clock size={11} className="text-nodo-dim" />
+            <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest">Hora del servidor</p>
+          </div>
+          <div className="flex-1 flex flex-col items-center justify-center gap-1.5">
+            <p className="text-[40px] font-black text-nodo-ink tabular-nums leading-none tracking-tight">
+              {serverTimeStr}
+            </p>
+            <p className="text-xs font-semibold text-nodo-sub capitalize">{serverDateStr}</p>
+            <span className="mt-1 px-2.5 py-0.5 rounded-full bg-nodo-inset text-[9px] font-bold text-nodo-dim uppercase tracking-wider">
+              UTC
+            </span>
+          </div>
         </div>
 
         {/* 3 — Actividad reciente */}

@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     VAPID_PUBLIC_KEY: str = ""
     VAPID_PRIVATE_KEY_PEM: str = ""
     VAPID_CONTACT_EMAIL: str = "admin@nodo.app"
+    # Relay residencial de scraping de Amazon (la IP del datacenter está bloqueada).
+    # Si AMAZON_RELAY_URL está vacío, el backend hace scraping directo (best-effort).
+    AMAZON_RELAY_URL: str = ""
+    AMAZON_RELAY_TOKEN: str = ""
 
     @property
     def cors_origins_list(self) -> List[str]:

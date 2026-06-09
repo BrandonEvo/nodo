@@ -26,12 +26,12 @@ export interface SubscriptionUpdate {
 
 export const subscriptionsService = {
   async list(): Promise<SubscriptionPlan[]> {
-    const response = await api.get('/api/plans');
+    const response = await api.get('/api/plans/');
     return response.data;
   },
 
   async create(body: SubscriptionCreate): Promise<SubscriptionPlan> {
-    const response = await api.post('/api/plans', body);
+    const response = await api.post('/api/plans/', body);
     return response.data;
   },
 

@@ -1,7 +1,16 @@
 services:
+  db:
+    restart: always
+
   backend:
     restart: always
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    # --proxy-headers + --forwarded-allow-ips=*: uvicorn confía en el
+    # X-Forwarded-Proto/For que envía nginx (la conexión interna no viene de
+    # 127.0.0.1, sino de la IP del contenedor proxy). Sin esto, el backend cree
+    # que el esquema es http y genera redirects a http:// que el navegador
+    # bloquea por mixed-content (HTTPS->HTTP). El acceso al backend solo es
+    # posible desde la red interna de Docker (puerto 8000 no publicado).
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 20s
@@ -17,6 +26,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
       - ./frontend/dist:/usr/share/nginx/html:ro
     networks:
       - nodo_network

@@ -1,0 +1,3 @@
+# Nunca commitear certificados ni claves privadas
+*
+!.gitignore

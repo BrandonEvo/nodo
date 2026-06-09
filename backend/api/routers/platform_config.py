@@ -5,12 +5,15 @@ PATCH /api/admin/config/{key} → Actualizar un valor
 POST /api/admin/config/seed   → Sembrar valores por defecto (idempotente)
 """
 from typing import List
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from db.session import get_session
 from api.deps import current_active_user
+from core.config import settings
 from models import User
 from models.platform_config import PlatformConfig
 from models.schemas import PlatformConfigRead, PlatformConfigUpdate
@@ -35,6 +38,28 @@ DEFAULT_CONFIGS = [
 def _require_superuser(user: User):
     if not user.is_superuser:
         raise HTTPException(status_code=403, detail="Solo el Súper Admin puede acceder a esta configuración")
+
+
+@router.get("/status")
+async def platform_status(
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Estado de salud (API, base de datos, entorno) + hora del servidor. Solo Súper Admin."""
+    _require_superuser(current_user)
+    try:
+        await session.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+    now = datetime.now(timezone.utc)
+    return {
+        "status": "ok",
+        "environment": settings.ENVIRONMENT,
+        "database": db_status,
+        "server_time": now.isoformat(),  # ISO 8601 en UTC
+        "server_timezone": "UTC",
+    }
 
 
 @router.get("/", response_model=List[PlatformConfigRead])
