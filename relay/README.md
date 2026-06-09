@@ -23,7 +23,7 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install -r requirements.txt
 
 # El token DEBE ser el mismo que AMAZON_RELAY_TOKEN del .env del servidor:
-export RELAY_TOKEN=7e3a5bece677188a84d0b637ce5015aa63159e1e0b01fded   # Windows: set RELAY_TOKEN=...
+export RELAY_TOKEN=<el-mismo-valor-que-AMAZON_RELAY_TOKEN-en-el-.env-del-server>   # Windows: set RELAY_TOKEN=...
 python relay.py
 ```
 
@@ -32,7 +32,7 @@ Probalo local en otra terminal:
 
 ```bash
 curl -s -X POST http://localhost:8799/scrape \
-  -H "Content-Type: application/json" -H "X-Relay-Token: 7e3a5bece677188a84d0b637ce5015aa63159e1e0b01fded" \
+  -H "Content-Type: application/json" -H "X-Relay-Token: $RELAY_TOKEN" \
   -d '{"url":"https://www.amazon.com/dp/B08N5WRWNW"}'
 ```
 
@@ -77,7 +77,7 @@ En el `.env` del servidor, completá:
 
 ```
 AMAZON_RELAY_URL=https://relay.hellonodo.com      # (o la URL trycloudflare)
-AMAZON_RELAY_TOKEN=7e3a5bece677188a84d0b637ce5015aa63159e1e0b01fded
+AMAZON_RELAY_TOKEN=<el-mismo-token-que-usaste-en-RELAY_TOKEN-arriba>
 ```
 
 y recreá el backend:

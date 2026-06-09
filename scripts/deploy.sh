@@ -12,9 +12,13 @@ cd "$(dirname "$0")/.."   # raíz del proyecto
 
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 
-# Password en claro del superadmin (debe coincidir con el comentario en .env).
-# Se puede sobrescribir:  SUPERADMIN_PASSWORD='miClave' bash scripts/deploy.sh
-SUPERADMIN_PASSWORD="${SUPERADMIN_PASSWORD:-2E1fdDtiCTg}"
+# Password en claro del superadmin — OBLIGATORIO pasar por variable de entorno.
+# Ejemplo:  SUPERADMIN_PASSWORD='miClave' bash scripts/deploy.sh
+if [[ -z "${SUPERADMIN_PASSWORD:-}" ]]; then
+  echo "ERROR: la variable SUPERADMIN_PASSWORD es obligatoria." >&2
+  echo "  Uso:  SUPERADMIN_PASSWORD='miClave' bash scripts/deploy.sh" >&2
+  exit 1
+fi
 
 echo "==> Verificando Docker..."
 docker --version
@@ -73,7 +77,7 @@ done
 echo ""
 echo "============================================================"
 echo "Despliegue finalizado."
-echo "  App:        http://166.1.88.198"
-echo "  Superadmin: admin@nodo.com  /  ${SUPERADMIN_PASSWORD}"
+echo "  App:        https://hellonodo.com"
+echo "  Superadmin: admin@nodo.com"
 echo "  Logs:       $COMPOSE logs -f backend"
 echo "============================================================"
