@@ -94,6 +94,16 @@
     --nodo-on-primary:       #111111;
     --nodo-shadow-fab:       0 8px 20px -4px rgba(105,231,168,0.35);
 
+    /* ── Marca nodo. — Acento iridiscente ──
+       Defaults = colores de la guía de marca (login, pantallas pre-tenant).
+       AppShell los sobreescribe con la versión derivada del tenantColor. */
+    --nodo-iris-start:       #FF7E5F;
+    --nodo-iris-mid:         #9B59B6;
+    --nodo-iris-end:         #4158D0;
+    --nodo-iris:             linear-gradient(135deg, var(--nodo-iris-start) 0%, var(--nodo-iris-mid) 50%, var(--nodo-iris-end) 100%);
+    --nodo-iris-soft:        linear-gradient(135deg, rgba(255,126,95,0.16) 0%, rgba(155,89,182,0.12) 50%, rgba(65,88,208,0.16) 100%);
+    --nodo-on-iris:          #FFFFFF;
+
     /* ── Manual de Diseño — Pasteles funcionales (light) ── */
     --nodo-pastel-blue:      #DCE7FF;
     --nodo-pastel-pink:      #FFDADD;
@@ -103,8 +113,31 @@
     --nodo-pastel-lavender:  #E9E4F5;
 
     /* ── Manual de Diseño — Sombras (light) ── */
-    --nodo-shadow-card:      0 4px 16px -4px rgba(15,23,42,0.06);
-    --nodo-shadow-hero:      0 12px 32px -8px rgba(15,23,42,0.10);
+    --nodo-shadow-card:      0 2px 12px -2px rgba(15,23,42,0.06), 0 1px 3px rgba(15,23,42,0.04);
+    --nodo-shadow-hero:      0 8px 32px -8px rgba(15,23,42,0.10), 0 2px 8px rgba(15,23,42,0.04);
+
+    /* ── Clear Crystal — Glass (light) ── */
+    --nodo-glass-bg:         rgba(255,255,255,0.60);
+    --nodo-glass-bg-strong:  rgba(255,255,255,0.74);   /* nav bars, sheets */
+    --nodo-glass-border:     rgba(255,255,255,0.55);   /* rim especular */
+    --nodo-glass-edge:       rgba(15,23,42,0.06);      /* hairline de definición sobre canvas claro */
+    --nodo-glass-highlight:  rgba(255,255,255,0.75);   /* brillo interior superior */
+    --nodo-glass-blur:       20px;
+    --nodo-glass-saturate:   170%;
+
+    /* ── Radios del sistema ── */
+    --nodo-radius-sm:        12px;    /* chips, badges */
+    --nodo-radius-md:        20px;    /* tarjeta estándar, inputs */
+    --nodo-radius-lg:        28px;    /* tarjeta hero */
+    --nodo-radius-full:      9999px;  /* botones pill, FAB */
+
+    /* ── Skin de componentes — v2 "Clear Crystal" activo ── */
+    --nodo-card-bg:          var(--nodo-glass-bg);
+    --nodo-card-border:      var(--nodo-glass-border);
+    --nodo-card-blur:        var(--nodo-glass-blur);
+    /* CTA de marca: gradiente iridiscente (guía nodo. — "Botones CTA, hovers y el isotipo") */
+    --nodo-btn-primary-bg:   var(--nodo-iris);
+    --nodo-btn-primary-color: var(--nodo-on-iris);
   }
 
   .dark {
@@ -192,8 +225,16 @@
     --nodo-pastel-lavender:  #221a35;
 
     /* ── Manual de Diseño — Sombras (dark) ── */
-    --nodo-shadow-card:      0 4px 16px -4px rgba(0,0,0,0.30);
-    --nodo-shadow-hero:      0 12px 32px -8px rgba(0,0,0,0.40);
+    --nodo-shadow-card:      0 2px 12px -2px rgba(0,0,0,0.30);
+    --nodo-shadow-hero:      0 8px 32px -8px rgba(0,0,0,0.40);
+
+    /* ── Clear Crystal — Glass (dark) ── */
+    --nodo-glass-bg:         rgba(28,28,30,0.55);
+    --nodo-glass-bg-strong:  rgba(22,22,24,0.74);
+    --nodo-glass-border:     rgba(255,255,255,0.10);
+    --nodo-glass-edge:       rgba(0,0,0,0.35);
+    --nodo-glass-highlight:  rgba(255,255,255,0.07);
+    --nodo-glass-saturate:   150%;
   }
 
   /* Base typography */
@@ -206,6 +247,26 @@
 
   body {
     overscroll-behavior: none;
+  }
+
+  /* ── Feel nativo móvil ── */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, [role="button"], a, select, label {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation; /* elimina el delay de 300ms y el double-tap zoom */
+  }
+  button {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
   }
 }
 
@@ -263,4 +324,298 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* ============================================================
+   Nodo Component Tokens
+   Fuera de @layer → siempre incluido en el output (no se purga por JIT).
+   Cambiar aquí = cambia toda la app. Para migrar de v1 a v2 (glass),
+   sobreescribir --nodo-card-*, --nodo-btn-primary-* en :root.
+   ============================================================ */
+
+/* ── Tarjetas ── */
+.nodo-card {
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 20px;
+  background: var(--nodo-card-bg);
+  border-color: var(--nodo-card-border);
+  backdrop-filter: blur(var(--nodo-card-blur)) saturate(var(--nodo-glass-saturate, 100%));
+  -webkit-backdrop-filter: blur(var(--nodo-card-blur)) saturate(var(--nodo-glass-saturate, 100%));
+  box-shadow:
+    inset 0 1px 0 var(--nodo-glass-highlight, transparent),
+    0 0 0 1px var(--nodo-glass-edge, transparent),
+    var(--nodo-shadow-card);
+}
+.nodo-card-hero {
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 28px;
+  background: var(--nodo-card-bg);
+  border-color: var(--nodo-card-border);
+  backdrop-filter: blur(var(--nodo-card-blur)) saturate(var(--nodo-glass-saturate, 100%));
+  -webkit-backdrop-filter: blur(var(--nodo-card-blur)) saturate(var(--nodo-glass-saturate, 100%));
+  box-shadow:
+    inset 0 1px 0 var(--nodo-glass-highlight, transparent),
+    0 0 0 1px var(--nodo-glass-edge, transparent),
+    var(--nodo-shadow-hero);
+}
+
+/* ── Botones ── */
+.nodo-btn-primary {
+  width: 100%;
+  height: 60px;
+  border-radius: 9999px;
+  font-weight: 900;
+  font-size: 1rem;
+  letter-spacing: 0.025em;
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); /* spring iOS */
+  transition-duration: 180ms;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    var(--nodo-shadow-fab);
+  background: var(--nodo-btn-primary-bg);
+  color: var(--nodo-btn-primary-color);
+}
+.nodo-btn-primary:active { transform: scale(0.97); }
+.nodo-btn-primary:disabled { opacity: 0.3; }
+
+.nodo-btn-secondary {
+  height: 3rem;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  border-radius: 1rem;
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--nodo-line);
+  color: var(--nodo-sub);
+  font-weight: 700;
+  font-size: 0.875rem;
+  transition-property: transform, background-color;
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition-duration: 180ms;
+}
+.nodo-btn-secondary:active { transform: scale(0.97); }
+.nodo-btn-secondary:hover { background-color: var(--nodo-inset); }
+
+.nodo-btn-danger {
+  height: 3.5rem;
+  border-radius: 1rem;
+  background-color: var(--nodo-danger-tx);
+  color: white;
+  font-weight: 700;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+.nodo-btn-danger:active { transform: scale(0.97); }
+
+/* ── Campos de formulario ── */
+.nodo-input,
+.nodo-input-number,
+.nodo-select {
+  width: 100%;
+  height: 3rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  background-color: var(--nodo-inset);
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--nodo-line);
+  border-radius: 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--nodo-ink);
+  outline: none;
+  transition-property: border-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+.nodo-input::placeholder,
+.nodo-input-number::placeholder { color: var(--nodo-dim); }
+.nodo-input:focus,
+.nodo-input-number:focus,
+.nodo-select:focus { border-color: var(--nodo-ink); }
+.nodo-input-number {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.nodo-input-number::-webkit-outer-spin-button,
+.nodo-input-number::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; }
+
+.nodo-textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: var(--nodo-inset);
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--nodo-line);
+  border-radius: 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--nodo-ink);
+  outline: none;
+  resize: none;
+  transition-property: border-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+.nodo-textarea::placeholder { color: var(--nodo-dim); }
+.nodo-textarea:focus { border-color: var(--nodo-ink); }
+
+/* ── Slider (range) con acento iris ── */
+.nodo-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--nodo-inset);
+  outline: none;
+  cursor: pointer;
+}
+.nodo-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  background: var(--nodo-iris);
+  border: 3px solid var(--nodo-card);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.nodo-range::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  background: var(--nodo-iris);
+  border: 3px solid var(--nodo-card);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.nodo-range::-moz-range-track {
+  height: 8px;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.nodo-label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--nodo-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.375rem;
+  display: block;
+}
+
+/* ── Tipografía de módulo ── */
+.nodo-module-title {
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: var(--nodo-ink);
+  line-height: 1.25;
+}
+.nodo-module-subtitle {
+  color: var(--nodo-sub);
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-top: 0.125rem;
+}
+.nodo-section-label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--nodo-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.75rem;
+}
+
+/* ── Estados vacío / loading ── */
+.nodo-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 10rem;
+  text-align: center;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+.nodo-spinner-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 16rem;
+}
+
+/* ============================================================
+   Clear Crystal — Superficies glass del shell
+   ============================================================ */
+
+/* Fondo de página con tinte ambiental del tenant — el glass necesita
+   color detrás para percibirse. Las vars --nodo-primary-* las inyecta
+   AppShell en este mismo elemento. */
+.nodo-canvas-ambient {
+  background-color: var(--nodo-canvas);
+  background-image:
+    radial-gradient(1100px 700px at 85% -10%, var(--nodo-primary-soft), transparent 60%),
+    radial-gradient(900px 600px at -10% 35%, var(--nodo-primary-softer), transparent 55%),
+    radial-gradient(700px 500px at 50% 110%, var(--nodo-primary-softer), transparent 60%);
+}
+
+/* Barras de navegación (header móvil, topbar, bottom nav) */
+.nodo-glass-bar {
+  background: var(--nodo-glass-bg-strong);
+  backdrop-filter: blur(24px) saturate(var(--nodo-glass-saturate));
+  -webkit-backdrop-filter: blur(24px) saturate(var(--nodo-glass-saturate));
+}
+
+/* Paneles flotantes (BottomSheet, drawers) */
+.nodo-glass-panel {
+  background: var(--nodo-glass-bg-strong);
+  backdrop-filter: blur(28px) saturate(var(--nodo-glass-saturate));
+  -webkit-backdrop-filter: blur(28px) saturate(var(--nodo-glass-saturate));
+}
+
+/* Sidebar desktop — cristal claro, dark-mode aware vía tokens */
+.nodo-glass-sidebar {
+  background: var(--nodo-glass-bg-strong);
+  backdrop-filter: blur(28px) saturate(var(--nodo-glass-saturate));
+  -webkit-backdrop-filter: blur(28px) saturate(var(--nodo-glass-saturate));
+  border-right: 1px solid var(--nodo-line);
+}
+
+/* ── Compatibilidad: dispositivos sin backdrop-filter → superficies sólidas ── */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root, .dark {
+    --nodo-card-bg:     var(--nodo-card);
+    --nodo-card-border: var(--nodo-line);
+    --nodo-glass-highlight: transparent;
+  }
+  .nodo-glass-bar, .nodo-glass-panel, .nodo-glass-sidebar { background: var(--nodo-card); }
+}
+
+/* Usuarios con transparencia reducida (accesibilidad iOS/macOS) */
+@media (prefers-reduced-transparency: reduce) {
+  :root, .dark {
+    --nodo-card-bg:     var(--nodo-card);
+    --nodo-card-border: var(--nodo-line);
+    --nodo-glass-highlight: transparent;
+  }
+  .nodo-glass-bar, .nodo-glass-panel, .nodo-glass-sidebar { background: var(--nodo-card); }
+}
+
+/* ── Móvil: blur más ligero (GPU) y 16px en inputs (evita zoom de iOS al enfocar) ── */
+@media (pointer: coarse) {
+  :root { --nodo-glass-blur: 16px; }
+  .nodo-input, .nodo-input-number, .nodo-select, .nodo-textarea { font-size: 1rem; }
 }

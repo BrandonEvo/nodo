@@ -5,10 +5,11 @@ import { Topbar } from './navigation/Topbar';
 import { BottomNav } from './navigation/BottomNav';
 import { DashboardCanvas } from './dashboard/DashboardCanvas';
 import { PushBanner } from './ui/PushBanner';
+import { NodoMark, NodoWordmark } from './ui/NodoLogo';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { usePushPermission } from '@/hooks/usePushPermission';
 import { authService } from '@/services/auth.service';
-import { hexToRgb, darkenHex, luminance } from '@/lib/utils';
+import { hexToRgb, darkenHex, luminance, irisFromTenant } from '@/lib/utils';
 
 interface AppShellProps {
     userSession: any;
@@ -56,6 +57,7 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
     const tenantCssVars = useMemo(() => {
         const { r, g, b } = hexToRgb(tenantColor);
         const onPrimary = luminance(tenantColor) > 0.55 ? '#111111' : '#FFFFFF';
+        const iris = irisFromTenant(tenantColor);
         return {
             // Legacy tenant vars
             '--tenant-color': tenantColor,
@@ -69,6 +71,13 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
             '--nodo-primary-deep':     darkenHex(tenantColor, 0.15),
             '--nodo-on-primary':       onPrimary,
             '--nodo-shadow-fab':       `0 8px 20px -4px rgba(${r},${g},${b},0.35)`,
+            // Marca nodo. — iridiscente derivado del tenantColor (hue ±50°)
+            '--nodo-iris':             iris.gradient,
+            '--nodo-iris-soft':        iris.soft,
+            '--nodo-iris-start':       iris.start,
+            '--nodo-iris-mid':         iris.mid,
+            '--nodo-iris-end':         iris.end,
+            '--nodo-on-iris':          onPrimary,
         } as React.CSSProperties;
     }, [tenantColor]);
 
@@ -97,7 +106,7 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
     }, [appViewMode]);
 
     return (
-        <div className="min-h-screen bg-nodo-canvas" style={tenantCssVars}>
+        <div className="min-h-screen nodo-canvas-ambient" style={tenantCssVars}>
 
             {/* ── DESKTOP SIDEBAR ── */}
             <Sidebar
@@ -133,7 +142,7 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
                 />
 
                 {/* ── MOBILE HEADER ── */}
-                <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-5 h-14 bg-nodo-card/80 backdrop-blur-xl border-b border-nodo-line"
+                <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-5 h-14 nodo-glass-bar border-b border-nodo-line"
                     style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
                 >
                     {/* Tenant identity / switcher mobile */}
@@ -161,14 +170,9 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
                             {tenantLogo ? (
                                 <img src={tenantLogo} alt={tenantName} className="w-8 h-8 rounded-xl object-contain" />
                             ) : (
-                                <div
-                                    className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-sm"
-                                    style={{ backgroundColor: tenantColor }}
-                                >
-                                    {tenantName.charAt(0)}
-                                </div>
+                                <NodoMark size={28} />
                             )}
-                            <p className="text-sm font-bold text-nodo-ink leading-none">{tenantName}</p>
+                            <NodoWordmark name={tenantName} className="text-sm text-nodo-ink" />
                         </div>
                     )}
 

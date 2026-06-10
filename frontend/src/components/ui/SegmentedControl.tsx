@@ -1,3 +1,5 @@
+import { haptic } from '@/utils/haptic';
+
 interface Option<T extends string> {
   value: T;
   label: string;
@@ -47,7 +49,7 @@ export function SegmentedControl<T extends string>({
       {options.map(opt => (
         <button
           key={opt.value}
-          onClick={() => onChange(opt.value)}
+          onClick={() => { if (opt.value !== value) haptic.tap(); onChange(opt.value); }}
           className={[
             'relative z-10 flex-1 flex items-center justify-center gap-1.5 rounded-[9px]',
             'font-bold transition-colors duration-200 select-none active:scale-[0.97]',

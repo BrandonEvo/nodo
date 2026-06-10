@@ -23,7 +23,7 @@ const USD = (n: number) =>
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
+    <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
       {children}
     </label>
   );
@@ -38,7 +38,7 @@ function NumField({
   return (
     <div className="relative">
       {prefix && (
-        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400 pointer-events-none">
+        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-nodo-dim pointer-events-none">
           {prefix}
         </span>
       )}
@@ -48,10 +48,10 @@ function NumField({
         placeholder={placeholder}
         onChange={e => onChange(parseFloat(e.target.value) || 0)}
         onFocus={e => e.target.select()}
-        className={`w-full h-11 ${prefix ? 'pl-8' : 'pl-4'} ${suffix ? 'pr-12' : 'pr-4'} bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-bold text-[#111] focus:border-[#111] focus:bg-white outline-none transition-all`}
+        className={`w-full h-11 ${prefix ? 'pl-8' : 'pl-4'} ${suffix ? 'pr-12' : 'pr-4'} bg-nodo-inset border-2 border-nodo-line rounded-xl text-sm font-bold text-nodo-ink focus:border-nodo-ink focus:bg-nodo-card outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
       />
       {suffix && (
-        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-nodo-dim pointer-events-none">
           {suffix}
         </span>
       )}
@@ -71,13 +71,13 @@ function SectionToggle({
       onClick={onToggle}
       className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
         open
-          ? `border-[#111] bg-[#111] text-white`
-          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+          ? 'border-nodo-ink bg-nodo-ink text-nodo-canvas'
+          : 'border-nodo-line bg-nodo-card text-nodo-sub hover:border-nodo-line-s'
       }`}
     >
       <div className="flex items-center gap-2.5">
-        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${open ? 'bg-white/15' : accent}`}>
-          <Icon size={14} className={open ? 'text-white' : ''} />
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${open ? 'bg-nodo-canvas/15' : accent}`}>
+          <Icon size={14} className={open ? 'text-nodo-canvas' : ''} />
         </div>
         <span className="text-sm font-bold">{label}</span>
       </div>
@@ -92,7 +92,7 @@ function ResultRow({
   label: string; value: string; bold?: boolean; dim?: boolean; small?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between py-[5px] ${bold ? 'font-bold text-white' : dim ? 'text-slate-500' : 'text-slate-300'}`}>
+    <div className={`flex items-center justify-between py-[5px] ${bold ? 'font-bold text-white' : dim ? 'text-white/30' : 'text-white/60'}`}>
       <span className={small ? 'text-[10px]' : 'text-[11px]'}>{label}</span>
       <span className={`font-mono ${small ? 'text-[10px]' : 'text-[12px]'}`}>{value}</span>
     </div>
@@ -111,10 +111,10 @@ function CollapsibleSection({
         onClick={() => setOpen(s => !s)}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
       >
-        <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">{title}</span>
+        <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider">{title}</span>
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-mono font-bold text-white">{total}</span>
-          <ChevronRight size={12} className={`text-slate-500 transition-transform ${open ? 'rotate-90' : ''}`} />
+          <ChevronRight size={12} className={`text-white/30 transition-transform ${open ? 'rotate-90' : ''}`} />
         </div>
       </button>
       {open && (
@@ -217,24 +217,24 @@ export function AutosApp(_props: AppProps) {
       {/* ── HEADER ── */}
       <header className="mb-6 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#111] flex items-center justify-center">
-            <Car size={22} className="text-white" />
+          <div className="w-12 h-12 rounded-2xl bg-nodo-ink flex items-center justify-center">
+            <Car size={22} className="text-nodo-canvas" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-[#111] leading-none">Importación de Vehículos</h1>
-            <p className="text-xs font-medium text-slate-400 mt-1">USA → Guatemala · Cálculo automático</p>
+            <h1 className="text-2xl font-black text-nodo-ink leading-none">Importación de Vehículos</h1>
+            <p className="text-xs font-medium text-nodo-sub mt-1">USA → Guatemala · Cálculo automático</p>
           </div>
         </div>
         <button
           onClick={handleReset}
-          className="h-10 px-4 rounded-xl text-xs font-bold flex items-center gap-2 bg-white text-slate-600 hover:bg-red-50 hover:text-red-500 border border-slate-200 transition-all"
+          className="h-10 px-4 rounded-xl text-xs font-bold flex items-center gap-2 bg-nodo-card text-nodo-sub hover:bg-nodo-danger-bg hover:text-nodo-danger-tx border border-nodo-line transition-all"
         >
           <RotateCcw size={14} /> Reiniciar
         </button>
       </header>
 
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm font-medium px-4 py-3 rounded-2xl flex items-center justify-between">
+        <div className="mb-4 bg-nodo-danger-bg border border-nodo-danger-bd text-nodo-danger-tx text-sm font-medium px-4 py-3 rounded-2xl flex items-center justify-between">
           {error}
           <button onClick={() => setError(null)}><X size={16} /></button>
         </div>
@@ -246,12 +246,12 @@ export function AutosApp(_props: AppProps) {
         <div className="lg:col-span-3 space-y-4">
 
           {/* Sección principal */}
-          <section className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-5">
+          <section className="bg-nodo-card border border-nodo-line rounded-3xl shadow-sm p-6 space-y-5">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                 <Car size={15} />
               </div>
-              <h2 className="text-sm font-black text-[#111] uppercase tracking-wider">Datos del Vehículo</h2>
+              <h2 className="text-sm font-black text-nodo-ink uppercase tracking-wider">Datos del Vehículo</h2>
             </div>
 
             {/* Costo Real */}
@@ -263,7 +263,7 @@ export function AutosApp(_props: AppProps) {
                 onChange={setCostoReal}
                 placeholder="5,505"
               />
-              <p className="text-[10px] text-slate-400 mt-1">Precio de compra/subasta en USD (sin incluir gastos)</p>
+              <p className="text-[10px] text-nodo-dim mt-1">Precio de compra/subasta en USD (sin incluir gastos)</p>
             </div>
 
             {/* Estado */}
@@ -272,7 +272,7 @@ export function AutosApp(_props: AppProps) {
               <select
                 value={stateCode}
                 onChange={e => setStateCode(e.target.value)}
-                className="w-full h-11 px-4 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-bold text-[#111] focus:border-[#111] focus:bg-white outline-none transition-all appearance-none cursor-pointer"
+                className="nodo-select"
               >
                 <option value="">— Selecciona un estado —</option>
                 {estados.map(s => (
@@ -286,7 +286,7 @@ export function AutosApp(_props: AppProps) {
             {/* Tamaño */}
             <div>
               <FieldLabel>Tamaño del Vehículo</FieldLabel>
-              <div className="grid grid-cols-3 gap-2 bg-slate-50 border-2 border-slate-200 rounded-xl p-1.5">
+              <div className="grid grid-cols-3 gap-2 bg-nodo-inset border-2 border-nodo-line rounded-xl p-1.5">
                 {SIZE_OPTIONS.map(opt => (
                   <button
                     key={opt.value}
@@ -294,12 +294,12 @@ export function AutosApp(_props: AppProps) {
                     onClick={() => setVehicleSize(opt.value)}
                     className={`py-2.5 px-2 rounded-lg transition-all ${
                       vehicleSize === opt.value
-                        ? 'bg-[#111] text-white shadow-sm'
-                        : 'text-slate-500 hover:text-[#111]'
+                        ? 'bg-nodo-ink text-nodo-canvas shadow-sm'
+                        : 'text-nodo-sub hover:text-nodo-ink'
                     }`}
                   >
                     <p className="text-xs font-black">{opt.label}</p>
-                    <p className={`text-[9px] font-medium mt-0.5 ${vehicleSize === opt.value ? 'text-white/60' : 'text-slate-400'}`}>
+                    <p className={`text-[9px] font-medium mt-0.5 ${vehicleSize === opt.value ? 'text-nodo-canvas/60' : 'text-nodo-dim'}`}>
                       {opt.hint}
                     </p>
                   </button>
@@ -318,7 +318,7 @@ export function AutosApp(_props: AppProps) {
               accent="bg-orange-50 text-orange-500"
             />
             {showRep && (
-              <section className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+              <section className="bg-nodo-card border border-nodo-line rounded-3xl shadow-sm p-6">
                 <div className="grid grid-cols-2 gap-4">
                   {[
                     { key: 'llave',    label: 'Llave' },
@@ -351,7 +351,7 @@ export function AutosApp(_props: AppProps) {
               accent="bg-purple-50 text-purple-500"
             />
             {showVars && (
-              <section className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
+              <section className="bg-nodo-card border border-nodo-line rounded-3xl shadow-sm p-6 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <FieldLabel>Tipo de Cambio</FieldLabel>
@@ -378,7 +378,7 @@ export function AutosApp(_props: AppProps) {
           <button
             onClick={handleCalcular}
             disabled={!canCalculate || loading}
-            className="w-full h-14 rounded-2xl font-black text-base tracking-widest uppercase transition-all active:scale-[0.98] flex items-center justify-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed bg-[#111] hover:bg-[#222] text-white shadow-lg"
+            className="w-full h-14 rounded-2xl font-black text-base tracking-widest uppercase transition-all active:scale-[0.98] flex items-center justify-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed bg-nodo-ink text-nodo-canvas shadow-lg"
           >
             {loading
               ? <><Loader2 size={20} className="animate-spin" /> Calculando...</>
@@ -401,7 +401,7 @@ export function AutosApp(_props: AppProps) {
               {/* Header result */}
               <div className="px-6 py-5 border-b border-white/10">
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider">
                     {result.state_label} · Puerto {result.puerto}
                   </p>
                   <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase ${
@@ -412,7 +412,7 @@ export function AutosApp(_props: AppProps) {
                     {result.precio_venta_gtq > 0 ? (isProfit ? 'Ganancia' : 'Pérdida') : 'Sin precio venta'}
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-500">
+                <p className="text-[10px] text-white/30">
                   TC Q{result.tipo_cambio.toFixed(2)} · SAT {(result.porcentaje_sat * 100).toFixed(0)}%
                 </p>
               </div>
@@ -479,7 +479,7 @@ export function AutosApp(_props: AppProps) {
                   }`}>
                     <div className="flex items-center justify-between mb-3">
                       <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Precio de Venta</p>
+                        <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-0.5">Precio de Venta</p>
                         <p className="text-lg font-black text-white">{Q(result.precio_venta_gtq)}</p>
                       </div>
                       {isProfit
@@ -488,7 +488,7 @@ export function AutosApp(_props: AppProps) {
                       }
                     </div>
                     <div className="border-t border-white/10 pt-3 flex items-center justify-between">
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Utilidad</p>
+                      <p className="text-xs font-bold text-white/40 uppercase tracking-wider">Utilidad</p>
                       <p className={`text-2xl font-black font-mono ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>
                         {Q(result.utilidad_gtq)}
                       </p>

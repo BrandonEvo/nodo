@@ -28,6 +28,53 @@ export function luminance(hex: string): number {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255
 }
 
+export function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  const { r, g, b } = hexToRgb(hex)
+  const rn = r / 255, gn = g / 255, bn = b / 255
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn)
+  const l = (max + min) / 2
+  if (max === min) return { h: 0, s: 0, l: l * 100 }
+  const d = max - min
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+  const h = max === rn
+    ? ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6
+    : max === gn
+      ? ((bn - rn) / d + 2) / 6
+      : ((rn - gn) / d + 4) / 6
+  return { h: h * 360, s: s * 100, l: l * 100 }
+}
+
+export function hslToHex(h: number, s: number, l: number): string {
+  s /= 100; l /= 100
+  const k = (n: number) => (n + h / 30) % 12
+  const a = s * Math.min(l, 1 - l)
+  const f = (n: number) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))))
+  return `#${[f(0), f(8), f(4)].map(v => v.toString(16).padStart(2, "0")).join("")}`
+}
+
+export function hexToRgba(hex: string, alpha: number): string {
+  const { r, g, b } = hexToRgb(hex)
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+/**
+ * Gradiente iridiscente de marca derivado del color del tenant.
+ * Rota el matiz ±50°: lado cálido más claro → tenant → lado cool más profundo.
+ * Así cada tenant tiene su propia versión del acento "nodo." sin perder identidad.
+ */
+export function irisFromTenant(hex: string) {
+  const { h, s, l } = hexToHsl(hex)
+  const start = hslToHex((h - 50 + 360) % 360, Math.min(100, s + 20), Math.min(78, l + 18))
+  const end   = hslToHex((h + 50) % 360,       Math.min(100, s + 10), Math.max(32, l - 8))
+  return {
+    start,
+    mid: hex,
+    end,
+    gradient: `linear-gradient(135deg, ${start} 0%, ${hex} 50%, ${end} 100%)`,
+    soft: `linear-gradient(135deg, ${hexToRgba(start, 0.16)} 0%, ${hexToRgba(hex, 0.12)} 50%, ${hexToRgba(end, 0.16)} 100%)`,
+  }
+}
+
 /**
  * Estilos derivados del color de marca del negocio, para los headers públicos
  * de tracking. Cae a un slate oscuro si el color es inválido o no existe.

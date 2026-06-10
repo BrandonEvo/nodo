@@ -209,14 +209,16 @@ Uso en código: `style={{ boxShadow: 'var(--nodo-shadow-card)' }}` o `shadow-sm`
 
 ### Radios del manual
 
-| Uso | Valor | Tailwind |
-|---|---|---|
-| Chips, badges | 12px | `rounded-xl` |
-| Tarjeta estándar, inputs | 20px | `rounded-[20px]` |
-| Tarjeta grande, hero | 28px | `rounded-[28px]` |
-| Botones pill, FAB | 999px | `rounded-full` |
+Definidos en `--nodo-radius-*` (`:root` de `index.css`) y expuestos como `rounded-nodo-*` en Tailwind.
 
-Nunca menos de 16px en tarjetas.
+| Uso | CSS var | Tailwind |
+|---|---|---|
+| Chips, badges | `--nodo-radius-sm` (12px) | `rounded-nodo-sm` |
+| Tarjeta estándar, inputs | `--nodo-radius-md` (20px) | `rounded-nodo-md` |
+| Tarjeta grande, hero | `--nodo-radius-lg` (28px) | `rounded-nodo-lg` |
+| Botones pill, FAB | `--nodo-radius-full` (9999px) | `rounded-full` |
+
+Nunca menos de 16px en tarjetas. Las clases `nodo-card`, `nodo-btn-primary` etc. ya usan los valores correctos.
 
 ### Tipografía del manual
 
@@ -345,83 +347,93 @@ const OPTS = [
 
 ---
 
-## Patrones de UI — Obligatorios
+## Component Tokens — Clases semánticas obligatorias
 
-### Header de módulo
+Las clases `nodo-*` están definidas en `@layer components` de `index.css`. **Usar siempre estas clases** en código nuevo — cuando cambie el diseño, solo se edita el CSS, no los componentes.
+
+> Para migrar toda la app de solid a glass: cambiar `--nodo-card-bg` y `--nodo-card-blur` en `:root`. Para cambiar todos los botones primarios a gradiente: cambiar `--nodo-btn-primary-bg`. Cero ediciones en TSX.
+
+### Referencia rápida
+
+| Clase | Reemplaza a | Uso |
+|---|---|---|
+| `nodo-card` | `bg-nodo-card border border-nodo-line rounded-[20px] shadow-sm` | Tarjeta estándar |
+| `nodo-card-hero` | `bg-nodo-card border border-nodo-line rounded-[28px] shadow-hero` | Tarjeta grande / hero |
+| `nodo-btn-primary` | `w-full h-[60px] rounded-full bg-nodo-ink text-nodo-canvas font-black...` | Botón CTA principal |
+| `nodo-btn-secondary` | `h-12 px-5 rounded-2xl border-2 border-nodo-line...` | Botón secundario / cancelar |
+| `nodo-btn-danger` | `h-14 rounded-2xl bg-nodo-danger-tx text-white...` | Botón destructivo |
+| `nodo-input` | `w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl...` | Input de texto |
+| `nodo-input-number` | `nodo-input` + sin spinners | Input numérico |
+| `nodo-select` | igual que `nodo-input` pero `<select>` | Select |
+| `nodo-textarea` | `w-full px-4 py-3 bg-nodo-inset...` | Textarea |
+| `nodo-label` | `text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block` | Label de campo |
+| `nodo-module-title` | `text-[28px] font-black text-nodo-ink leading-tight` | Título de módulo |
+| `nodo-module-subtitle` | `text-nodo-sub text-sm font-medium mt-0.5` | Subtítulo de módulo |
+| `nodo-section-label` | `text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-3` | Label de sección |
+| `nodo-empty-state` | `flex flex-col items-center justify-center h-40 text-center px-4` | Estado vacío |
+| `nodo-spinner-container` | `flex items-center justify-center h-64` | Loading spinner |
+
+### Patrones de UI — Obligatorios
+
+#### Header de módulo
 
 ```tsx
 <div>
-  <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Nombre del Módulo</h1>
-  <p className="text-nodo-sub text-sm font-medium mt-0.5">Subtítulo contextual</p>
+  <h1 className="nodo-module-title">Nombre del Módulo</h1>
+  <p className="nodo-module-subtitle">Subtítulo contextual</p>
 </div>
 ```
 
-### Tarjeta estándar
+#### Tarjeta estándar
 
 ```tsx
-<div className="bg-nodo-card border border-nodo-line rounded-3xl p-5 shadow-sm">
+<div className="nodo-card p-5">
   {/* contenido */}
 </div>
 ```
 
-### Botón primario (acción principal)
+#### Botón primario (acción principal)
 
 ```tsx
-<button className="w-full h-[60px] rounded-3xl bg-nodo-ink text-nodo-canvas font-black text-base tracking-wide active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-3 shadow-lg">
+<button className="nodo-btn-primary">
   <IconName size={20} />
   ACCIÓN
 </button>
 ```
 
-### Botón secundario / outline
+#### Botón secundario / outline
 
 ```tsx
-<button className="h-12 px-5 rounded-2xl border-2 border-nodo-line text-nodo-sub font-bold text-sm active:scale-[0.97] transition-transform hover:bg-nodo-inset">
+<button className="nodo-btn-secondary">
   Cancelar
 </button>
 ```
 
-### Botón destructivo
+#### Botón destructivo
 
 ```tsx
-<button className="flex-1 h-14 rounded-2xl bg-nodo-danger-tx text-white font-bold text-sm active:scale-[0.97] transition-transform">
+<button className="nodo-btn-danger">
   Eliminar
 </button>
 ```
 
-### Input estándar
+#### Inputs
 
 ```tsx
-<input
-  type="text"
-  placeholder="Placeholder..."
-  className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim"
-/>
+<label className="nodo-label">Nombre del campo</label>
+<input type="text" placeholder="Placeholder..." className="nodo-input" />
+
+{/* Numérico (sin spinners) */}
+<input type="number" className="nodo-input-number" />
+
+{/* Select */}
+<select className="nodo-select">...</select>
+
+{/* Textarea */}
+<textarea className="nodo-textarea" />
 ```
 
-Input numérico (sin spinners nativos):
-```tsx
-className="... [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-```
-
-Select:
-```tsx
-<select className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors">
-```
-
-Textarea:
-```tsx
-<textarea className="w-full px-4 py-3 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors resize-none placeholder:text-nodo-dim" />
-```
-
-Label de campo:
-```tsx
-<label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
-  Nombre del campo
-</label>
-```
-
-### Toast / Notificación
+#### Toast / Notificación
 
 Siempre `fixed top-4 right-4 z-[70]`. Tres variantes:
 
@@ -446,32 +458,30 @@ Siempre `fixed top-4 right-4 z-[70]`. Tres variantes:
 </div>
 ```
 
-### Sección con label uppercase
+#### Sección con label uppercase
 
 ```tsx
-<p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-3">
-  Nombre de Sección
-</p>
+<p className="nodo-section-label">Nombre de Sección</p>
 ```
 
-### Estado vacío
+#### Estado vacío
 
 ```tsx
-<div className="flex flex-col items-center justify-center h-40 text-center px-4">
+<div className="nodo-empty-state">
   <IconName size={32} className="text-nodo-dim mb-2" />
   <p className="text-sm font-bold text-nodo-dim">Mensaje vacío</p>
 </div>
 ```
 
-### Loading spinner
+#### Loading spinner
 
 ```tsx
-<div className="flex items-center justify-center h-64">
+<div className="nodo-spinner-container">
   <Loader2 className="w-8 h-8 animate-spin text-nodo-sub" />
 </div>
 ```
 
-### Stepper −/qty/+
+#### Stepper −/qty/+
 
 ```tsx
 <div className="flex items-center gap-2">
@@ -594,6 +604,7 @@ Siempre `min-h-0` en contenedores flex con `overflow-y-auto` dentro de `max-heig
 - ❌ Exponer `tenant_id`, teléfonos o precios internos en endpoints públicos
 
 ### Diseño
+- ❌ Escribir las clases verbose en lugar de usar los component tokens: `bg-nodo-card border border-nodo-line rounded-[20px] shadow-sm` → usar `nodo-card`; `w-full h-[60px] rounded-full bg-nodo-ink...` → usar `nodo-btn-primary`; etc.
 - ❌ `bg-white`, `bg-gray-*`, `bg-slate-*` para superficies de UI
 - ❌ `text-[#111]`, `text-gray-*`, `text-black` para texto
 - ❌ Modales con `fixed inset-0` propio — usar `BottomSheet`

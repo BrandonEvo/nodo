@@ -10,7 +10,11 @@ export default {
     		borderRadius: {
     			lg: 'var(--radius)',
     			md: 'calc(var(--radius) - 2px)',
-    			sm: 'calc(var(--radius) - 4px)'
+    			sm: 'calc(var(--radius) - 4px)',
+    			// Nodo design system radii — usar rounded-nodo-sm, rounded-nodo-md, etc.
+    			'nodo-sm':   'var(--nodo-radius-sm)',
+    			'nodo-md':   'var(--nodo-radius-md)',
+    			'nodo-lg':   'var(--nodo-radius-lg)',
     		},
     		colors: {
     			brand: '#69E7A8',

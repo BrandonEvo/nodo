@@ -1,13 +1,18 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Loader2, AlertTriangle,
   ShoppingBag, ClipboardList, CheckCircle2, Clock, XCircle,
-  Search, Calculator, X, Check, Phone, Calendar, Sparkles, TrendingUp, Link2,
+  Search, Calculator, X, Check, Phone, Calendar, Sparkles, TrendingUp, Share2, Users,
 } from 'lucide-react';
 import type { AppProps } from '../index';
 import { ShopperCalculator, type CalcResult } from './ShopperCalculator';
+import { ClientesPanel } from './ClientesPanel';
 import { TrackingTimeline, TrackingMiniBar } from './TrackingTimeline';
-import { copyToClipboard } from '@/lib/utils';
+import { BottomSheet } from '@/components/ui/BottomSheet';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { ShareSheet } from '@/components/ui/ShareSheet';
+import { Avatar } from '@/components/ui/Avatar';
+import { MoneyKpi } from '@/components/ui/MoneyKpi';
 import {
   personalShopperService,
   type ShopperOrder,
@@ -27,7 +32,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   cancelado:  'Cancelado',
 };
 
-// Paleta iOS-style con dark mode variants
+// Acentos intencionales por estado (informativos) — dark-mode aware
 const STATUS_THEME: Record<OrderStatus, {
   bg: string; text: string; dot: string; ring: string;
   darkBg: string; darkText: string; darkRing: string;
@@ -53,28 +58,6 @@ const ALL_STATUSES: OrderStatus[] = [
   'pendiente', 'cotizado', 'aprobado', 'en_proceso', 'entregado', 'cancelado',
 ];
 
-const AVATAR_GRADIENTS = [
-  'from-rose-400 to-pink-500',
-  'from-fuchsia-400 to-purple-500',
-  'from-amber-400 to-rose-500',
-  'from-sky-400 to-indigo-500',
-  'from-emerald-400 to-teal-500',
-  'from-orange-400 to-pink-500',
-  'from-violet-400 to-fuchsia-500',
-];
-
-const getInitials = (name: string) => {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-};
-
-const getGradient = (name: string) => {
-  const hash = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return AVATAR_GRADIENTS[hash % AVATAR_GRADIENTS.length];
-};
-
 const fmt = (n: number) =>
   'Q' + n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -90,62 +73,11 @@ const EMPTY_FORM = {
   notes: '',
 };
 
-type Tab = 'pedidos' | 'calculadora';
+type Tab = 'pedidos' | 'calculadora' | 'clientes';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENTES AUXILIARES
 // ═══════════════════════════════════════════════════════════════════════════════
-
-function BottomSheet({
-  open, onClose, title, children,
-}: { open: boolean; onClose: () => void; title?: string; children: ReactNode }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-[70] flex flex-col justify-end">
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-[fade-in_200ms_ease-out]"
-        onClick={onClose}
-      />
-      <div
-        className="relative bg-white dark:bg-[#1C1C1E] rounded-t-3xl shadow-2xl max-h-[92dvh]
-                   flex flex-col animate-[slide-up_300ms_cubic-bezier(0.32,0.72,0,1)]"
-      >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1 shrink-0">
-          <div className="w-10 h-1.5 rounded-full bg-gray-300 dark:bg-[#3A3A3C]" />
-        </div>
-        {title && (
-          <div className="px-6 pt-3 pb-2 flex items-center justify-between shrink-0">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">{title}</h2>
-            <button
-              onClick={onClose}
-              className="w-9 h-9 rounded-full bg-gray-100 dark:bg-[#2C2C2E] flex items-center
-                         justify-center active:scale-95 transition-all"
-            >
-              <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-            </button>
-          </div>
-        )}
-        <div className="flex-1 overflow-y-auto px-6 pt-2"
-             style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom, 0px) + 1rem)' }}>
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Avatar({ name, size = 44 }: { name: string; size?: number }) {
-  return (
-    <div
-      className={`shrink-0 rounded-full bg-gradient-to-br ${getGradient(name)}
-                  flex items-center justify-center text-white font-bold shadow-sm`}
-      style={{ width: size, height: size, fontSize: size * 0.36 }}
-    >
-      {getInitials(name)}
-    </div>
-  );
-}
 
 function StatusPill({
   status, onClick, size = 'sm',
@@ -170,12 +102,29 @@ function StatusPill({
   );
 }
 
+// CTA de marca — gradiente iris del tenant
+function IrisButton({
+  onClick, disabled, children,
+}: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full h-[52px] rounded-full font-bold text-base flex items-center justify-center gap-2.5
+                 shadow-lg active:scale-[0.97] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
+    >
+      {children}
+    </button>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function PersonalShopperApp(_props: AppProps) {
-  const [tab, setTab]                       = useState<Tab>('pedidos');
+  const [tab, setTab]                       = useState<Tab>('calculadora');
   const [orders, setOrders]                 = useState<ShopperOrder[]>([]);
   const [loading, setLoading]               = useState(true);
   const [saving, setSaving]                 = useState(false);
@@ -184,7 +133,7 @@ export function PersonalShopperApp(_props: AppProps) {
   const [statusSheet, setStatusSheet]       = useState<ShopperOrder | null>(null);
   const [quickSheet, setQuickSheet]         = useState(false);
   const [editSheet, setEditSheet]           = useState<ShopperOrder | null>(null);
-  const [clientSheet, setClientSheet]       = useState<{ result: CalcResult; productName: string } | null>(null);
+  const [clientSheet, setClientSheet]       = useState<{ result: CalcResult } | null>(null);
   const [trackingSheet, setTrackingSheet]   = useState<ShopperOrder | null>(null);
 
   const [form, setForm]                     = useState({ ...EMPTY_FORM });
@@ -193,6 +142,7 @@ export function PersonalShopperApp(_props: AppProps) {
   const [quickPrice, setQuickPrice]         = useState('');
   const [clientName, setClientName]         = useState('');
   const [clientPhone, setClientPhone]       = useState('');
+  const [productNameInput, setProductNameInput] = useState('');
 
   const [search, setSearch]                 = useState('');
   const [filterStatus, setFilterStatus]     = useState<OrderStatus | 'todos'>('todos');
@@ -298,20 +248,20 @@ export function PersonalShopperApp(_props: AppProps) {
     setTrackingSheet(updated);
   };
 
-  const handleSaveQuote = (result: CalcResult, productName: string) => {
-    setClientSheet({ result, productName });
-    setClientName(''); setClientPhone('');
+  const handleSaveQuote = (result: CalcResult) => {
+    setClientSheet({ result });
+    setProductNameInput(''); setClientName(''); setClientPhone('');
   };
 
   const confirmSaveQuote = async () => {
-    if (!clientSheet || !clientName.trim()) return;
+    if (!clientSheet || !clientName.trim() || !productNameInput.trim()) return;
     setSaving(true);
     try {
-      const { result, productName } = clientSheet;
+      const { result } = clientSheet;
       const created = await personalShopperService.create({
         client_name:         clientName.trim(),
         client_phone:        clientPhone.trim() || null,
-        product_description: productName,
+        product_description: productNameInput.trim(),
         quantity:            1,
         unit:                'unidades',
         status:              'cotizado',
@@ -355,33 +305,32 @@ export function PersonalShopperApp(_props: AppProps) {
 
   const activos      = orders.filter(o => o.status !== 'cancelado' && o.status !== 'entregado');
   const valorActivos = activos.reduce((s, o) => s + (o.quoted_price ?? 0), 0);
-  const pendientes   = statusCounts.pendiente ?? 0;
-  const enProceso    = statusCounts.en_proceso ?? 0;
-  const entregados   = statusCounts.entregado ?? 0;
+
+  const invertido = activos.reduce((s, o) => s + (o.calc_total_cost_gtq ?? 0), 0);
+  const ganancia  = activos.reduce((s, o) => {
+    if (o.calc_profit_gtq != null) return s + o.calc_profit_gtq;
+    if (o.quoted_price != null && o.calc_total_cost_gtq != null)
+      return s + (o.quoted_price - o.calc_total_cost_gtq);
+    return s;
+  }, 0);
+  const margenAgregado = valorActivos > 0 ? (ganancia / valorActivos) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-[#F2F2F7] dark:bg-black -m-4 sm:-m-6">
-      <style>{`
-        @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        @keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { scrollbar-width: none; }
-      `}</style>
+    <>
+      <div className="flex flex-col gap-5 pb-6 w-full max-w-5xl mx-auto">
 
-      <div className="max-w-2xl mx-auto pb-32">
-
-        {/* ─────────── HEADER ─────────── */}
-        <header className="px-5 pt-6 pb-3">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-500
-                            flex items-center justify-center shadow-lg shadow-pink-500/30">
-              <ShoppingBag className="w-6 h-6 text-white" />
+        {/* ─────────── HEADER + TABS (una sola fila en desktop) ─────────── */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+              style={{ background: 'var(--nodo-iris)', boxShadow: 'var(--nodo-shadow-fab)' }}
+            >
+              <ShoppingBag className="w-6 h-6" style={{ color: 'var(--nodo-on-iris)' }} />
             </div>
             <div>
-              <h1 className="text-[28px] font-bold text-gray-900 dark:text-white tracking-tight leading-tight">
-                Personal Shopper
-              </h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <h1 className="nodo-module-title">Personal Shopper</h1>
+              <p className="nodo-module-subtitle">
                 {activos.length === 0
                   ? 'Sin pedidos activos'
                   : `${activos.length} ${activos.length === 1 ? 'pedido activo' : 'pedidos activos'}`}
@@ -389,157 +338,188 @@ export function PersonalShopperApp(_props: AppProps) {
               </p>
             </div>
           </div>
-        </header>
-
-        {/* ─────────── SEGMENTED CONTROL ─────────── */}
-        <div className="px-5 mb-5">
-          <div className="bg-gray-200/70 dark:bg-[#2C2C2E] backdrop-blur rounded-2xl p-1 flex gap-1">
-            {([
-              { key: 'pedidos',     label: 'Pedidos',     Icon: ShoppingBag },
-              { key: 'calculadora', label: 'Calculadora', Icon: Calculator  },
-            ] as const).map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl
-                            text-sm font-semibold transition-all active:scale-[0.98]
-                            ${tab === key
-                              ? 'bg-white dark:bg-[#3A3A3C] text-gray-900 dark:text-white shadow-sm'
-                              : 'text-gray-600 dark:text-gray-400'}`}
-              >
-                <Icon className="w-4 h-4" />
-                {label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            options={[
+              { value: 'calculadora', label: 'Calculadora', icon: <Calculator size={14} /> },
+              { value: 'pedidos',     label: 'Pedidos',     icon: <ShoppingBag size={14} /> },
+              { value: 'clientes',    label: 'Clientes',    icon: <Users size={14} /> },
+            ]}
+            value={tab}
+            onChange={v => setTab(v as Tab)}
+            size="sm"
+            className="sm:w-[340px] shrink-0"
+          />
         </div>
 
         {/* ─────────── TAB: CALCULADORA ─────────── */}
         {tab === 'calculadora' && (
-          <div className="px-5">
-            <ShopperCalculator onSaveQuote={handleSaveQuote} />
-          </div>
+          <ShopperCalculator onSaveQuote={handleSaveQuote} />
         )}
 
         {/* ─────────── TAB: PEDIDOS ─────────── */}
         {tab === 'pedidos' && (
-          <div className="space-y-5">
+          <>
+          {/* ── KPIs financieros (pedidos activos) ── */}
+          {orders.length > 0 && (
+            <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
+              <MoneyKpi
+                label="Invertido"
+                value={invertido}
+                sub={`${activos.length} ${activos.length === 1 ? 'pedido activo' : 'pedidos activos'}`}
+                chart="bars"
+              />
+              <MoneyKpi
+                label="Pendiente"
+                value={valorActivos}
+                sub="por cobrar"
+                chart="area"
+              />
+              <MoneyKpi
+                label="Ganancia"
+                value={ganancia}
+                sub={ganancia > 0 ? `margen ${margenAgregado.toFixed(0)}%` : 'proyectada'}
+                chart="area"
+                trend={[5, 8, 7, 11, 10, 14, 15, 18]}
+              />
+            </div>
+          )}
 
-            {/* Stats grid */}
-            {orders.length > 0 && (
-              <div className="px-5 grid grid-cols-3 gap-2.5">
-                <StatCard label="Pendientes" value={pendientes} Icon={Clock}       tint="amber" />
-                <StatCard label="En proceso" value={enProceso}  Icon={ShoppingBag} tint="fuchsia" />
-                <StatCard label="Entregados" value={entregados} Icon={Sparkles}    tint="emerald" />
-              </div>
-            )}
+          <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-5 items-start">
 
-            {/* Search */}
-            <div className="px-5">
+            {/* ── Panel de control (sticky en desktop) ── */}
+            <div className="nodo-card p-4 flex flex-col gap-4 xl:sticky xl:top-4">
+
+              {/* Search */}
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-nodo-dim pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Buscar cliente o producto"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-white dark:bg-[#1C1C1E] rounded-2xl text-sm
-                             text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600
-                             border-0 shadow-sm dark:shadow-none
-                             focus:outline-none focus:ring-2 focus:ring-pink-400 dark:focus:ring-pink-500/60"
+                  className="nodo-input"
+                  style={{ paddingLeft: '2.75rem', paddingRight: '2.75rem' }}
                 />
                 {search && (
                   <button
                     onClick={() => setSearch('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full
-                               bg-gray-200 dark:bg-[#3A3A3C] flex items-center justify-center
-                               active:scale-95 transition-all"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-nodo-raised
+                               flex items-center justify-center active:scale-90 transition-transform"
                   >
-                    <X className="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" />
+                    <X className="w-3.5 h-3.5 text-nodo-sub" />
                   </button>
                 )}
               </div>
-            </div>
 
-            {/* Filter chips */}
-            <div className="overflow-x-auto no-scrollbar">
-              <div className="flex gap-2 px-5 pb-1 w-max">
-                <FilterChip
-                  label="Todos"
-                  count={orders.length}
-                  active={filterStatus === 'todos'}
-                  onClick={() => setFilterStatus('todos')}
-                />
-                {ALL_STATUSES.map(s => (
+              {/* Filter chips — scroll horizontal en mobile, wrap en desktop */}
+              <div className="overflow-x-auto scrollbar-none -mx-1 xl:mx-0 xl:overflow-visible">
+                <div className="flex gap-2 px-1 pb-1 w-max xl:w-auto xl:flex-wrap xl:px-0">
                   <FilterChip
-                    key={s}
-                    label={STATUS_LABELS[s]}
-                    count={statusCounts[s] ?? 0}
-                    active={filterStatus === s}
-                    status={s}
-                    onClick={() => setFilterStatus(filterStatus === s ? 'todos' : s)}
+                    label="Todos"
+                    count={orders.length}
+                    active={filterStatus === 'todos'}
+                    onClick={() => setFilterStatus('todos')}
                   />
-                ))}
+                  {ALL_STATUSES.map(s => (
+                    <FilterChip
+                      key={s}
+                      label={STATUS_LABELS[s]}
+                      count={statusCounts[s] ?? 0}
+                      active={filterStatus === s}
+                      status={s}
+                      onClick={() => setFilterStatus(filterStatus === s ? 'todos' : s)}
+                    />
+                  ))}
+                </div>
               </div>
+
+              {/* Nuevo pedido — botón visible en desktop (el FAB es de mobile) */}
+              <button
+                onClick={() => setQuickSheet(true)}
+                className="hidden xl:flex w-full h-12 rounded-full font-bold text-sm items-center justify-center gap-2
+                           shadow-lg active:scale-[0.97] transition-transform"
+                style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
+              >
+                <Plus className="w-4 h-4" strokeWidth={2.5} />
+                Nuevo pedido
+              </button>
             </div>
 
-            {/* Error */}
-            {error && (
-              <div className="px-5">
-                <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20
-                                rounded-2xl px-4 py-3 flex items-center gap-3 text-sm
-                                text-rose-700 dark:text-rose-400">
+            {/* ── Lista de pedidos ── */}
+            <div className="flex flex-col gap-4 min-w-0">
+
+              {/* Error */}
+              {error && (
+                <div className="bg-nodo-danger-bg border border-nodo-danger-bd rounded-2xl px-4 py-3
+                                flex items-center gap-3 text-sm text-nodo-danger-tx">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span className="flex-1">{error}</span>
+                  <span className="flex-1 font-semibold">{error}</span>
                   <button
                     onClick={() => setError(null)}
-                    className="w-7 h-7 rounded-full bg-rose-100 dark:bg-rose-500/20
-                               flex items-center justify-center active:scale-95 transition-all"
+                    className="w-7 h-7 rounded-full flex items-center justify-center active:scale-90 transition-transform"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Lista de pedidos */}
-            <div className="px-5">
               {loading ? (
-                <div className="flex flex-col items-center py-20 text-gray-400 dark:text-gray-600">
-                  <Loader2 className="w-8 h-8 animate-spin text-pink-500 mb-3" />
-                  <p className="text-sm">Cargando pedidos…</p>
+                <div className="nodo-spinner-container flex-col gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-nodo-sub" />
+                  <p className="text-sm text-nodo-dim">Cargando pedidos…</p>
                 </div>
               ) : filtered.length === 0 ? (
                 <EmptyState hasOrders={orders.length > 0} onCreate={() => setQuickSheet(true)} />
               ) : (
-                <div className="space-y-2.5">
-                  {filtered.map(order => (
-                    <OrderCard
-                      key={order.id}
-                      order={order}
-                      onStatusClick={() => setStatusSheet(order)}
-                      onCardClick={() => openEdit(order)}
-                      onTrackingClick={() => setTrackingSheet(order)}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="flex items-baseline justify-between px-1">
+                    <p className="nodo-section-label !mb-0">
+                      {filterStatus === 'todos' ? 'Todos los pedidos' : STATUS_LABELS[filterStatus]}
+                    </p>
+                    <span className="text-xs font-bold text-nodo-dim tabular-nums">
+                      {filtered.length} {filtered.length === 1 ? 'pedido' : 'pedidos'}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-2.5">
+                    {filtered.map(order => (
+                      <OrderCard
+                        key={order.id}
+                        order={order}
+                        onStatusClick={() => setStatusSheet(order)}
+                        onCardClick={() => openEdit(order)}
+                        onTrackingClick={() => setTrackingSheet(order)}
+                      />
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           </div>
+          </>
+        )}
+
+        {/* ─────────── TAB: CLIENTES ─────────── */}
+        {tab === 'clientes' && (
+          <ClientesPanel
+            orders={orders}
+            onNewOrder={(clientName) => {
+              setQuickClient(clientName);
+              setQuickSheet(true);
+            }}
+            onOpenOrder={openEdit}
+          />
         )}
 
         {/* ─────────── FAB ─────────── */}
         {tab === 'pedidos' && (
           <button
             onClick={() => setQuickSheet(true)}
-            className="fixed bottom-24 right-6 z-40 w-14 h-14 rounded-full lg:bottom-6
-                       bg-gradient-to-br from-pink-500 to-rose-600
-                       shadow-xl shadow-pink-500/40 dark:shadow-pink-500/20
-                       flex items-center justify-center
-                       active:scale-90 hover:shadow-pink-500/60 transition-all"
+            className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full xl:hidden
+                       flex items-center justify-center active:scale-90 transition-transform"
+            style={{ background: 'var(--nodo-iris)', boxShadow: 'var(--nodo-shadow-fab)' }}
             aria-label="Nuevo pedido"
           >
-            <Plus className="w-7 h-7 text-white" strokeWidth={2.5} />
+            <Plus className="w-7 h-7" style={{ color: 'var(--nodo-on-iris)' }} strokeWidth={2.5} />
           </button>
         )}
       </div>
@@ -548,11 +528,11 @@ export function PersonalShopperApp(_props: AppProps) {
       <BottomSheet open={!!statusSheet} onClose={() => setStatusSheet(null)} title="Cambiar estado">
         {statusSheet && (
           <>
-            <div className="bg-gray-100 dark:bg-[#2C2C2E] rounded-2xl p-4 mb-4 flex items-center gap-3">
+            <div className="bg-nodo-inset rounded-2xl p-4 mb-4 flex items-center gap-3">
               <Avatar name={statusSheet.client_name} />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-gray-900 dark:text-white truncate">{statusSheet.client_name}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{statusSheet.product_description}</p>
+                <p className="font-semibold text-nodo-ink truncate">{statusSheet.client_name}</p>
+                <p className="text-sm text-nodo-sub truncate">{statusSheet.product_description}</p>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -568,16 +548,14 @@ export function PersonalShopperApp(_props: AppProps) {
                                 transition-all active:scale-[0.98]
                                 ${isCurrent
                                   ? `${t.bg} ${t.darkBg} ring-2 ${t.ring} ${t.darkRing}`
-                                  : 'bg-gray-50 dark:bg-[#2C2C2E] hover:bg-gray-100 dark:hover:bg-[#3A3A3C]'}`}
+                                  : 'bg-nodo-inset hover:bg-nodo-raised'}`}
                   >
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center
                                      ${t.bg} ${t.darkBg}`}>
                       <Icon className={`w-5 h-5 ${t.text} ${t.darkText}`} />
                     </div>
                     <span className={`flex-1 text-left font-semibold
-                                      ${isCurrent
-                                        ? `${t.text} ${t.darkText}`
-                                        : 'text-gray-800 dark:text-gray-200'}`}>
+                                      ${isCurrent ? `${t.text} ${t.darkText}` : 'text-nodo-ink'}`}>
                       {STATUS_LABELS[s]}
                     </span>
                     {isCurrent && (
@@ -594,58 +572,82 @@ export function PersonalShopperApp(_props: AppProps) {
       </BottomSheet>
 
       {/* ═══════════ BOTTOM SHEET: NUEVO PEDIDO RÁPIDO ═══════════ */}
-      <BottomSheet open={quickSheet} onClose={() => setQuickSheet(false)} title="Nuevo pedido">
-        <div className="space-y-4">
-          <SheetInput
-            label="Nombre del cliente"
-            required
-            value={quickClient}
-            onChange={setQuickClient}
-            placeholder="Ej. María García"
-            autoFocus
-            onEnter={handleQuickCreate}
-          />
-          <SheetInput
-            label="¿Qué necesita?"
-            required
-            value={quickProduct}
-            onChange={setQuickProduct}
-            placeholder="Ej. Pastel de chocolate"
-            onEnter={handleQuickCreate}
-          />
-          <SheetInput
-            label="Precio cotizado (opcional)"
-            value={quickPrice}
-            onChange={setQuickPrice}
-            type="number"
-            placeholder="Q 0.00"
-            onEnter={handleQuickCreate}
-          />
-          <p className="text-xs text-gray-400 dark:text-gray-600 px-1">
-            Los detalles adicionales (teléfono, fecha, notas) se completan editando el pedido.
-          </p>
-          <button
+      <BottomSheet
+        open={quickSheet}
+        onClose={() => setQuickSheet(false)}
+        title="Nuevo pedido"
+        footer={
+          <IrisButton
             onClick={handleQuickCreate}
             disabled={saving || !quickClient.trim() || !quickProduct.trim()}
-            className="w-full py-4 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600
-                       text-white font-semibold shadow-lg shadow-pink-500/30
-                       active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed
-                       transition-all flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
             Crear pedido
-          </button>
-        </div>
+          </IrisButton>
+        }
+      >
+        <SheetInput
+          label="Nombre del cliente"
+          required
+          value={quickClient}
+          onChange={setQuickClient}
+          placeholder="Ej. María García"
+          autoFocus
+          onEnter={handleQuickCreate}
+        />
+        <SheetInput
+          label="¿Qué necesita?"
+          required
+          value={quickProduct}
+          onChange={setQuickProduct}
+          placeholder="Ej. Pastel de chocolate"
+          onEnter={handleQuickCreate}
+        />
+        <SheetInput
+          label="Precio cotizado (opcional)"
+          value={quickPrice}
+          onChange={setQuickPrice}
+          type="number"
+          placeholder="Q 0.00"
+          onEnter={handleQuickCreate}
+        />
+        <p className="text-xs text-nodo-dim px-1">
+          Los detalles adicionales (teléfono, fecha, notas) se completan editando el pedido.
+        </p>
       </BottomSheet>
 
       {/* ═══════════ BOTTOM SHEET: EDITAR PEDIDO ═══════════ */}
-      <BottomSheet open={!!editSheet} onClose={() => setEditSheet(null)} title="Editar pedido">
+      <BottomSheet
+        open={!!editSheet}
+        onClose={() => setEditSheet(null)}
+        title="Editar pedido"
+        footer={editSheet ? (
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleDelete(editSheet.id)}
+              className="w-[52px] h-[52px] shrink-0 rounded-full bg-nodo-danger-bg border border-nodo-danger-bd
+                         text-nodo-danger-tx flex items-center justify-center
+                         active:scale-[0.95] transition-transform"
+              aria-label="Eliminar pedido"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+            <IrisButton
+              onClick={handleSaveEdit}
+              disabled={saving || !form.client_name.trim() || !form.product_description.trim()}
+            >
+              {saving && <Loader2 className="w-5 h-5 animate-spin" />}
+              Guardar cambios
+            </IrisButton>
+          </div>
+        ) : undefined}
+      >
         {editSheet && (
-          <div className="space-y-4">
-            <div className="bg-gray-100 dark:bg-[#2C2C2E] rounded-2xl p-4 flex items-center gap-3">
+          <>
+            <div className="bg-nodo-inset rounded-2xl p-4 flex items-center gap-3">
               <Avatar name={form.client_name || editSheet.client_name} />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-gray-900 dark:text-white truncate">
+                <p className="font-semibold text-nodo-ink truncate">
                   {form.client_name || 'Sin nombre'}
                 </p>
                 <StatusPill status={form.status} />
@@ -705,10 +707,7 @@ export function PersonalShopperApp(_props: AppProps) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-500
-                                 mb-2 px-1 uppercase tracking-wide">
-                Estado
-              </label>
+              <label className="nodo-label">Estado</label>
               <div className="grid grid-cols-2 gap-2">
                 {ALL_STATUSES.map(s => {
                   const t = STATUS_THEME[s];
@@ -720,7 +719,7 @@ export function PersonalShopperApp(_props: AppProps) {
                       className={`px-3 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.97]
                                   ${isActive
                                     ? `${t.bg} ${t.text} ${t.darkBg} ${t.darkText} ring-2 ${t.ring} ${t.darkRing}`
-                                    : 'bg-gray-100 dark:bg-[#2C2C2E] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#3A3A3C]'}`}
+                                    : 'bg-nodo-inset text-nodo-sub hover:bg-nodo-raised'}`}
                     >
                       {STATUS_LABELS[s]}
                     </button>
@@ -735,33 +734,10 @@ export function PersonalShopperApp(_props: AppProps) {
               onChange={v => setForm(f => ({ ...f, notes: v }))}
               placeholder="Alergias, preferencias…"
             />
-
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => handleDelete(editSheet.id)}
-                className="px-4 py-3.5 rounded-2xl bg-rose-50 dark:bg-rose-500/10
-                           text-rose-600 dark:text-rose-400 font-semibold
-                           active:scale-[0.97] transition-all"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
-              <button
-                onClick={handleSaveEdit}
-                disabled={saving || !form.client_name.trim() || !form.product_description.trim()}
-                className="flex-1 py-3.5 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600
-                           text-white font-semibold shadow-lg shadow-pink-500/30
-                           active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed
-                           transition-all flex items-center justify-center gap-2"
-              >
-                {saving && <Loader2 className="w-5 h-5 animate-spin" />}
-                Guardar cambios
-              </button>
-            </div>
-          </div>
+          </>
         )}
       </BottomSheet>
 
-      {/* ═══════════ BOTTOM SHEET: CLIENTE PARA COTIZACIÓN ═══════════ */}
       {/* ═══════════ BOTTOM SHEET: TRACKING ═══════════ */}
       <BottomSheet
         open={!!trackingSheet}
@@ -769,16 +745,15 @@ export function PersonalShopperApp(_props: AppProps) {
         title={trackingSheet ? `Rastreo — ${trackingSheet.client_name}` : 'Rastreo'}
       >
         {trackingSheet && (
-          <div className="space-y-4">
-            {/* Product summary */}
-            <div className="bg-gray-50 dark:bg-[#2C2C2E] rounded-2xl px-4 py-3 flex items-center gap-3">
+          <>
+            <div className="bg-nodo-inset rounded-2xl px-4 py-3 flex items-center gap-3">
               <Avatar name={trackingSheet.client_name} size={40} />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">
+                <p className="font-semibold text-nodo-ink text-sm truncate">
                   {trackingSheet.product_description}
                 </p>
                 {trackingSheet.quoted_price != null && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  <p className="text-xs text-nodo-sub mt-0.5">
                     {fmt(trackingSheet.quoted_price)}
                   </p>
                 )}
@@ -789,40 +764,58 @@ export function PersonalShopperApp(_props: AppProps) {
               order={trackingSheet}
               onUpdate={handleTrackingUpdate}
             />
-          </div>
+          </>
         )}
       </BottomSheet>
 
       {/* ═══════════ BOTTOM SHEET: CLIENTE PARA COTIZACIÓN ═══════════ */}
-      <BottomSheet open={!!clientSheet} onClose={() => setClientSheet(null)} title="Guardar cotización">
+      <BottomSheet
+        open={!!clientSheet}
+        onClose={() => setClientSheet(null)}
+        title="Guardar cotización"
+        footer={
+          <IrisButton
+            onClick={confirmSaveQuote}
+            disabled={saving || !clientName.trim() || !productNameInput.trim()}
+          >
+            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+            Guardar cotización
+          </IrisButton>
+        }
+      >
         {clientSheet && (
-          <div className="space-y-4">
-            <div className="bg-gradient-to-br from-pink-50 to-rose-50
-                            dark:from-pink-500/10 dark:to-rose-500/10
-                            border border-pink-100 dark:border-pink-500/20
-                            rounded-2xl p-4 space-y-2">
-              <p className="font-semibold text-gray-900 dark:text-white">{clientSheet.productName}</p>
-              <div className="flex items-baseline gap-1">
-                <TrendingUp className="w-4 h-4 text-pink-500" />
-                <span className="text-sm text-gray-500 dark:text-gray-400">Precio cotizado:</span>
-                <span className="text-lg font-bold text-pink-600 dark:text-pink-400">
+          <>
+            <div className="rounded-2xl p-4 space-y-2 border border-nodo-line"
+              style={{ background: 'var(--nodo-iris-soft)' }}>
+              <div className="flex items-baseline gap-1.5">
+                <TrendingUp className="w-4 h-4 text-nodo-sub" />
+                <span className="text-sm text-nodo-sub">Precio cotizado:</span>
+                <span className="text-lg font-black text-nodo-ink tabular-nums">
                   {fmt(clientSheet.result.sale_price_gtq)}
                 </span>
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
+              <div className="text-xs text-nodo-sub">
                 Margen: <strong>{clientSheet.result.margin_pct.toFixed(1)}%</strong> ·
-                Ganancia: <strong className="text-emerald-600 dark:text-emerald-400">
+                Ganancia: <strong className="text-nodo-success-tx">
                   {fmt(clientSheet.result.profit_gtq)}
                 </strong>
               </div>
             </div>
+            <SheetInput
+              label="Producto"
+              required
+              value={productNameInput}
+              onChange={setProductNameInput}
+              placeholder="Ej. Air Jordan 1 Retro"
+              autoFocus
+              onEnter={confirmSaveQuote}
+            />
             <SheetInput
               label="Nombre del cliente"
               required
               value={clientName}
               onChange={setClientName}
               placeholder="Ej. María García"
-              autoFocus
               onEnter={confirmSaveQuote}
             />
             <SheetInput
@@ -832,47 +825,16 @@ export function PersonalShopperApp(_props: AppProps) {
               placeholder="5555-1234"
               onEnter={confirmSaveQuote}
             />
-            <button
-              onClick={confirmSaveQuote}
-              disabled={saving || !clientName.trim()}
-              className="w-full py-4 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600
-                         text-white font-semibold shadow-lg shadow-pink-500/30
-                         active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed
-                         transition-all flex items-center justify-center gap-2"
-            >
-              {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-              Guardar cotización
-            </button>
-          </div>
+          </>
         )}
       </BottomSheet>
-    </div>
+    </>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUBCOMPONENTES
 // ═══════════════════════════════════════════════════════════════════════════════
-
-function StatCard({
-  label, value, Icon, tint,
-}: { label: string; value: number; Icon: typeof Clock; tint: 'amber' | 'fuchsia' | 'emerald' }) {
-  const tints = {
-    amber:   { bg: 'bg-amber-100 dark:bg-amber-500/15',   text: 'text-amber-700 dark:text-amber-400'   },
-    fuchsia: { bg: 'bg-fuchsia-100 dark:bg-fuchsia-500/15', text: 'text-fuchsia-700 dark:text-fuchsia-400' },
-    emerald: { bg: 'bg-emerald-100 dark:bg-emerald-500/15', text: 'text-emerald-700 dark:text-emerald-400' },
-  };
-  const t = tints[tint];
-  return (
-    <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-3 shadow-sm dark:shadow-none">
-      <div className={`w-8 h-8 rounded-lg ${t.bg} flex items-center justify-center mb-2`}>
-        <Icon className={`w-4 h-4 ${t.text}`} />
-      </div>
-      <p className="text-2xl font-bold text-gray-900 dark:text-white leading-tight">{value}</p>
-      <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">{label}</p>
-    </div>
-  );
-}
 
 function FilterChip({
   label, count, active, onClick, status,
@@ -887,20 +849,20 @@ function FilterChip({
 
   const activeClass = t
     ? `${t.bg} ${t.text} ${t.darkBg} ${t.darkText} ring-2 ${t.ring} ${t.darkRing}`
-    : 'bg-gray-900 dark:bg-white text-white dark:text-gray-900';
-  const inactiveClass = 'bg-white dark:bg-[#1C1C1E] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#2C2C2E]';
+    : 'bg-nodo-ink text-nodo-canvas';
+  const inactiveClass = 'bg-nodo-inset text-nodo-sub hover:bg-nodo-raised';
 
   return (
     <button
       onClick={onClick}
-      className={`shrink-0 px-4 py-2.5 rounded-full text-sm font-semibold shadow-sm dark:shadow-none
+      className={`shrink-0 px-4 py-2 rounded-full text-sm font-semibold
                   transition-all active:scale-[0.96] flex items-center gap-1.5
                   ${active ? activeClass : inactiveClass}`}
     >
       {label}
       {count > 0 && (
-        <span className={`text-xs px-1.5 py-0.5 rounded-full
-                          ${active ? 'bg-white/30 dark:bg-black/20' : 'bg-gray-100 dark:bg-[#2C2C2E]'}`}>
+        <span className={`text-xs px-1.5 py-0.5 rounded-full tabular-nums
+                          ${active ? 'bg-white/30 dark:bg-black/20' : 'bg-nodo-inset'}`}>
           {count}
         </span>
       )}
@@ -917,25 +879,15 @@ function OrderCard({
   onTrackingClick: () => void;
 }) {
   const hasTracking = order.tracking_status !== null;
-  const [copied, setCopied] = useState(false);
-
-  const copyTrackingLink = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!order.tracking_token) return;
-    const url = `${window.location.origin}/tracking/${order.tracking_token}`;
-    const ok = await copyToClipboard(url);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
+  const [showShare, setShowShare] = useState(false);
+  const trackingUrl = `${window.location.origin}/tracking/${order.tracking_token}`;
 
   return (
+    <>
     <div
       onClick={onCardClick}
-      className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-4 shadow-sm dark:shadow-none
-                 active:scale-[0.99] active:bg-gray-50 dark:active:bg-[#2C2C2E]
-                 transition-all cursor-pointer"
+      className="nodo-card p-4 cursor-pointer transition-all active:scale-[0.99]
+                 hover:border-nodo-line-s hover:bg-nodo-raised/40"
     >
       <div className="flex items-start gap-3">
         <Avatar name={order.client_name} size={48} />
@@ -943,15 +895,15 @@ function OrderCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="font-semibold text-gray-900 dark:text-white truncate">{order.client_name}</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5">{order.product_description}</p>
+              <p className="font-semibold text-nodo-ink truncate">{order.client_name}</p>
+              <p className="text-sm text-nodo-sub truncate mt-0.5">{order.product_description}</p>
             </div>
             {order.quoted_price != null && (
               <div className="text-right shrink-0">
-                <p className="text-lg font-bold text-gray-900 dark:text-white leading-tight tracking-tight">
+                <p className="text-lg font-black text-nodo-ink leading-tight tracking-tight tabular-nums">
                   {fmt(order.quoted_price)}
                 </p>
-                <p className="text-xs text-gray-400 dark:text-gray-600">
+                <p className="text-xs text-nodo-dim">
                   {order.quantity} {order.unit}
                 </p>
               </div>
@@ -963,36 +915,36 @@ function OrderCard({
               <StatusPill status={order.status} onClick={onStatusClick} />
             </div>
             {order.client_phone && (
-              <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-500">
+              <span className="inline-flex items-center gap-1 text-xs text-nodo-dim">
                 <Phone className="w-3 h-3" />
                 {order.client_phone}
               </span>
             )}
             {order.delivery_date && (
-              <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-500">
+              <span className="inline-flex items-center gap-1 text-xs text-nodo-dim">
                 <Calendar className="w-3 h-3" />
                 {order.delivery_date}
               </span>
             )}
-            {/* Tracking + copy-link buttons */}
+            {/* Compartir + tracking */}
             <div className="ml-auto flex items-center gap-1.5">
               {order.tracking_token && (
                 <button
-                  onClick={copyTrackingLink}
-                  className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full transition-all
-                              ${copied
-                                ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                                : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-gray-500'}`}
+                  onClick={e => { e.stopPropagation(); setShowShare(true); }}
+                  title="Compartir link de tracking"
+                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full
+                             bg-nodo-inset text-nodo-dim hover:text-nodo-ink hover:bg-nodo-raised
+                             active:scale-95 transition-all"
                 >
-                  {copied ? <Check className="w-3 h-3" /> : <Link2 className="w-3 h-3" />}
-                  {copied ? 'Copiado' : 'Link'}
+                  <Share2 className="w-3 h-3" />
+                  Compartir
                 </button>
               )}
               <div onClick={e => { e.stopPropagation(); onTrackingClick(); }}>
-                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full cursor-pointer
                                   ${hasTracking
-                                    ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400'
-                                    : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-gray-600'}`}>
+                                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                    : 'bg-nodo-inset text-nodo-dim'}`}>
                   ✈️ Rastrear
                 </span>
               </div>
@@ -1004,20 +956,32 @@ function OrderCard({
         </div>
       </div>
     </div>
+
+    {order.tracking_token && (
+      <ShareSheet
+        open={showShare}
+        onClose={() => setShowShare(false)}
+        url={trackingUrl}
+        productName={order.product_description}
+        clienteName={order.client_name}
+        clientePhone={order.client_phone}
+      />
+    )}
+    </>
   );
 }
 
 function EmptyState({ hasOrders, onCreate }: { hasOrders: boolean; onCreate: () => void }) {
   return (
-    <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-10 text-center">
-      <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-pink-100 to-rose-200
-                      dark:from-pink-500/20 dark:to-rose-500/20 flex items-center justify-center">
-        <ShoppingBag className="w-10 h-10 text-pink-500" />
+    <div className="nodo-card p-10 text-center">
+      <div className="w-20 h-20 mx-auto mb-4 rounded-3xl flex items-center justify-center"
+        style={{ background: 'var(--nodo-iris-soft)' }}>
+        <ShoppingBag className="w-10 h-10 text-nodo-sub" />
       </div>
-      <p className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+      <p className="text-lg font-bold text-nodo-ink mb-1">
         {hasOrders ? 'Sin resultados' : 'Aún no hay pedidos'}
       </p>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+      <p className="text-sm text-nodo-sub mb-5">
         {hasOrders
           ? 'Prueba con otro filtro o búsqueda'
           : 'Crea tu primer pedido personalizado'}
@@ -1025,9 +989,9 @@ function EmptyState({ hasOrders, onCreate }: { hasOrders: boolean; onCreate: () 
       {!hasOrders && (
         <button
           onClick={onCreate}
-          className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl
-                     bg-gradient-to-br from-pink-500 to-rose-600 text-white font-semibold
-                     shadow-lg shadow-pink-500/30 active:scale-[0.97] transition-all"
+          className="inline-flex items-center gap-2 px-5 h-12 rounded-full font-bold text-sm
+                     shadow-lg active:scale-[0.97] transition-transform"
+          style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
         >
           <Plus className="w-4 h-4" />
           Crear primer pedido
@@ -1051,9 +1015,8 @@ function SheetInput({
 }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-500
-                         mb-1.5 px-1 uppercase tracking-wide">
-        {label} {required && <span className="text-pink-500">*</span>}
+      <label className="nodo-label">
+        {label} {required && <span className="text-nodo-danger-tx">*</span>}
       </label>
       <input
         type={type}
@@ -1062,12 +1025,7 @@ function SheetInput({
         placeholder={placeholder}
         autoFocus={autoFocus}
         onKeyDown={e => onEnter && e.key === 'Enter' && onEnter()}
-        className="w-full px-4 py-3 bg-gray-100 dark:bg-[#2C2C2E] rounded-2xl
-                   text-sm font-medium text-gray-900 dark:text-white
-                   placeholder:text-gray-400 dark:placeholder:text-gray-600 border-0
-                   focus:outline-none focus:ring-2 focus:ring-pink-400 dark:focus:ring-pink-500/60
-                   focus:bg-white dark:focus:bg-[#3A3A3C]
-                   [color-scheme:light] dark:[color-scheme:dark]"
+        className={type === 'number' ? 'nodo-input-number' : 'nodo-input'}
       />
     </div>
   );
@@ -1084,20 +1042,15 @@ function SheetTextarea({
 }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-500
-                         mb-1.5 px-1 uppercase tracking-wide">
-        {label} {required && <span className="text-pink-500">*</span>}
+      <label className="nodo-label">
+        {label} {required && <span className="text-nodo-danger-tx">*</span>}
       </label>
       <textarea
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         rows={2}
-        className="w-full px-4 py-3 bg-gray-100 dark:bg-[#2C2C2E] rounded-2xl
-                   text-sm font-medium text-gray-900 dark:text-white
-                   placeholder:text-gray-400 dark:placeholder:text-gray-600 border-0 resize-none
-                   focus:outline-none focus:ring-2 focus:ring-pink-400 dark:focus:ring-pink-500/60
-                   focus:bg-white dark:focus:bg-[#3A3A3C]"
+        className="nodo-textarea"
       />
     </div>
   );

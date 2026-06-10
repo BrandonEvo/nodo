@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import {
   Calculator, Package, TrendingUp, Save, ChevronDown, RefreshCw,
-  CheckCircle2, Plane, Tag, DollarSign,
+  CheckCircle2, Tag, DollarSign, Settings2,
 } from 'lucide-react';
+import { BottomSheet } from '@/components/ui/BottomSheet';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ export interface CalcResult {
 }
 
 interface Props {
-  onSaveQuote?: (result: CalcResult, productName: string) => void;
+  onSaveQuote?: (result: CalcResult) => void;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -46,15 +47,15 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
   const [showConfig, setShowConfig]   = useState(false);
   const [cfg, setCfg]                 = useState(DEFAULT_CONFIG);
 
-  const [productName, setProductName] = useState('');
   const [priceDolars, setPriceDolars] = useState('');
-  const [weightLbs, setWeightLbs]     = useState('');
+  const [weightLbs, setWeightLbs]     = useState('1');
 
   const [profitMode, setProfitMode]   = useState<'markup' | 'free'>('markup');
   const [markupPct, setMarkupPct]     = useState('30');
   const [salePriceGtq, setSalePriceGtq] = useState('');
 
   const [saved, setSaved]             = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   // ── Cálculo ─────────────────────────────────────────────────────────────────
   const result = useMemo<CalcResult | null>(() => {
@@ -98,15 +99,14 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
 
   const handleSave = () => {
     if (!result || !onSaveQuote) return;
-    onSaveQuote(result, productName.trim() || 'Producto sin nombre');
+    onSaveQuote(result);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
 
   const handleReset = () => {
-    setProductName('');
     setPriceDolars('');
-    setWeightLbs('');
+    setWeightLbs('1');
     setMarkupPct('30');
     setSalePriceGtq('');
     setSaved(false);
@@ -142,93 +142,44 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
     result.margin_pct >= 0  ? { ...MARGIN_THEMES.rose,    label: 'Margen muy bajo' } :
                               { ...MARGIN_THEMES.rose,    label: 'Sin ganancia' };
 
+  const perLb = num(cfg.suitcase_cost) / (num(cfg.suitcase_lbs) || 1);
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4 pb-4">
+    <>
+    <div className="w-full pb-4">
 
-      {/* ─────────── CONFIG MALETA (collapsible card) ─────────── */}
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-sm dark:shadow-none overflow-hidden">
+      {/* ─────────── Config de viaje → botón engranaje compacto ─────────── */}
+      <div className="flex justify-end mb-4">
         <button
-          onClick={() => setShowConfig(v => !v)}
-          className="w-full flex items-center justify-between px-5 py-4
-                     active:bg-gray-50 dark:active:bg-[#2C2C2E] transition-colors"
+          onClick={() => setShowConfig(true)}
+          className="inline-flex items-center gap-2 pl-3 pr-3.5 py-2 rounded-full
+                     bg-nodo-inset hover:bg-nodo-raised active:scale-[0.97]
+                     transition-all text-nodo-sub"
         >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-100 to-indigo-100
-                            dark:from-sky-500/20 dark:to-indigo-500/20
-                            flex items-center justify-center">
-              <Plane className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            <div className="text-left">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Configuración de viaje</p>
-              <p className="text-xs text-gray-500 dark:text-gray-500">
-                ${num(cfg.suitcase_cost) / (num(cfg.suitcase_lbs) || 1)}/lb · TC Q{cfg.exchange_rate} · Tax {cfg.tax_rate}%
-              </p>
-            </div>
-          </div>
-          <ChevronDown
-            className={`w-5 h-5 text-gray-400 dark:text-gray-600 transition-transform ${showConfig ? 'rotate-180' : ''}`}
-          />
+          <Settings2 className="w-4 h-4 text-nodo-dim" />
+          <span className="text-xs font-semibold tabular-nums">
+            ${perLb.toFixed(2)}/lb · Q{cfg.exchange_rate} · {cfg.tax_rate}%
+          </span>
         </button>
-
-        {showConfig && (
-          <div className="px-5 pb-5 pt-2 border-t border-gray-100 dark:border-white/5 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <ConfigInput
-                label="Costo maleta"
-                prefix="$"
-                value={cfg.suitcase_cost}
-                onChange={v => setCfg(c => ({ ...c, suitcase_cost: v }))}
-              />
-              <ConfigInput
-                label="Capacidad"
-                suffix="lbs"
-                value={cfg.suitcase_lbs}
-                onChange={v => setCfg(c => ({ ...c, suitcase_lbs: v }))}
-              />
-              <ConfigInput
-                label="Tipo de cambio"
-                prefix="Q"
-                value={cfg.exchange_rate}
-                onChange={v => setCfg(c => ({ ...c, exchange_rate: v }))}
-              />
-              <ConfigInput
-                label="Tax USA"
-                suffix="%"
-                value={cfg.tax_rate}
-                onChange={v => setCfg(c => ({ ...c, tax_rate: v }))}
-              />
-            </div>
-            {num(cfg.suitcase_lbs) > 0 && (
-              <div className="bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl px-4 py-2.5 flex items-center gap-2">
-                <Package className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <p className="text-xs text-indigo-700 dark:text-indigo-400">
-                  Costo por libra:{' '}
-                  <strong>{fmtUSD(num(cfg.suitcase_cost) / num(cfg.suitcase_lbs))} / lb</strong>
-                </p>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* ─────────── PRODUCTO (hero card) ─────────── */}
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-sm dark:shadow-none p-5 space-y-4">
+      {/* ─────────── Layout: inputs (izq) · resultado hero (der) ─────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-5 items-start">
+
+      {/* ═══ IZQUIERDA: inputs ═══ */}
+      <div className="flex flex-col gap-5">
+
+      {/* ─────────── PRODUCTO ─────────── */}
+      <div className="nodo-card p-5 lg:p-6 space-y-4">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-pink-100 to-rose-200
                           dark:from-pink-500/20 dark:to-rose-500/20
                           flex items-center justify-center">
             <Tag className="w-4 h-4 text-pink-600 dark:text-pink-400" />
           </div>
-          <h3 className="text-base font-bold text-gray-900 dark:text-white tracking-tight">Producto</h3>
+          <h3 className="text-base font-bold text-nodo-ink tracking-tight">Producto</h3>
         </div>
-
-        <CalcInput
-          label="Nombre"
-          value={productName}
-          onChange={setProductName}
-          placeholder="Ej. Air Jordan 1 Retro"
-        />
 
         <div className="grid grid-cols-2 gap-3">
           <CalcInput
@@ -246,24 +197,24 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
             onChange={setWeightLbs}
             suffix="lbs"
             type="number"
-            placeholder="0.0"
+            placeholder="1.0"
           />
         </div>
       </div>
 
       {/* ─────────── GANANCIA (modo + input) ─────────── */}
-      <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-sm dark:shadow-none p-5 space-y-4">
+      <div className="nodo-card p-5 space-y-4">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-100 to-teal-200
                           dark:from-emerald-500/20 dark:to-teal-500/20
                           flex items-center justify-center">
             <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <h3 className="text-base font-bold text-gray-900 dark:text-white tracking-tight">Ganancia</h3>
+          <h3 className="text-base font-bold text-nodo-ink tracking-tight">Ganancia</h3>
         </div>
 
         {/* iOS segmented control */}
-        <div className="bg-gray-100 dark:bg-[#2C2C2E] rounded-2xl p-1 flex gap-1">
+        <div className="bg-nodo-inset rounded-2xl p-1 flex gap-1">
           {([
             { key: 'markup', label: 'Markup %', icon: TrendingUp },
             { key: 'free',   label: 'Precio libre', icon: DollarSign },
@@ -274,8 +225,8 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl
                           text-sm font-semibold transition-all active:scale-[0.98]
                           ${profitMode === key
-                            ? 'bg-white dark:bg-[#3A3A3C] text-gray-900 dark:text-white shadow-sm'
-                            : 'text-gray-500 dark:text-gray-500'}`}
+                            ? 'bg-nodo-raised text-nodo-ink shadow-sm'
+                            : 'text-nodo-sub'}`}
             >
               <Icon className="w-4 h-4" />
               {label}
@@ -284,13 +235,35 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
         </div>
 
         {profitMode === 'markup' ? (
-          <CalcInput
-            label="Porcentaje de ganancia"
-            value={markupPct}
-            onChange={setMarkupPct}
-            suffix="%"
-            type="number"
-          />
+          <div>
+            <div className="flex items-baseline justify-between mb-3">
+              <label className="text-xs font-semibold text-nodo-sub uppercase tracking-wide px-1">
+                Porcentaje de ganancia
+              </label>
+              <span className="text-2xl font-black text-nodo-ink tabular-nums leading-none">
+                {Math.round(num(markupPct))}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round(num(markupPct))}
+              onChange={e => setMarkupPct(e.target.value)}
+              className="nodo-range"
+              style={{
+                background: `linear-gradient(to right, var(--nodo-iris-mid) ${Math.min(num(markupPct), 100)}%, var(--nodo-inset) ${Math.min(num(markupPct), 100)}%)`,
+              }}
+            />
+            <div className="flex justify-between text-[10px] font-semibold text-nodo-dim mt-1.5 px-0.5">
+              <span>0%</span>
+              <span>25%</span>
+              <span>50%</span>
+              <span>75%</span>
+              <span>100%</span>
+            </div>
+          </div>
         ) : (
           <CalcInput
             label="Precio de venta al cliente"
@@ -303,39 +276,52 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
         )}
       </div>
 
-      {/* ─────────── RESULTADO ─────────── */}
+      </div>{/* ═══ /IZQUIERDA ═══ */}
+
+      {/* ═══ DERECHA: resultado hero (sticky) ═══ */}
+      <div className="lg:sticky lg:top-4">
       {result && result.total_cost_gtq > 0 ? (
-        <div className="bg-gradient-to-br from-pink-500 to-rose-600 rounded-3xl p-5
-                        shadow-xl shadow-pink-500/30 dark:shadow-pink-500/15 text-white space-y-4">
+        <div className="rounded-3xl p-5 lg:p-6 space-y-4 lg:min-h-[480px] flex flex-col"
+          style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)', boxShadow: 'var(--nodo-shadow-fab)' }}>
 
           {/* Header con total */}
           <div>
-            <p className="text-xs font-semibold text-white/70 uppercase tracking-wider">
+            <p className="text-xs font-semibold opacity-70 uppercase tracking-wider">
               Costo total
             </p>
             <div className="flex items-baseline gap-2 mt-1">
-              <p className="text-3xl font-bold tracking-tight">{fmtQ(result.total_cost_gtq)}</p>
-              <p className="text-sm text-white/70">{fmtUSD(result.total_cost_usd)}</p>
+              <p className="text-3xl font-black tracking-tight tabular-nums">{fmtQ(result.total_cost_gtq)}</p>
+              <p className="text-sm opacity-70">{fmtUSD(result.total_cost_usd)}</p>
             </div>
+            <button
+              onClick={() => setShowBreakdown(v => !v)}
+              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold
+                         opacity-80 hover:opacity-100 active:scale-[0.97] transition-all"
+            >
+              {showBreakdown ? 'Ocultar' : 'Ver'} desglose
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showBreakdown ? 'rotate-180' : ''}`} />
+            </button>
           </div>
 
-          {/* Desglose */}
-          <div className="bg-white/10 backdrop-blur rounded-2xl p-3 space-y-2 text-sm">
-            <Row label="Precio producto" value={fmtUSD(result.product_price_usd)} />
-            <Row label={`Tax (${result.tax_rate}%)`} value={fmtUSD(result.tax_usd)} />
-            {result.shipping_usd > 0 && (
-              <Row label={`Envío (${result.weight_lbs} lbs)`} value={fmtUSD(result.shipping_usd)} />
-            )}
-            <div className="border-t border-white/20 pt-2 mt-2">
-              <Row label={`× Q${result.exchange_rate}`} value={fmtQ(result.total_cost_gtq)} bold />
+          {/* Desglose (colapsable) */}
+          {showBreakdown && (
+            <div className="bg-white/10 backdrop-blur rounded-2xl p-3 space-y-2 text-sm">
+              <Row label="Precio producto" value={fmtUSD(result.product_price_usd)} />
+              <Row label={`Tax (${result.tax_rate}%)`} value={fmtUSD(result.tax_usd)} />
+              {result.shipping_usd > 0 && (
+                <Row label={`Envío (${result.weight_lbs} lbs)`} value={fmtUSD(result.shipping_usd)} />
+              )}
+              <div className="border-t border-white/20 pt-2 mt-2">
+                <Row label={`× Q${result.exchange_rate}`} value={fmtQ(result.total_cost_gtq)} bold />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Venta + ganancia — panel blanco en light, dark card en dark */}
           {result.sale_price_gtq > 0 && marginTheme && (
-            <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 space-y-3 text-gray-900 dark:text-white">
+            <div className="bg-nodo-card rounded-2xl p-4 space-y-3 text-nodo-ink">
               <div className="flex items-baseline justify-between">
-                <span className="text-sm text-gray-500 dark:text-gray-400">Precio de venta</span>
+                <span className="text-sm text-nodo-sub">Precio de venta</span>
                 <span className="text-2xl font-bold tracking-tight">
                   {fmtQ(result.sale_price_gtq)}
                 </span>
@@ -343,13 +329,13 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
 
               <div className="grid grid-cols-2 gap-2">
                 <div className={`rounded-xl p-3 ${marginTheme.bg}`}>
-                  <p className="text-xs text-gray-500 dark:text-gray-500">Ganancia</p>
+                  <p className="text-xs text-nodo-sub">Ganancia</p>
                   <p className={`text-lg font-bold leading-tight ${marginTheme.text}`}>
                     {fmtQ(result.profit_gtq)}
                   </p>
                 </div>
                 <div className={`rounded-xl p-3 ${marginTheme.bg}`}>
-                  <p className="text-xs text-gray-500 dark:text-gray-500">Margen</p>
+                  <p className="text-xs text-nodo-sub">Margen</p>
                   <p className={`text-lg font-bold leading-tight ${marginTheme.text}`}>
                     {result.margin_pct.toFixed(1)}%
                   </p>
@@ -358,7 +344,7 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
 
               {/* Barra de margen */}
               <div>
-                <div className="h-2 bg-gray-100 dark:bg-[#2C2C2E] rounded-full overflow-hidden">
+                <div className="h-2 bg-nodo-inset rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full bg-gradient-to-r transition-all ${marginTheme.gradient}`}
                     style={{ width: `${Math.min(Math.max(result.margin_pct, 0), 100)}%` }}
@@ -372,10 +358,10 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
           )}
 
           {/* Acciones */}
-          <div className="flex gap-2 pt-1">
+          <div className="flex gap-2 pt-1 lg:mt-auto">
             <button
               onClick={handleReset}
-              className="px-4 py-3 rounded-2xl bg-white/15 backdrop-blur text-white font-semibold
+              className="px-4 py-3 rounded-2xl bg-white/15 backdrop-blur font-semibold
                          active:scale-[0.97] active:bg-white/25 transition-all
                          flex items-center justify-center gap-2"
             >
@@ -391,7 +377,7 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
                             flex items-center justify-center gap-2
                             ${saved
                               ? 'bg-emerald-500 text-white'
-                              : 'bg-white dark:bg-[#1C1C1E] text-pink-600 dark:text-pink-400 hover:bg-gray-50 dark:hover:bg-[#2C2C2E]'}`}
+                              : 'bg-nodo-card text-nodo-ink hover:bg-nodo-inset'}`}
               >
                 {saved ? (
                   <><CheckCircle2 className="w-5 h-5" /> ¡Guardada!</>
@@ -403,22 +389,80 @@ export function ShopperCalculator({ onSaveQuote }: Props) {
           </div>
         </div>
       ) : (
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-10 text-center">
-          <div className="w-16 h-16 mx-auto mb-3 rounded-2xl
+        <div className="nodo-card p-10 text-center lg:min-h-[480px]
+                        flex flex-col items-center justify-center">
+          <div className="w-20 h-20 mx-auto mb-4 rounded-3xl
                           bg-gradient-to-br from-pink-50 to-rose-100
                           dark:from-pink-500/20 dark:to-rose-500/20
                           flex items-center justify-center">
-            <Calculator className="w-8 h-8 text-pink-400" />
+            <Calculator className="w-9 h-9 text-pink-400" />
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+          <p className="text-base text-nodo-ink font-bold">
             Ingresa el precio del producto
           </p>
-          <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">
-            Verás el desglose y la ganancia en tiempo real
+          <p className="text-sm text-nodo-dim mt-1 max-w-[220px]">
+            Verás el costo, el precio de venta y tu ganancia en tiempo real
           </p>
         </div>
       )}
+      </div>
+      </div>
     </div>
+
+    {/* ─────────── Config de viaje (BottomSheet) ─────────── */}
+    <BottomSheet
+      open={showConfig}
+      onClose={() => setShowConfig(false)}
+      title="Configuración de viaje"
+      footer={
+        <button
+          onClick={() => setShowConfig(false)}
+          className="nodo-btn-primary"
+        >
+          <CheckCircle2 size={18} />
+          LISTO
+        </button>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <ConfigInput
+            label="Costo maleta"
+            prefix="$"
+            value={cfg.suitcase_cost}
+            onChange={v => setCfg(c => ({ ...c, suitcase_cost: v }))}
+          />
+          <ConfigInput
+            label="Capacidad"
+            suffix="lbs"
+            value={cfg.suitcase_lbs}
+            onChange={v => setCfg(c => ({ ...c, suitcase_lbs: v }))}
+          />
+          <ConfigInput
+            label="Tipo de cambio"
+            prefix="Q"
+            value={cfg.exchange_rate}
+            onChange={v => setCfg(c => ({ ...c, exchange_rate: v }))}
+          />
+          <ConfigInput
+            label="Tax USA"
+            suffix="%"
+            value={cfg.tax_rate}
+            onChange={v => setCfg(c => ({ ...c, tax_rate: v }))}
+          />
+        </div>
+        {num(cfg.suitcase_lbs) > 0 && (
+          <div className="bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl px-4 py-3 flex items-center gap-2">
+            <Package className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <p className="text-xs text-indigo-700 dark:text-indigo-400">
+              Costo por libra:{' '}
+              <strong>{fmtUSD(num(cfg.suitcase_cost) / num(cfg.suitcase_lbs))} / lb</strong>
+            </p>
+          </div>
+        )}
+      </div>
+    </BottomSheet>
+    </>
   );
 }
 
@@ -440,15 +484,15 @@ function CalcInput({
 }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-500
+      <label className="block text-xs font-semibold text-nodo-sub
                          mb-1.5 px-1 uppercase tracking-wide">
         {label} {required && <span className="text-pink-500">*</span>}
       </label>
-      <div className="flex items-center bg-gray-100 dark:bg-[#2C2C2E] rounded-2xl overflow-hidden
+      <div className="flex items-center bg-nodo-inset rounded-2xl overflow-hidden
                       focus-within:ring-2 focus-within:ring-pink-400 dark:focus-within:ring-pink-500/60
-                      focus-within:bg-white dark:focus-within:bg-[#3A3A3C] transition-all">
+                      focus-within:bg-nodo-card transition-all">
         {prefix && (
-          <span className="pl-4 pr-1 text-sm font-semibold text-gray-400 dark:text-gray-600">{prefix}</span>
+          <span className="pl-4 pr-1 text-sm font-semibold text-nodo-dim">{prefix}</span>
         )}
         <input
           type={type}
@@ -457,12 +501,12 @@ function CalcInput({
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           className="flex-1 px-4 py-3 text-sm font-medium bg-transparent
-                     text-gray-900 dark:text-white
-                     placeholder:text-gray-400 dark:placeholder:text-gray-600
+                     text-nodo-ink
+                     placeholder:text-nodo-dim
                      focus:outline-none [color-scheme:light] dark:[color-scheme:dark]"
         />
         {suffix && (
-          <span className="pr-4 pl-1 text-sm font-semibold text-gray-400 dark:text-gray-600">{suffix}</span>
+          <span className="pr-4 pl-1 text-sm font-semibold text-nodo-dim">{suffix}</span>
         )}
       </div>
     </div>
@@ -480,12 +524,12 @@ function ConfigInput({
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-500 dark:text-gray-500 mb-1 px-1">{label}</label>
-      <div className="flex items-center bg-gray-100 dark:bg-[#2C2C2E] rounded-xl overflow-hidden
+      <label className="block text-xs font-medium text-nodo-sub mb-1 px-1">{label}</label>
+      <div className="flex items-center bg-nodo-inset rounded-xl overflow-hidden
                       focus-within:ring-2 focus-within:ring-pink-400 dark:focus-within:ring-pink-500/60
-                      focus-within:bg-white dark:focus-within:bg-[#3A3A3C] transition-all">
+                      focus-within:bg-nodo-card transition-all">
         {prefix && (
-          <span className="pl-3 pr-0.5 text-xs font-semibold text-gray-400 dark:text-gray-600">{prefix}</span>
+          <span className="pl-3 pr-0.5 text-xs font-semibold text-nodo-dim">{prefix}</span>
         )}
         <input
           type="number"
@@ -493,11 +537,11 @@ function ConfigInput({
           value={value}
           onChange={e => onChange(e.target.value)}
           className="flex-1 px-3 py-2 text-sm font-medium bg-transparent
-                     text-gray-900 dark:text-white
+                     text-nodo-ink
                      focus:outline-none [color-scheme:light] dark:[color-scheme:dark]"
         />
         {suffix && (
-          <span className="pr-3 pl-0.5 text-xs font-semibold text-gray-400 dark:text-gray-600">{suffix}</span>
+          <span className="pr-3 pl-0.5 text-xs font-semibold text-nodo-dim">{suffix}</span>
         )}
       </div>
     </div>
@@ -507,7 +551,7 @@ function ConfigInput({
 function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
     <div className="flex justify-between items-baseline">
-      <span className={`${bold ? 'font-semibold' : 'text-white/80'}`}>{label}</span>
+      <span className={`${bold ? 'font-semibold' : 'opacity-80'}`}>{label}</span>
       <span className={`${bold ? 'font-bold text-base' : 'font-semibold'}`}>{value}</span>
     </div>
   );

@@ -5,6 +5,7 @@ import {
   SlidersHorizontal, Warehouse, ChefHat, Store, Lock, BookOpen,
 } from 'lucide-react';
 import { resolveModuleIcon } from '@/lib/module-icons';
+import { NodoMark, NodoWordmark } from '@/components/ui/NodoLogo';
 
 export type TabId = string;
 
@@ -98,7 +99,7 @@ export function Sidebar({
   }, {});
 
   return (
-    <aside className={`hidden lg:flex flex-col fixed top-0 left-0 h-screen z-40 bg-[#111111] transition-all duration-300 ease-in-out ${collapsed ? 'w-[72px]' : 'w-[260px]'}`}>
+    <aside className={`hidden lg:flex flex-col fixed top-0 left-0 h-screen z-40 nodo-glass-sidebar transition-all duration-300 ease-in-out ${collapsed ? 'w-[72px]' : 'w-[260px]'}`}>
 
       {/* ── Logo ── */}
       <div className={`flex items-center h-[68px] shrink-0 px-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
@@ -107,18 +108,12 @@ export function Sidebar({
             {tenantLogo && !isSuperAdmin ? (
               <img src={tenantLogo} alt={tenantName} className="w-8 h-8 rounded-xl object-contain" />
             ) : (
-              <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg"
-                style={{ backgroundColor: accentColor }}
-              >
-                <span className="text-[#111111] font-black text-base leading-none">
-                  {isSuperAdmin ? 'N' : tenantName.charAt(0)}
-                </span>
-              </div>
+              <NodoMark size={30} />
             )}
-            <span className="text-white font-black text-base tracking-tight">
-              {isSuperAdmin ? 'NODO' : tenantName}
-            </span>
+            <NodoWordmark
+              name={isSuperAdmin ? 'nodo' : tenantName.toLowerCase()}
+              className="text-nodo-ink text-base truncate max-w-[150px]"
+            />
           </div>
         )}
 
@@ -126,21 +121,14 @@ export function Sidebar({
           tenantLogo && !isSuperAdmin ? (
             <img src={tenantLogo} alt={tenantName} className="w-8 h-8 rounded-xl object-contain" />
           ) : (
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg"
-              style={{ backgroundColor: accentColor }}
-            >
-              <span className="text-[#111111] font-black text-base leading-none">
-                {isSuperAdmin ? 'N' : tenantName.charAt(0)}
-              </span>
-            </div>
+            <NodoMark size={30} />
           )
         )}
 
         {!collapsed && (
           <button
             onClick={() => setCollapsed(true)}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/8 transition-colors"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-nodo-dim hover:text-nodo-sub hover:bg-nodo-inset transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -151,7 +139,7 @@ export function Sidebar({
       {collapsed && (
         <button
           onClick={() => setCollapsed(false)}
-          className="absolute -right-3 top-[26px] w-6 h-6 rounded-full bg-[#1e1e1e] border border-white/10 flex items-center justify-center text-white/50 hover:text-white hover:border-white/30 transition-all shadow-lg"
+          className="absolute -right-3 top-[26px] w-6 h-6 rounded-full bg-nodo-card border border-nodo-line flex items-center justify-center text-nodo-sub hover:text-nodo-ink hover:border-nodo-line-s transition-all shadow-lg"
         >
           <ChevronRight className="w-3 h-3" />
         </button>
@@ -164,11 +152,11 @@ export function Sidebar({
 
             {/* Section label */}
             {!collapsed ? (
-              <p className="text-[10px] font-bold text-white/25 uppercase tracking-[0.18em] px-3 mb-1.5">
+              <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.18em] px-3 mb-1.5">
                 {sectionName}
               </p>
             ) : (
-              <div className="w-6 h-px bg-white/10 mx-auto mb-1.5" />
+              <div className="w-6 h-px bg-nodo-line mx-auto mb-1.5" />
             )}
 
             <div className="space-y-0.5">
@@ -185,8 +173,8 @@ export function Sidebar({
                       relative w-full flex items-center rounded-xl transition-all duration-150 group
                       ${collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'}
                       ${isActive
-                        ? 'bg-white/10 text-white'
-                        : 'text-white/40 hover:text-white/80 hover:bg-white/5'
+                        ? 'bg-nodo-inset text-nodo-ink'
+                        : 'text-nodo-sub hover:text-nodo-ink hover:bg-nodo-inset/60'
                       }
                     `}
                   >
@@ -194,7 +182,7 @@ export function Sidebar({
                     {isActive && !collapsed && (
                       <span
                         className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full"
-                        style={{ backgroundColor: accentColor }}
+                        style={{ background: 'var(--nodo-iris)' }}
                       />
                     )}
 
@@ -216,14 +204,14 @@ export function Sidebar({
                     </div>
 
                     {!collapsed && (
-                      <span className={`text-sm truncate ${isActive ? 'font-semibold text-white' : 'font-medium'}`}>
+                      <span className={`text-sm truncate ${isActive ? 'font-semibold text-nodo-ink' : 'font-medium'}`}>
                         {item.label}
                       </span>
                     )}
 
                     {/* Tooltip en collapsed */}
                     {collapsed && (
-                      <span className="absolute left-full ml-3 px-3 py-2 rounded-xl bg-[#1e1e1e] border border-white/10 text-white text-xs font-semibold opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 whitespace-nowrap z-50 shadow-2xl">
+                      <span className="absolute left-full ml-3 px-3 py-2 rounded-xl bg-nodo-ink text-nodo-canvas text-xs font-semibold opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 whitespace-nowrap z-50 shadow-2xl">
                         {item.label}
                       </span>
                     )}
@@ -236,7 +224,7 @@ export function Sidebar({
       </nav>
 
       {/* ── Bottom ── */}
-      <div className="shrink-0 px-2 pb-4 pt-2 border-t border-white/8 space-y-0.5">
+      <div className="shrink-0 px-2 pb-4 pt-2 border-t border-nodo-line space-y-0.5">
         <button
           onClick={() => onTabChange('profile')}
           title={collapsed ? 'Mi Perfil' : undefined}
@@ -244,15 +232,15 @@ export function Sidebar({
             relative w-full flex items-center rounded-xl transition-all duration-150 group
             ${collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'}
             ${activeTab === 'profile'
-              ? 'bg-white/10 text-white'
-              : 'text-white/40 hover:text-white/80 hover:bg-white/5'
+              ? 'bg-nodo-inset text-nodo-ink'
+              : 'text-nodo-sub hover:text-nodo-ink hover:bg-nodo-inset/60'
             }
           `}
         >
           {activeTab === 'profile' && !collapsed && (
             <span
               className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full"
-              style={{ backgroundColor: accentColor }}
+              style={{ background: 'var(--nodo-iris)' }}
             />
           )}
           <div
@@ -266,12 +254,12 @@ export function Sidebar({
             />
           </div>
           {!collapsed && (
-            <span className={`text-sm truncate ${activeTab === 'profile' ? 'font-semibold text-white' : 'font-medium'}`}>
+            <span className={`text-sm truncate ${activeTab === 'profile' ? 'font-semibold text-nodo-ink' : 'font-medium'}`}>
               Mi Perfil
             </span>
           )}
           {collapsed && (
-            <span className="absolute left-full ml-3 px-3 py-2 rounded-xl bg-[#1e1e1e] border border-white/10 text-white text-xs font-semibold opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-2xl">
+            <span className="absolute left-full ml-3 px-3 py-2 rounded-xl bg-nodo-ink text-nodo-canvas text-xs font-semibold opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-2xl">
               Mi Perfil
             </span>
           )}
@@ -282,7 +270,7 @@ export function Sidebar({
           title={collapsed ? 'Cerrar sesión' : undefined}
           className={`
             w-full flex items-center rounded-xl transition-all duration-150 group
-            text-white/30 hover:text-red-400 hover:bg-red-500/8
+            text-nodo-dim hover:text-nodo-danger-tx hover:bg-nodo-danger-bg
             ${collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'}
           `}
         >
@@ -291,7 +279,7 @@ export function Sidebar({
           </div>
           {!collapsed && <span className="text-sm font-medium">Cerrar sesión</span>}
           {collapsed && (
-            <span className="absolute left-full ml-3 px-3 py-2 rounded-xl bg-[#1e1e1e] border border-white/10 text-white text-xs font-semibold opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-2xl">
+            <span className="absolute left-full ml-3 px-3 py-2 rounded-xl bg-nodo-ink text-nodo-canvas text-xs font-semibold opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-2xl">
               Cerrar sesión
             </span>
           )}

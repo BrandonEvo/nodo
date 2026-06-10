@@ -70,8 +70,7 @@ export function TrackingTimeline({ order, onUpdate, readOnly = false }: Props) {
       {/* ── Timeline ── */}
       <div className="relative">
         {/* Vertical connector line */}
-        <div className="absolute left-[22px] top-6 bottom-6 w-0.5
-                        bg-gray-100 dark:bg-white/5" />
+        <div className="absolute left-[22px] top-6 bottom-6 w-0.5 bg-nodo-line" />
 
         <div className="space-y-0">
           {TRACKING_STEPS.map((step, idx) => {
@@ -104,8 +103,8 @@ export function TrackingTimeline({ order, onUpdate, readOnly = false }: Props) {
                   ) : (
                     // Pending node
                     <div className="w-11 h-11 flex items-center justify-center">
-                      <div className="w-7 h-7 rounded-full border-2 border-gray-200 dark:border-white/10
-                                       bg-white dark:bg-[#2C2C2E] flex items-center justify-center">
+                      <div className="w-7 h-7 rounded-full border-2 border-nodo-line-s
+                                       bg-nodo-inset flex items-center justify-center">
                         <span className="text-xs opacity-40">{step.emoji}</span>
                       </div>
                     </div>
@@ -117,15 +116,11 @@ export function TrackingTimeline({ order, onUpdate, readOnly = false }: Props) {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className={`text-sm font-semibold leading-tight
-                                     ${done
-                                       ? `${color.text}`
-                                       : 'text-gray-400 dark:text-gray-600'}`}>
+                                     ${done ? `${color.text}` : 'text-nodo-dim'}`}>
                         {step.label}
                       </p>
                       <p className={`text-xs mt-0.5
-                                     ${done
-                                       ? 'text-gray-500 dark:text-gray-400'
-                                       : 'text-gray-300 dark:text-gray-700'}`}>
+                                     ${done ? 'text-nodo-sub' : 'text-nodo-dim/60'}`}>
                         {current && order.tracking_updated_at
                           ? fmtDate(order.tracking_updated_at) ?? step.sublabel
                           : step.sublabel}
@@ -162,14 +157,14 @@ export function TrackingTimeline({ order, onUpdate, readOnly = false }: Props) {
 
       {/* ── Completed banner ── */}
       {isComplete && (
-        <div className="bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl px-4 py-3
+        <div className="bg-nodo-success-bg border border-nodo-success-bd rounded-2xl px-4 py-3
                         flex items-center gap-3">
           <span className="text-2xl">🎉</span>
           <div>
-            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+            <p className="text-sm font-semibold text-nodo-success-tx">
               Pedido completado
             </p>
-            <p className="text-xs text-emerald-600 dark:text-emerald-500">
+            <p className="text-xs text-nodo-success-tx/80">
               El cliente recibió su pedido
               {order.tracking_updated_at ? ` · ${fmtDate(order.tracking_updated_at)}` : ''}
             </p>
@@ -179,10 +174,9 @@ export function TrackingTimeline({ order, onUpdate, readOnly = false }: Props) {
 
       {/* ── Advance panel ── */}
       {!readOnly && !isComplete && expandNote && nextStep && (
-        <div className="bg-gray-50 dark:bg-[#2C2C2E] rounded-2xl p-4 space-y-3
-                        border border-gray-100 dark:border-white/5">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-            Avanzar a: <span className="normal-case font-bold text-gray-700 dark:text-gray-200">
+        <div className="bg-nodo-inset rounded-2xl p-4 space-y-3 border border-nodo-line">
+          <p className="text-xs font-semibold text-nodo-sub uppercase tracking-wide">
+            Avanzar a: <span className="normal-case font-bold text-nodo-ink">
               {nextStep.emoji} {nextStep.label}
             </span>
           </p>
@@ -191,16 +185,13 @@ export function TrackingTimeline({ order, onUpdate, readOnly = false }: Props) {
             value={noteInput}
             onChange={e => setNoteInput(e.target.value)}
             placeholder="Nota opcional (ej. vuelo AM 504, llega jueves)"
-            className="w-full px-4 py-2.5 bg-white dark:bg-[#3A3A3C] rounded-xl text-sm
-                       text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600
-                       border-0 focus:outline-none focus:ring-2 focus:ring-pink-400 dark:focus:ring-pink-500/60"
+            className="nodo-input !bg-nodo-card"
           />
           <div className="flex gap-2">
             <button
               onClick={() => { setExpandNote(false); setNoteInput(''); }}
               className="px-4 py-2.5 rounded-xl text-sm font-semibold
-                         bg-white dark:bg-[#3A3A3C] text-gray-600 dark:text-gray-400
-                         border border-gray-200 dark:border-white/10
+                         bg-nodo-card text-nodo-sub border border-nodo-line
                          active:scale-[0.97] transition-all"
             >
               Cancelar
@@ -208,11 +199,10 @@ export function TrackingTimeline({ order, onUpdate, readOnly = false }: Props) {
             <button
               onClick={() => handleAdvance(nextStep.key)}
               disabled={saving}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white
-                         bg-gradient-to-br from-pink-500 to-rose-600
-                         shadow-md shadow-pink-500/20
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold
                          active:scale-[0.97] disabled:opacity-50 transition-all
-                         flex items-center justify-center gap-2"
+                         flex items-center justify-center gap-2 shadow-md"
+              style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               Confirmar {nextStep.emoji}
@@ -226,11 +216,10 @@ export function TrackingTimeline({ order, onUpdate, readOnly = false }: Props) {
         <button
           onClick={() => handleAdvance('comprado')}
           disabled={saving}
-          className="w-full py-3.5 rounded-2xl text-sm font-semibold text-white
-                     bg-gradient-to-br from-blue-500 to-indigo-600
-                     shadow-lg shadow-blue-500/20
+          className="w-full py-3.5 rounded-full text-sm font-bold shadow-lg
                      active:scale-[0.98] disabled:opacity-50 transition-all
                      flex items-center justify-center gap-2"
+          style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
         >
           {saving
             ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -261,7 +250,7 @@ export function TrackingMiniBar({ status }: { status: TrackingStatus | null }) {
                 ? `w-1.5 h-1.5 ${color.bg} opacity-50`
                 : i === idx
                   ? `w-2.5 h-2 ${color.bg}`
-                  : 'w-1.5 h-1.5 bg-gray-200 dark:bg-white/10'
+                  : 'w-1.5 h-1.5 bg-nodo-raised'
             }`}
           />
         ))}

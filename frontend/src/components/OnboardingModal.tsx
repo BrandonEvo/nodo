@@ -24,7 +24,7 @@ function StepDots({ current }: { current: Step }) {
           key={s}
           className={`h-1.5 rounded-full transition-all duration-300 ${
             i < idx
-              ? 'w-4 bg-[#69E7A8]'
+              ? 'w-4 bg-nodo-primary'
               : i === idx
               ? 'w-8 bg-nodo-ink'
               : 'w-4 bg-nodo-line'
@@ -170,7 +170,7 @@ export function OnboardingModal({ userEmail: _userEmail, tenantName, onComplete 
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center backdrop-blur-xl bg-black/50">
       {/* Ambient glows */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#69E7A8]/8 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-nodo-primary-softer rounded-full blur-3xl" />
         <div className="absolute bottom-1/3 right-1/4 w-80 h-80 bg-blue-500/8 rounded-full blur-3xl" />
       </div>
 

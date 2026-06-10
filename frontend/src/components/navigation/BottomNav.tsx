@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { resolveApp } from '@/apps';
 import { resolveModuleIcon } from '@/lib/module-icons';
+import { haptic } from '@/utils/haptic';
 
 export type TabId = string;
 
@@ -86,6 +87,7 @@ export function BottomNav({
   ].filter(t => t.visible);
 
   const handleTabClick = (id: TabId) => {
+    haptic.tap();
     if (id === '__modules_drawer__') {
       setDrawerOpen(prev => !prev);
     } else {
@@ -105,7 +107,7 @@ export function BottomNav({
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
 
           <div
-            className="absolute left-0 right-0 bottom-[calc(56px+env(safe-area-inset-bottom,0px))] bg-nodo-card border-t border-nodo-line rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-2 duration-250"
+            className="absolute left-0 right-0 bottom-[calc(56px+env(safe-area-inset-bottom,0px))] nodo-glass-panel border-t border-nodo-line rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-2 duration-250"
             onClick={e => e.stopPropagation()}
           >
             {/* Handle */}
@@ -137,7 +139,7 @@ export function BottomNav({
                 return (
                   <button
                     key={mod.id}
-                    onClick={() => { setDrawerOpen(false); onTabChange(mod.frontend_route ?? mod.code.toLowerCase()); }}
+                    onClick={() => { haptic.tap(); setDrawerOpen(false); onTabChange(mod.frontend_route ?? mod.code.toLowerCase()); }}
                     disabled={!AppComponent}
                     className="flex flex-col items-center gap-2 disabled:opacity-40 active:scale-90 transition-transform duration-150"
                   >
@@ -161,7 +163,7 @@ export function BottomNav({
         aria-label="Navegación principal"
       >
         {/* Frosted glass bar */}
-        <div className="bg-nodo-card/80 backdrop-blur-2xl border-t border-nodo-line">
+        <div className="nodo-glass-bar border-t border-nodo-line">
           <div
             className="flex items-center justify-around px-1"
             style={{ paddingTop: '8px', paddingBottom: 'max(10px, env(safe-area-inset-bottom, 10px))' }}

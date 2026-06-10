@@ -43,7 +43,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
 
       {/* ── Desktop: drawer lateral desde la derecha ── */}
       <div
-        className="hidden sm:flex absolute inset-y-0 right-0 w-full max-w-sm flex-col bg-nodo-card shadow-2xl animate-in slide-in-from-right duration-250"
+        className="hidden sm:flex absolute inset-y-0 right-0 w-full max-w-sm flex-col nodo-glass-panel shadow-2xl animate-in slide-in-from-right duration-250"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-5 border-b border-nodo-line">
@@ -69,7 +69,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
 
       {/* ── Mobile: sheet desde abajo ── */}
       <div
-        className="sm:hidden absolute inset-x-0 bottom-0 flex flex-col bg-nodo-card rounded-t-3xl shadow-2xl max-h-[92dvh] animate-in slide-in-from-bottom duration-300"
+        className="sm:hidden absolute inset-x-0 bottom-0 flex flex-col nodo-glass-panel rounded-t-3xl shadow-2xl max-h-[92dvh] animate-in slide-in-from-bottom duration-300"
         onClick={e => e.stopPropagation()}
       >
         {/* Drag handle visual */}

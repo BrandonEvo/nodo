@@ -52,7 +52,19 @@
       "Bash(git -C /home/bparedes/Docker/nodo status)",
       "Bash(git -C /home/bparedes/Docker/nodo log --oneline -5)",
       "Bash(git -C /home/bparedes/Docker/nodo diff --stat HEAD)",
-      "Bash(git -C /home/bparedes/Docker/nodo add backend/api/routers/auth.py backend/api/routers/bodega.py backend/api/routers/cocina.py backend/api/routers/importaciones.py backend/api/routers/personal_shopper.py backend/api/routers/tenants.py backend/api/routers/onboarding.py backend/core/config.py backend/main.py backend/models/platform_config.py backend/requirements.txt backend/api/routers/push.py backend/api/services/push_service.py backend/migrations/versions/aa1b2c3d4e5f_add_push_subscriptions.py docker-compose.yml frontend/index.html frontend/package.json frontend/package-lock.json frontend/vite.config.ts frontend/src/components/AppShell.tsx frontend/src/components/Login.tsx frontend/src/components/OnboardingModal.tsx frontend/src/components/admin/AdminTenants.tsx frontend/src/components/admin/TenantConfigPanel.tsx frontend/src/services/onboarding.service.ts frontend/src/services/tenants.service.ts frontend/src/components/PrivacyPolicyModal.tsx frontend/src/components/ui/PushBanner.tsx frontend/src/hooks/usePushPermission.ts frontend/src/services/push.service.ts frontend/public/icon.svg frontend/public/sw-push.js nginx/conf.d/default.conf docs/ .claude/settings.json)"
+      "Bash(git -C /home/bparedes/Docker/nodo add backend/api/routers/auth.py backend/api/routers/bodega.py backend/api/routers/cocina.py backend/api/routers/importaciones.py backend/api/routers/personal_shopper.py backend/api/routers/tenants.py backend/api/routers/onboarding.py backend/core/config.py backend/main.py backend/models/platform_config.py backend/requirements.txt backend/api/routers/push.py backend/api/services/push_service.py backend/migrations/versions/aa1b2c3d4e5f_add_push_subscriptions.py docker-compose.yml frontend/index.html frontend/package.json frontend/package-lock.json frontend/vite.config.ts frontend/src/components/AppShell.tsx frontend/src/components/Login.tsx frontend/src/components/OnboardingModal.tsx frontend/src/components/admin/AdminTenants.tsx frontend/src/components/admin/TenantConfigPanel.tsx frontend/src/services/onboarding.service.ts frontend/src/services/tenants.service.ts frontend/src/components/PrivacyPolicyModal.tsx frontend/src/components/ui/PushBanner.tsx frontend/src/hooks/usePushPermission.ts frontend/src/services/push.service.ts frontend/public/icon.svg frontend/public/sw-push.js nginx/conf.d/default.conf docs/ .claude/settings.json)",
+      "Bash(git -C /home/bparedes/Docker/nodo status --short)",
+      "Bash(git -C /home/bparedes/Docker/nodo commit -m ' *)",
+      "Bash(git -C /home/bparedes/Docker/nodo push origin main)",
+      "Bash(git -C /home/bparedes/Docker/nodo log --oneline -10)",
+      "Bash(git -C /home/bparedes/Docker/nodo pull origin main)",
+      "Bash(git -C /home/bparedes/Docker/nodo diff frontend/package-lock.json)",
+      "Bash(git -C /home/bparedes/Docker/nodo diff scripts/deploy.sh relay/README.md)",
+      "Bash(git -C /home/bparedes/Docker/nodo add scripts/deploy.sh relay/README.md)",
+      "Bash(git -C /home/bparedes/Docker/nodo add .env.example)",
+      "Bash(npx tailwindcss *)",
+      "mcp__playwright__browser_fill_form",
+      "Bash(git mv *)"
     ]
   },
   "enabledMcpjsonServers": [

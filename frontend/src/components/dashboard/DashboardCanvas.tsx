@@ -4,7 +4,7 @@ import {
   LogOut, User, Moon, ChevronRight, Briefcase,
   Settings, Send, SlidersHorizontal, Shield,
   Warehouse, ChefHat, Store, Lock, BookOpen,
-  Zap, Activity, RefreshCw, Clock,
+  Activity, RefreshCw, Clock, ArrowUpRight,
 } from 'lucide-react';
 import { useState, useEffect, Suspense } from 'react';
 import { AdminTenants } from '../admin/AdminTenants';
@@ -20,6 +20,17 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { tenantMeService } from '@/services/tenantMe.service';
 import { resolveApp } from '@/apps/index';
 import api from '@/lib/api';
+import { IrisArea, IrisBars, IrisDonut } from '@/components/ui/IrisCharts';
+
+// Tendencias decorativas de las tarjetas KPI (acento visual, no datos reales)
+const TREND_AREA = [4, 7, 5, 9, 8, 12, 10, 14];
+const TREND_BARS = [6, 9, 5, 11, 8, 13, 10];
+
+// "admin@nodo.com" → "Admin" · "Ana López" → "Ana"
+function displayFirstName(name: string): string {
+  const base = name.includes('@') ? name.split('@')[0] : name.split(' ')[0];
+  return base.charAt(0).toUpperCase() + base.slice(1);
+}
 
 // ── ADMIN HOME DASHBOARD ──
 function AdminHomeDashboard({ displayName, setActiveTab }: {
@@ -28,7 +39,7 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
 }) {
   const hour = new Date().getHours();
   const greeting = hour < 5 ? 'Buenas noches' : hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
-  const firstName = displayName.split(' ')[0] || displayName.split('@')[0];
+  const firstName = displayFirstName(displayName);
   const dateStr = new Date().toLocaleDateString('es-GT', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const [counts, setCounts] = useState<{ tenants: number | null; modules: number | null; active: number | null }>({
@@ -92,7 +103,7 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
   const fmt = (n: number | null) => n === null ? '—' : String(n);
 
   const navItems = [
-    { id: 'admin_tenants',         label: 'Empresas',  icon: Building2,         bg: '#69E7A8' },
+    { id: 'admin_tenants',         label: 'Empresas',  icon: Building2,         bg: 'var(--nodo-primary)' },
     { id: 'admin_users',           label: 'Usuarios',  icon: Users,             bg: '#60a5fa' },
     { id: 'admin_modules',         label: 'Módulos',   icon: Package,           bg: '#fb923c' },
     { id: 'admin_subscriptions',   label: 'Planes',    icon: ShoppingCart,      bg: '#a78bfa' },
@@ -106,12 +117,6 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
     { label: 'Entorno',       ok: true,                             loading: health.environment === null, value: health.environment ?? '—'                                                                      },
   ];
 
-  const kpiCards = [
-    { label: 'Módulos',     value: fmt(counts.modules), icon: Package, pastel: '#fb923c1a', accent: '#fb923c', tab: 'admin_modules'       },
-    { label: 'Habilitados', value: fmt(counts.active),  icon: Zap,     pastel: '#a78bfa1a', accent: '#a78bfa', tab: 'admin_subscriptions' },
-    { label: 'Usuarios',    value: '—',                 icon: Users,   pastel: '#60a5fa1a', accent: '#60a5fa', tab: 'admin_users'         },
-  ];
-
   return (
     <div className="flex flex-col gap-5 pb-8 w-full max-w-2xl lg:max-w-none">
 
@@ -121,102 +126,88 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
           <p className="text-[11px] font-semibold text-nodo-dim leading-none mb-1 tracking-wide">{greeting},</p>
           <h1 className="text-[30px] font-black text-nodo-ink leading-tight tracking-tight">{firstName}</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <p className="text-[11px] font-medium text-nodo-sub capitalize hidden sm:block">{dateStr}</p>
-          <div className="w-10 h-10 rounded-full flex items-center justify-center text-nodo-ink text-sm font-black shadow-sm shrink-0"
-            style={{ background: 'linear-gradient(135deg, #69E7A8, #2dbb77)' }}>
-            {firstName.charAt(0).toUpperCase()}
-          </div>
-        </div>
+        <p className="text-[11px] font-medium text-nodo-sub capitalize hidden sm:block">{dateStr}</p>
       </div>
 
-      {/* ── Fila superior: 3 columnas (20% | 30% | 50%) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr_2.5fr] gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4 items-start">
 
-        {/* Col 1 — Plataforma hero */}
-        <button
-          onClick={() => setActiveTab('admin_tenants')}
-          className="relative rounded-[28px] overflow-hidden p-6 pb-7 text-left active:scale-[0.985] transition-transform"
-          style={{ background: 'linear-gradient(140deg, #0a0f1e 0%, #0d1f2f 55%, #0a2b1a 100%)' }}
-        >
-          <div className="absolute -right-10 -top-10 w-56 h-56 rounded-full pointer-events-none"
-            style={{ background: 'radial-gradient(circle, #69E7A8 0%, transparent 68%)', opacity: 0.18 }} />
-          <div className="absolute -left-6 bottom-0 w-44 h-44 rounded-full pointer-events-none"
-            style={{ background: 'radial-gradient(circle, #3b82f6 0%, transparent 70%)', opacity: 0.07 }} />
+      {/* ── Columna principal ── */}
+      <div className="flex flex-col gap-4 min-w-0">
 
-          <p className="relative text-[9px] font-bold uppercase tracking-[0.20em] mb-5" style={{ color: '#69E7A8' }}>
-            Plataforma · NODO
-          </p>
-          <p className="relative text-[68px] font-black leading-none text-white tabular-nums tracking-tighter">
-            {fmt(counts.tenants)}
-          </p>
-          <p className="relative text-white/40 text-sm font-medium mt-2 mb-7">empresas activas</p>
+        {/* KPI heroes con gráfica iris */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button
+            onClick={() => setActiveTab('admin_tenants')}
+            className="nodo-card p-5 text-left active:scale-[0.985] transition-transform"
+          >
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.14em] mb-2">Empresas activas</p>
+            <p className="text-[40px] font-black text-nodo-ink tabular-nums leading-none tracking-tight">{fmt(counts.tenants)}</p>
+            <IrisArea data={TREND_AREA} height={56} className="mt-4" />
+          </button>
 
-          <div className="relative w-full h-px bg-white/[0.08] mb-5" />
-
-          <div className="relative flex items-center gap-0">
-            <div className="flex-1 min-w-0">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-white/30 mb-1">Módulos</p>
-              <p className="text-white font-black text-xl tabular-nums leading-none">{fmt(counts.modules)}</p>
-            </div>
-            <div className="w-px h-9 bg-white/10 mx-4 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[9px] font-bold uppercase tracking-widest mb-1" style={{ color: '#69E7A8aa' }}>Activos</p>
-              <p className="font-black text-xl tabular-nums leading-none" style={{ color: '#69E7A8' }}>{fmt(counts.active)}</p>
-            </div>
-          </div>
-        </button>
-
-        {/* Col 2 — KPI: módulos, habilitados, usuarios */}
-        <div className="grid grid-cols-3 lg:grid-cols-1 gap-3">
-          {kpiCards.map((card) => {
-            const Icon = card.icon;
-            return (
-              <button
-                key={card.label}
-                onClick={() => setActiveTab(card.tab)}
-                className="flex flex-col gap-3 p-4 lg:p-5 rounded-[20px] text-left active:scale-[0.97] transition-transform lg:flex-1"
-                style={{ backgroundColor: card.pastel }}
-              >
-                <div className="w-9 h-9 rounded-[11px] flex items-center justify-center" style={{ background: `${card.accent}22` }}>
-                  <Icon size={16} style={{ color: card.accent }} strokeWidth={2} />
-                </div>
-                <div>
-                  <p className="text-2xl font-black text-nodo-ink tabular-nums leading-none">{card.value}</p>
-                  <p className="text-[10px] font-semibold text-nodo-sub mt-1 leading-tight">{card.label}</p>
-                </div>
-              </button>
-            );
-          })}
+          <button
+            onClick={() => setActiveTab('admin_modules')}
+            className="nodo-card p-5 text-left active:scale-[0.985] transition-transform"
+          >
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.14em] mb-2">Módulos</p>
+            <p className="text-[40px] font-black text-nodo-ink tabular-nums leading-none tracking-tight">{fmt(counts.modules)}</p>
+            <IrisBars data={TREND_BARS} height={56} className="mt-4" />
+          </button>
         </div>
 
-        {/* Col 3 — Acceso rápido */}
-        <div className="bg-nodo-card border border-nodo-line rounded-[20px] p-5 flex flex-col">
-          <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-4">Acceso rápido</p>
-          <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-3 gap-4 flex-1 content-center">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button key={item.id} onClick={() => setActiveTab(item.id)}
-                  className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 rounded-[16px] flex items-center justify-center shadow-sm active:scale-90 transition-transform"
-                    style={{ backgroundColor: item.bg }}>
-                    <Icon size={20} className="text-white" strokeWidth={1.7} />
+        {/* Dona de habilitados + acceso rápido */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="nodo-card p-5">
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.14em] mb-4">Módulos habilitados</p>
+            <div className="flex items-center gap-6">
+              <IrisDonut value={counts.active ?? 0} total={counts.modules ?? 0} label="activos" />
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: 'var(--nodo-iris)' }} />
+                  <div>
+                    <p className="text-base font-black text-nodo-ink tabular-nums leading-none">{fmt(counts.active)}</p>
+                    <p className="text-[10px] font-semibold text-nodo-sub mt-0.5">Habilitados</p>
                   </div>
-                  <span className="text-[10px] font-semibold text-center leading-tight" style={{ color: item.bg }}>{item.label}</span>
-                </button>
-              );
-            })}
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-nodo-raised shrink-0" />
+                  <div>
+                    <p className="text-base font-black text-nodo-ink tabular-nums leading-none">{fmt(counts.modules)}</p>
+                    <p className="text-[10px] font-semibold text-nodo-sub mt-0.5">Totales</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="nodo-card overflow-hidden">
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.14em] px-5 pt-4 pb-2">Acceso rápido</p>
+            <div className="divide-y divide-nodo-line">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button key={item.id} onClick={() => setActiveTab(item.id)}
+                    className="w-full flex items-center gap-3 px-5 py-2.5 hover:bg-nodo-inset transition-colors text-left">
+                    <div className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0"
+                      style={{ background: `${item.bg}1f` }}>
+                      <Icon size={15} style={{ color: item.bg }} strokeWidth={2} />
+                    </div>
+                    <p className="text-xs font-bold text-nodo-ink flex-1">{item.label}</p>
+                    <ChevronRight size={13} className="text-nodo-dim shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
       </div>
 
-      {/* ── Fila inferior: 3 columnas iguales ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {/* ── Aside: estado del sistema ── */}
+      <div className="flex flex-col gap-4">
 
         {/* 1 — Servidor */}
-        <div className="bg-nodo-card border border-nodo-line rounded-[20px] p-5">
+        <div className="nodo-card p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-1.5">
               <Activity size={11} className="text-nodo-dim" />
@@ -246,7 +237,7 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
         </div>
 
         {/* 2 — Hora del servidor */}
-        <div className="bg-nodo-card border border-nodo-line rounded-[20px] p-5 flex flex-col min-h-[140px]">
+        <div className="nodo-card p-5 flex flex-col min-h-[140px]">
           <div className="flex items-center gap-1.5 mb-4">
             <Clock size={11} className="text-nodo-dim" />
             <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest">Hora del servidor</p>
@@ -263,7 +254,7 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
         </div>
 
         {/* 3 — Actividad reciente */}
-        <div className="bg-nodo-card border border-nodo-line rounded-[20px] overflow-hidden">
+        <div className="nodo-card overflow-hidden">
           <div className="flex items-center justify-between px-5 pt-4 pb-3">
             <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest">Actividad reciente</p>
             <button className="text-[10px] font-bold text-nodo-dim hover:text-nodo-ink transition-colors flex items-center gap-0.5">
@@ -290,6 +281,8 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
             })}
           </div>
         </div>
+
+      </div>
 
       </div>
 
@@ -397,7 +390,7 @@ export function DashboardCanvas({
 
   // ── EMPLOYEE / TENANT HOME ──
   if (activeTab === 'home') {
-    const firstName = displayName.split(' ')[0] || displayName.split('@')[0];
+    const firstName = displayFirstName(displayName);
     const moduleCards = activeModules || [];
 
     const hour = new Date().getHours();
@@ -462,57 +455,57 @@ export function DashboardCanvas({
     }
 
     return (
-      <div className="flex flex-col gap-7 max-w-2xl" style={{ fontFamily: 'Nunito, system-ui, sans-serif' }}>
+      <div className="flex flex-col gap-6 pb-6" style={{ fontFamily: 'Nunito, system-ui, sans-serif' }}>
 
-        {/* ── GREETING — Google Health style card ── */}
-        <div className="bg-nodo-card rounded-[24px] p-5 flex items-center gap-4"
-          style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-          <div className="shrink-0">
-            {userPicture ? (
-              <img src={userPicture} alt="Avatar"
-                className="w-[52px] h-[52px] rounded-full object-cover" referrerPolicy="no-referrer" />
-            ) : tenantLogo ? (
-              <div className="w-[52px] h-[52px] rounded-full bg-nodo-inset flex items-center justify-center p-2">
-                <img src={tenantLogo} alt={tenantName} className="w-full h-full object-contain" />
-              </div>
-            ) : (
-              <div className="w-[52px] h-[52px] rounded-full flex items-center justify-center text-white text-xl font-black"
-                style={{ background: `linear-gradient(135deg, ${tenantColor}, ${tenantColor}cc)` }}>
-                {firstName.charAt(0).toUpperCase()}
-              </div>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] mb-0.5" style={{ color: tenantColor }}>
+        {/* ── HEADER ── */}
+        <div className="flex items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] mb-1" style={{ color: tenantColor }}>
               {tenantName}
             </p>
-            <h1 className="text-xl font-black text-nodo-ink leading-tight tracking-tight">
-              {greeting}, {firstName.toUpperCase()} {greetingEmoji}
+            <h1 className="text-[28px] font-black text-nodo-ink leading-tight tracking-tight">
+              {greeting}, {firstName}<span style={{ color: 'var(--nodo-iris-start)' }}>.</span>
             </h1>
-            <p className="text-xs text-nodo-sub mt-0.5 capitalize font-medium">{dateStr}</p>
+            <p className="text-xs text-nodo-sub mt-0.5 capitalize font-medium">{dateStr} {greetingEmoji}</p>
           </div>
+        </div>
+
+        {/* ── KPI hero + equipo ── */}
+        <div className={`grid grid-cols-1 gap-4 items-stretch ${isTenantAdmin ? 'lg:grid-cols-[1fr_320px]' : ''}`}>
+          <div className="nodo-card p-5 flex flex-col justify-between">
+            <div>
+              <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.14em] mb-2">Aplicaciones activas</p>
+              <p className="text-[40px] font-black text-nodo-ink tabular-nums leading-none tracking-tight">{moduleCards.length}</p>
+            </div>
+            <IrisArea data={TREND_AREA} height={52} className="mt-4" />
+          </div>
+
+          {isTenantAdmin && <TeamAside onManage={() => setActiveTab('mgmt_employees')} />}
         </div>
 
         {/* ── APPS — MASA v2: pastel bg + deep color icon ── */}
         {moduleCards.length > 0 ? (
           <div>
-            <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-[0.16em] mb-5">
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.16em] mb-3">
               Aplicaciones
             </p>
-            <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-x-2 gap-y-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
               {moduleCards.map((m: any) => {
                 const { pasteBg, deepColor, icon: Icon } = getModuleCfg(m.code);
                 const route = m.frontend_route ?? m.code.toLowerCase();
                 return (
                   <button key={m.code} onClick={() => setActiveTab(route)}
-                    className="flex flex-col items-center gap-2.5 group">
-                    <div className="w-[64px] h-[64px] rounded-[22px] flex items-center justify-center group-active:scale-[0.87] transition-transform duration-150"
-                      style={{ backgroundColor: pasteBg, boxShadow: '0 2px 10px rgba(0,0,0,0.06)' }}>
-                      <Icon size={28} style={{ color: deepColor }} strokeWidth={1.8} />
+                    className="nodo-card p-4 flex flex-col gap-4 text-left active:scale-[0.97] transition-transform group">
+                    <div className="flex items-start justify-between">
+                      <div className="w-11 h-11 rounded-[14px] flex items-center justify-center group-active:scale-90 transition-transform"
+                        style={{ backgroundColor: pasteBg }}>
+                        <Icon size={22} style={{ color: deepColor }} strokeWidth={1.8} />
+                      </div>
+                      <ArrowUpRight size={15} className="text-nodo-dim opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                     </div>
-                    <span className="text-[11px] font-semibold text-nodo-sub text-center leading-tight line-clamp-2 w-[68px]">
+                    <p className="text-sm font-bold text-nodo-ink leading-tight">
                       {m.name}
-                    </span>
+                    </p>
                   </button>
                 );
               })}
@@ -534,11 +527,10 @@ export function DashboardCanvas({
         {/* ── ADMINISTRACIÓN — MASA v2 pastel icon list ── */}
         {isTenantAdmin && (
           <div>
-            <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-[0.16em] mb-3">
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.16em] mb-3">
               Administración
             </p>
-            <div className="bg-nodo-card rounded-[24px] overflow-hidden divide-y divide-nodo-line"
-              style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+            <div className="nodo-card overflow-hidden divide-y divide-nodo-line">
               {[
                 { id: 'mgmt_employees', label: 'Empleados',     desc: 'Gestionar equipo',   icon: Briefcase, pasteBg: '#DFF0FF', deepColor: '#3A8ADF' },
                 { id: 'mgmt_team',      label: 'Invitaciones',  desc: 'Invitar miembros',   icon: Send,      pasteBg: '#ECE4FF', deepColor: '#7B50DC' },
@@ -563,6 +555,7 @@ export function DashboardCanvas({
             </div>
           </div>
         )}
+
       </div>
     );
   }
@@ -598,6 +591,66 @@ export function DashboardCanvas({
       <button onClick={() => setActiveTab(isSuperAdmin ? 'admin_home' : 'home')}
         className="mt-4 px-6 py-3 bg-nodo-ink text-nodo-canvas font-bold text-sm rounded-xl hover:opacity-90 transition-all active:scale-[0.97]">
         Volver al Inicio
+      </button>
+    </div>
+  );
+}
+
+// ── TEAM ASIDE (home del tenant admin) ──
+function TeamAside({ onManage }: { onManage: () => void }) {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    tenantMeService.listUsers()
+      .then(setUsers)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const roleLabel = (t: string) =>
+    t === 'owner' ? 'Propietario' : t === 'admin' ? 'Administrador' : 'Empleado';
+
+  return (
+    <div className="nodo-card overflow-hidden flex flex-col">
+      <div className="flex items-center justify-between px-5 pt-4 pb-2">
+        <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.14em]">Equipo</p>
+        {!loading && (
+          <span className="text-[10px] font-black text-nodo-ink tabular-nums bg-nodo-inset px-2 py-0.5 rounded-full">
+            {users.length}
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-28">
+          <Spinner size="md" />
+        </div>
+      ) : users.length === 0 ? (
+        <p className="text-xs text-nodo-sub px-5 pb-4">Aún no hay miembros en el equipo.</p>
+      ) : (
+        <div className="divide-y divide-nodo-line flex-1">
+          {users.slice(0, 6).map((u) => (
+            <div key={u.id} className="flex items-center gap-3 px-5 py-3">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-black shrink-0"
+                style={{ background: 'var(--nodo-iris)' }}>
+                {u.email.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-nodo-ink truncate">{u.email}</p>
+                <p className="text-[10px] text-nodo-sub">{roleLabel(u.member_type)}</p>
+              </div>
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${u.is_active ? 'bg-emerald-400' : 'bg-nodo-dim'}`} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={onManage}
+        className="w-full px-5 py-3 mt-auto text-[11px] font-bold text-nodo-sub hover:text-nodo-ink hover:bg-nodo-inset transition-colors flex items-center justify-center gap-1 border-t border-nodo-line"
+      >
+        Gestionar equipo <ChevronRight size={12} />
       </button>
     </div>
   );
@@ -656,7 +709,7 @@ function TenantEmployeeManager({ activeModules }: { activeModules: Array<{ id: s
           {users.map((u) => (
             <div key={u.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 lg:p-6 bg-nodo-card rounded-3xl border border-nodo-line shadow-sm hover:border-nodo-line-s transition-all gap-4">
               <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black ${u.is_active ? 'bg-[#69E7A8]/10 text-[#69E7A8]' : 'bg-nodo-inset text-nodo-sub'}`}>
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black ${u.is_active ? 'bg-nodo-primary-soft text-nodo-primary' : 'bg-nodo-inset text-nodo-sub'}`}>
                   {u.email.charAt(0).toUpperCase()}
                 </div>
                 <div>
@@ -694,7 +747,7 @@ function TenantEmployeeManager({ activeModules }: { activeModules: Array<{ id: s
                           : 'bg-nodo-card text-nodo-dim border-nodo-line hover:border-nodo-line-s hover:text-nodo-sub'
                       } ${isLocked ? 'opacity-70 cursor-not-allowed' : 'active:scale-95 cursor-pointer'}`}
                     >
-                      <div className={`w-2 h-2 rounded-full ${hasAccess ? 'bg-[#69E7A8]' : 'bg-nodo-dim'}`} />
+                      <div className={`w-2 h-2 rounded-full ${hasAccess ? 'bg-nodo-primary' : 'bg-nodo-dim'}`} />
                       {mod.name}
                     </button>
                   );
@@ -779,7 +832,7 @@ function PlatformConfigPanel() {
                       className="h-9 px-3 w-24 rounded-lg border-2 border-nodo-ink bg-nodo-inset text-sm font-bold text-center text-nodo-ink outline-none"
                       autoFocus
                     />
-                    <button onClick={() => handleSave(cfg.key)} className="h-9 px-3 bg-[#69E7A8] text-[#111111] font-bold text-xs rounded-lg hover:opacity-90 transition-all">
+                    <button onClick={() => handleSave(cfg.key)} className="h-9 px-3 bg-nodo-primary text-nodo-on-primary font-bold text-xs rounded-lg hover:opacity-90 transition-all">
                       Guardar
                     </button>
                     <button onClick={() => setEditingKey(null)} className="h-9 px-3 bg-nodo-inset text-nodo-sub font-bold text-xs rounded-lg hover:bg-nodo-raised transition-all">

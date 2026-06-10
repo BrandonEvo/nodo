@@ -37,7 +37,7 @@ export function Topbar({
   const showSwitcher = availableTenants.length > 1 && !!onSwitchTenant;
 
   return (
-    <header className="hidden lg:flex items-center justify-end h-[72px] px-8 bg-nodo-card border-b border-nodo-line sticky top-0 z-30">
+    <header className="hidden lg:flex items-center justify-end h-[72px] px-8 nodo-glass-bar border-b border-nodo-line sticky top-0 z-30">
 
       <div className="flex items-center gap-4">
 
