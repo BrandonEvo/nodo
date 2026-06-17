@@ -6,7 +6,12 @@ import { InvitationAcceptanceModal } from '@/components/InvitationAcceptanceModa
 import { PublicTrackingPage } from '@/components/PublicTrackingPage'
 import { ImportTrackingPage } from '@/components/ImportTrackingPage'
 import { InvitePage } from '@/components/InvitePage'
+import { StorePage } from '@/components/StorePage'
+import { StoreOrderPage } from '@/components/StoreOrderPage'
+import { BookingPage } from '@/components/BookingPage'
+import { BookingStatusPage } from '@/components/BookingStatusPage'
 import { ToastProvider } from '@/components/ui/Toaster'
+import { UpdatePrompt } from '@/components/ui/UpdatePrompt'
 import { authService, SessionData } from '@/services/auth.service'
 import { modulesService } from '@/services/modules.service'
 import { isServerUnreachable } from '@/lib/api'
@@ -25,6 +30,30 @@ function getImportTrackingToken(): string | null {
 // /invite/<token> — empleados invitados (token opaco urlsafe de 32 bytes)
 function getInviteToken(): string | null {
   const match = window.location.pathname.match(/^\/invite\/([A-Za-z0-9_-]{20,})$/);
+  return match ? match[1] : null;
+}
+
+// /tienda/<token> — catálogo público del módulo Ventas
+function getStoreToken(): string | null {
+  const match = window.location.pathname.match(/^\/tienda\/([0-9a-f-]{36})$/i);
+  return match ? match[1] : null;
+}
+
+// /pedido/<token> — seguimiento público de un pedido del módulo Ventas
+function getStoreOrderToken(): string | null {
+  const match = window.location.pathname.match(/^\/pedido\/([0-9a-f-]{36})$/i);
+  return match ? match[1] : null;
+}
+
+// /agenda/<token> — agenda pública del módulo Citas
+function getBookingToken(): string | null {
+  const match = window.location.pathname.match(/^\/agenda\/([0-9a-f-]{36})$/i);
+  return match ? match[1] : null;
+}
+
+// /cita/<token> — comprobante público de una cita del módulo Citas
+function getAppointmentToken(): string | null {
+  const match = window.location.pathname.match(/^\/cita\/([0-9a-f-]{36})$/i);
   return match ? match[1] : null;
 }
 
@@ -181,6 +210,10 @@ export default function App() {
   const trackingToken       = getTrackingToken();
   const importTrackingToken = getImportTrackingToken();
   const inviteToken         = getInviteToken();
+  const storeToken          = getStoreToken();
+  const storeOrderToken     = getStoreOrderToken();
+  const bookingToken        = getBookingToken();
+  const appointmentToken    = getAppointmentToken();
 
   const handleInviteAccepted = () => {
     // Limpiar la URL y cargar la app autenticada
@@ -190,12 +223,21 @@ export default function App() {
 
   return (
     <ToastProvider>
+      <UpdatePrompt />
       {trackingToken
         ? <PublicTrackingPage token={trackingToken} />
         : importTrackingToken
         ? <ImportTrackingPage token={importTrackingToken} />
         : inviteToken
         ? <InvitePage token={inviteToken} onAccepted={handleInviteAccepted} />
+        : storeToken
+        ? <StorePage token={storeToken} />
+        : storeOrderToken
+        ? <StoreOrderPage token={storeOrderToken} />
+        : bookingToken
+        ? <BookingPage token={bookingToken} />
+        : appointmentToken
+        ? <BookingStatusPage token={appointmentToken} />
         : <AuthedApp />}
     </ToastProvider>
   );

@@ -10,12 +10,22 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+# Orden del flujo "feliz" del pedido. Sirve para detectar avance vs. retroceso
+# y para limpiar timestamps de estados futuros al retroceder.
+STATUS_FLOW: list[str] = [
+    "cotizado", "confirmado", "comprado", "en_transito", "entregado", "pagado",
+]
+
+# Transiciones permitidas. Cada estado puede avanzar al siguiente, retroceder al
+# anterior y (salvo cierre) cancelarse. 'cancelado' puede reactivarse a 'cotizado'.
 VALID_TRANSITIONS: dict[str, list[str]] = {
     "cotizado":    ["confirmado", "cancelado"],
-    "confirmado":  ["comprado", "cancelado"],
-    "comprado":    ["en_transito", "cancelado"],
-    "en_transito": ["entregado", "cancelado"],
-    "entregado":   ["pagado"],
+    "confirmado":  ["comprado", "cotizado", "cancelado"],
+    "comprado":    ["en_transito", "confirmado", "cancelado"],
+    "en_transito": ["entregado", "comprado", "cancelado"],
+    "entregado":   ["pagado", "en_transito"],
+    "pagado":      ["entregado"],
+    "cancelado":   ["cotizado"],
 }
 
 STATUS_TS_FIELD: dict[str, str] = {

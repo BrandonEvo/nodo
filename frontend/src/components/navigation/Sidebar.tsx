@@ -2,7 +2,7 @@ import {
   Home, Shield, Building2, Users, Package,
   ShoppingCart, Settings, LogOut, ChevronLeft,
   ChevronRight, Briefcase, User, Send,
-  SlidersHorizontal, Warehouse, ChefHat, Store, Lock, BookOpen,
+  SlidersHorizontal, Warehouse, ChefHat, Store, Lock, BookOpen, CreditCard,
 } from 'lucide-react';
 import { resolveModuleIcon } from '@/lib/module-icons';
 import { NodoMark, NodoWordmark } from '@/components/ui/NodoLogo';
@@ -80,9 +80,10 @@ export function Sidebar({
 
     if (isTenantAdmin) {
       items.push(
-        { id: 'mgmt_employees', icon: Briefcase, label: 'Empleados',    section: 'Gestión' },
-        { id: 'mgmt_team',      icon: Send,      label: 'Invitaciones', section: 'Gestión' },
-        { id: 'mgmt_config',    icon: Settings,  label: 'Configuración',section: 'Gestión' },
+        { id: 'mgmt_employees',     icon: Briefcase,  label: 'Empleados',    section: 'Gestión' },
+        { id: 'mgmt_team',          icon: Send,       label: 'Invitaciones', section: 'Gestión' },
+        { id: 'mgmt_subscription',  icon: CreditCard, label: 'Suscripción',  section: 'Gestión' },
+        { id: 'mgmt_config',        icon: Settings,   label: 'Configuración',section: 'Gestión' },
       );
     }
 

@@ -43,6 +43,12 @@ export interface SessionData {
   tenant_theme_color?: string | null;
   member_type?: string | null;
   is_tenant_admin: boolean;
+  // Facturación / trial
+  billing_status?: string | null;
+  access_state?: 'active' | 'trialing' | 'grace' | 'locked' | null;
+  trial_ends_at?: string | null;
+  trial_days_remaining?: number | null;
+  grace_days_remaining?: number | null;
   available_tenants: TenantSummary[];
   has_pending_invites: boolean;
   pending_invitations: PendingInvitation[];

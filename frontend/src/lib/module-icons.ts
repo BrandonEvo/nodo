@@ -4,13 +4,14 @@ import {
   DollarSign, Tag, Receipt, Calendar, Star, Zap, Box, Archive, Layers,
   Clock, Bell, Globe, TrendingUp, Calculator, Utensils, UtensilsCrossed,
   Flame, Thermometer, Building2, Award, Shield, CreditCard, PieChart,
-  FileText, Coffee, Grid3x3, Boxes, Wrench,
+  FileText, Coffee, Grid3x3, Boxes, Wrench, ShoppingBag,
   type LucideIcon,
 } from 'lucide-react';
 
 export const MODULE_ICON_MAP: Record<string, LucideIcon> = {
   'package':           Package,
   'shopping-cart':     ShoppingCart,
+  'shopping-bag':      ShoppingBag,
   'warehouse':         Warehouse,
   'chef-hat':          ChefHat,
   'store':             Store,
@@ -60,7 +61,7 @@ export const MODULE_ICON_GROUPS: Array<{ label: string; icons: string[] }> = [
   },
   {
     label: 'Ventas',
-    icons: ['shopping-cart', 'store', 'dollar-sign', 'credit-card', 'receipt', 'tag', 'trending-up', 'bar-chart-3', 'pie-chart', 'calculator'],
+    icons: ['shopping-cart', 'shopping-bag', 'store', 'dollar-sign', 'credit-card', 'receipt', 'tag', 'trending-up', 'bar-chart-3', 'pie-chart', 'calculator'],
   },
   {
     label: 'Inventario',

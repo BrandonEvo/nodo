@@ -18,6 +18,23 @@ from .bakery import (
     SaleItem,
     ShiftRegister,
 )
+from .store import (
+    StoreSettings,
+    StoreProduct,
+    StoreOrder,
+    StoreOrderItem,
+    StoreStockMove,
+    StorePromotion,
+)
+from .citas import (
+    BookingSettings,
+    BookingService,
+    BookingHour,
+    BookingException,
+    BookingAppointment,
+    BookingOffer,
+)
+from .billing import BillingRequest
 
 __all__ = [
     "AuditBase",
@@ -44,4 +61,20 @@ __all__ = [
     "Sale",
     "SaleItem",
     "ShiftRegister",
+    # Ventas (catálogo público)
+    "StoreSettings",
+    "StoreProduct",
+    "StoreOrder",
+    "StoreOrderItem",
+    "StoreStockMove",
+    "StorePromotion",
+    # Citas (agenda pública)
+    "BookingSettings",
+    "BookingService",
+    "BookingHour",
+    "BookingException",
+    "BookingAppointment",
+    "BookingOffer",
+    # Billing (suscripción del tenant)
+    "BillingRequest",
 ]

@@ -169,9 +169,8 @@ async def grant_trial(
     - billing_status='trialing', trial_ends_at = now + days.
     - onboarding_completed=True en todos los miembros activos del tenant.
     """
-    from datetime import datetime, timezone, timedelta
-    from sqlalchemy import delete as sa_delete
-    from models import Subscription, SubscriptionPlan, PlanModule, Module, TenantMember, User
+    from models import SubscriptionPlan, TenantMember, User
+    from api.services.trial_service import start_trial
 
     if not (1 <= body.days <= 365):
         raise HTTPException(status_code=400, detail="Los días deben estar entre 1 y 365.")
@@ -184,23 +183,8 @@ async def grant_trial(
         plan = await session.get(SubscriptionPlan, body.plan_id)
         if not plan:
             raise HTTPException(status_code=404, detail="Plan no encontrado.")
-        pm_result = await session.execute(
-            select(PlanModule).where(PlanModule.plan_id == body.plan_id)
-        )
-        module_ids = [pm.module_id for pm in pm_result.scalars().all()]
-        tenant.plan_id = body.plan_id
-    else:
-        mods_result = await session.execute(select(Module).where(Module.is_active == True))
-        module_ids = [m.id for m in mods_result.scalars().all()]
 
-    await session.execute(sa_delete(Subscription).where(Subscription.tenant_id == tenant_id))
-    for mid in module_ids:
-        session.add(Subscription(tenant_id=tenant_id, module_id=mid, status="active"))
-
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    tenant.billing_status = "trialing"
-    tenant.trial_ends_at = now + timedelta(days=body.days)
-    session.add(tenant)
+    modules_activated = await start_trial(session, tenant, body.days, plan_id=body.plan_id)
 
     # Marcar onboarding_completed en todos los miembros activos
     members_result = await session.execute(
@@ -218,7 +202,7 @@ async def grant_trial(
         "detail": f"Trial de {body.days} días otorgado.",
         "billing_status": "trialing",
         "trial_ends_at": tenant.trial_ends_at.isoformat(),
-        "modules_activated": len(module_ids),
+        "modules_activated": modules_activated,
     }
 
 

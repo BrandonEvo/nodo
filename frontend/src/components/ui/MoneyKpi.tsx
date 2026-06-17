@@ -20,10 +20,10 @@ export function MoneyKpi({
   label: string;
   value: number;
   sub?: string;
-  chart?: 'area' | 'bars';
+  /** 'none' muestra solo el número, sin mini-gráfica. */
+  chart?: 'area' | 'bars' | 'none';
   trend?: number[];
 }) {
-  const data = trend ?? DEFAULT_TRENDS[chart];
   return (
     <div className="nodo-card p-3.5 sm:p-5 min-w-0 overflow-hidden">
       <p className="nodo-section-label !mb-1 truncate">{label}</p>
@@ -33,9 +33,8 @@ export function MoneyKpi({
       {sub && (
         <p className="text-[10px] font-semibold text-nodo-dim mt-0.5 truncate">{sub}</p>
       )}
-      {chart === 'bars'
-        ? <IrisBars data={data} height={40} className="mt-2" />
-        : <IrisArea data={data} height={40} className="mt-2" />}
+      {chart === 'bars' && <IrisBars data={trend ?? DEFAULT_TRENDS.bars} height={40} className="mt-2" />}
+      {chart === 'area' && <IrisArea data={trend ?? DEFAULT_TRENDS.area} height={40} className="mt-2" />}
     </div>
   );
 }

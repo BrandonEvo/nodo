@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { Plus, Package, Pencil, PowerOff, Trash2, ShieldAlert, Check, Loader2, X, Zap } from "lucide-react";
+import { Plus, Package, Pencil, PowerOff, Trash2, ShieldAlert, Check, Loader2, X, Zap, Sparkles, Copy, Terminal } from "lucide-react";
 import { MODULE_ICON_GROUPS, MODULE_ICON_MAP, resolveModuleIcon } from "@/lib/module-icons";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useToast } from "@/components/ui/Toaster";
 import { modulesService, type ModuleRead } from "@/services/modules.service";
+import { resolveApp } from "@/apps";
+import { copyToClipboard } from "@/lib/utils";
 
 export function AdminModules() {
   const toast = useToast();
@@ -23,6 +25,9 @@ export function AdminModules() {
   const [deleteTarget, setDeleteTarget] = useState<ModuleRead | null>(null);
   const [masterPassword, setMasterPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
+
+  const [genTarget, setGenTarget] = useState<ModuleRead | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -140,6 +145,27 @@ export function AdminModules() {
     }
   };
 
+  // Comando del generador pre-rellenado con los datos exactos de la fila del registro
+  const buildGenCommand = (mod: ModuleRead): string => {
+    const q = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
+    const parts = [
+      `python3 scripts/new_module.py ${mod.frontend_route}`,
+      `--code ${mod.code}`,
+      `--name ${q(mod.name)}`,
+    ];
+    if (mod.icon) parts.push(`--icon ${mod.icon}`);
+    if (mod.description) parts.push(`--description ${q(mod.description)}`);
+    return parts.join(" ");
+  };
+
+  const handleCopyGen = async () => {
+    if (!genTarget) return;
+    const ok = await copyToClipboard(buildGenCommand(genTarget));
+    setCopied(ok);
+    if (ok) toast.success("Comando copiado");
+    else toast.error("No se pudo copiar");
+  };
+
   const formValid = name.trim().length > 0 && code.trim().length > 0;
 
   return (
@@ -200,6 +226,7 @@ export function AdminModules() {
             <div className="bg-nodo-inset rounded-[22px] overflow-hidden">
               {modules.map((mod, idx) => {
                 const accentColor = ['#69E7A8','#60a5fa','#a78bfa','#fb923c','#f472b6','#34d399','#facc15','#38bdf8'][idx % 8];
+                const hasApp = !!(mod.frontend_route && resolveApp(mod.frontend_route));
                 return (
                   <div key={mod.id}>
                     {idx > 0 && <div className="mx-4 h-px bg-nodo-line" />}
@@ -228,11 +255,24 @@ export function AdminModules() {
                               apps/{mod.frontend_route}
                             </span>
                           )}
+                          {mod.frontend_route && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 ${hasApp ? 'bg-nodo-success-bg text-nodo-success-tx' : 'bg-nodo-warn-bg text-nodo-warn-tx'}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${hasApp ? 'bg-nodo-success-tx' : 'bg-nodo-warn-tx'}`} />
+                              {hasApp ? 'En vivo' : 'Sin código'}
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       {/* Actions */}
                       <div className="flex items-center gap-0.5 shrink-0">
+                        {mod.frontend_route && !hasApp && (
+                          <button onClick={() => { setGenTarget(mod); setCopied(false); }}
+                            title="Generar código (darle vida)"
+                            className="p-2 rounded-xl hover:bg-nodo-primary-soft text-nodo-dim hover:text-nodo-ink transition-colors active:scale-90">
+                            <Sparkles size={15} />
+                          </button>
+                        )}
                         <button onClick={() => openEdit(mod)}
                           className="p-2 rounded-xl hover:bg-nodo-raised text-nodo-dim hover:text-nodo-ink transition-colors active:scale-90">
                           <Pencil size={15} />
@@ -468,6 +508,55 @@ export function AdminModules() {
             />
           </div>
         </form>
+      </BottomSheet>
+
+      {/* Darle vida: comando del generador pre-rellenado */}
+      <BottomSheet
+        open={!!genTarget}
+        onClose={() => { setGenTarget(null); setCopied(false); }}
+        title="Darle vida al módulo"
+        footer={
+          <button
+            onClick={handleCopyGen}
+            className="w-full h-14 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-base active:scale-[0.97] transition-transform flex items-center justify-center gap-2"
+          >
+            {copied ? <Check size={18} /> : <Copy size={18} />}
+            {copied ? "COPIADO" : "COPIAR COMANDO"}
+          </button>
+        }
+      >
+        {genTarget && (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-nodo-primary-soft flex items-center justify-center shrink-0">
+                <Sparkles size={20} className="text-nodo-ink" />
+              </div>
+              <p className="text-sm text-nodo-sub leading-relaxed">
+                <span className="font-bold text-nodo-ink">{genTarget.name}</span> existe en el registro pero aún no tiene código.
+                Corre este comando en <span className="font-mono text-nodo-ink">backend/</span> para generar el scaffold full-stack
+                (model, migración con RLS, router y app de frontend) ya cableado.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <Terminal size={11} /> Comando del generador
+              </label>
+              <div className="bg-nodo-inset border-2 border-nodo-line rounded-2xl p-3.5">
+                <code className="text-[11px] font-mono text-nodo-ink break-all leading-relaxed">{buildGenCommand(genTarget)}</code>
+              </div>
+            </div>
+
+            <div className="bg-nodo-inset rounded-2xl p-4">
+              <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-2.5">Después de generar</p>
+              <ol className="flex flex-col gap-2 text-xs text-nodo-sub">
+                <li><span className="font-bold text-nodo-ink">1.</span> Edita las columnas en el model, schemas y la migración (vienen de ejemplo).</li>
+                <li><span className="font-bold text-nodo-ink">2.</span> Corre <span className="font-mono text-nodo-ink">alembic upgrade head</span> en el contenedor backend.</li>
+                <li><span className="font-bold text-nodo-ink">3.</span> Recarga: el módulo deja de mostrar "Próximamente".</li>
+              </ol>
+            </div>
+          </div>
+        )}
       </BottomSheet>
     </>
   );

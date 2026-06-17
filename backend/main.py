@@ -270,6 +270,10 @@ from api.routers import gastos as gastos_router
 from api.routers import reportes as reportes_router
 from api.routers import personal_shopper as personal_shopper_router
 from api.routers import public_tracking as public_tracking_router
+from api.routers import ventas as ventas_router
+from api.routers import store_public as store_public_router
+from api.routers import citas as citas_router
+from api.routers import booking_public as booking_public_router
 
 app.include_router(bodega_router.router, prefix="/api/bodega")
 app.include_router(recetas_router.router, prefix="/api/recetas")
@@ -281,6 +285,13 @@ app.include_router(gastos_router.router, prefix="/api/gastos")
 app.include_router(reportes_router.router, prefix="/api/reportes")
 app.include_router(personal_shopper_router.router, prefix="/api/personal-shopper")
 app.include_router(public_tracking_router.router, prefix="/api/tracking")
+app.include_router(ventas_router.router, prefix="/api/ventas")
+app.include_router(store_public_router.router, prefix="/api/store")
+app.include_router(citas_router.router, prefix="/api/citas")
+app.include_router(booking_public_router.router, prefix="/api/booking")
+
+from api.routers import billing as billing_router
+app.include_router(billing_router.router, prefix="/api/billing")
 
 from api.routers import amazon_scrape as amazon_scrape_router
 app.include_router(amazon_scrape_router.router, prefix="/api/amazon")

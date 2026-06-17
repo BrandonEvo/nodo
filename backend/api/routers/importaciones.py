@@ -25,18 +25,18 @@ from sqlmodel import select
 from db.session import get_session
 from api.deps import get_current_tenant_id, current_active_user
 from models.importaciones import (
-    ImportCotizacion, ImportCliente, VALID_TRANSITIONS, STATUS_TS_FIELD,
+    ImportCotizacion, ImportCliente, VALID_TRANSITIONS, STATUS_TS_FIELD, STATUS_FLOW,
 )
 from models.tenants import Tenant
 from models import User
 from api.services.push_service import send_push_to_tenant
 
-# Estados que merecen notificación al equipo
+# Estados (del flujo real del pedido) que merecen notificación al equipo
 _PUSH_ON_STATUS: dict[str, tuple[str, str]] = {
-    "aprobada":     ("✓ Cotización aprobada", "El cliente aprobó la cotización"),
-    "en_transito":  ("🚢 Importación en tránsito", "El envío está en camino"),
-    "en_aduana":    ("📋 En aduana", "El paquete está en proceso aduanal"),
-    "entregada":    ("✓ Importación entregada", "El pedido fue entregado al cliente"),
+    "confirmado":  ("✓ Pedido confirmado", "El cliente confirmó el pedido"),
+    "en_transito": ("🚚 Pedido en tránsito", "El envío está en camino"),
+    "entregado":   ("📦 Pedido entregado", "El pedido fue entregado al cliente"),
+    "pagado":      ("💰 Pedido pagado", "El cliente completó el pago"),
 }
 
 router = APIRouter(tags=["Importaciones"])
@@ -287,27 +287,46 @@ async def advance_status(
 ):
     cotizacion = await _get_cotizacion(id, tenant_id, session)
 
-    allowed = VALID_TRANSITIONS.get(cotizacion.status, [])
+    old_status = cotizacion.status
+    allowed = VALID_TRANSITIONS.get(old_status, [])
     if body.status not in allowed:
         raise HTTPException(
             status_code=400,
-            detail=f"Transición no válida: {cotizacion.status} → {body.status}.",
+            detail=f"Transición no válida: {old_status} → {body.status}.",
         )
 
     cotizacion.status = body.status
     cotizacion.updated_at = _utcnow()
 
+    # Sello de tiempo del nuevo estado (solo si aún no lo tenía).
     ts_field = STATUS_TS_FIELD.get(body.status)
-    if ts_field:
+    if ts_field and getattr(cotizacion, ts_field) is None:
         setattr(cotizacion, ts_field, _utcnow())
+
+    # Al retroceder, limpiar los timestamps de los estados que quedan "en el futuro".
+    if body.status in STATUS_FLOW:
+        new_idx = STATUS_FLOW.index(body.status)
+        for st in STATUS_FLOW[new_idx + 1:]:
+            f = STATUS_TS_FIELD.get(st)
+            if f:
+                setattr(cotizacion, f, None)
 
     session.add(cotizacion)
     await session.commit()
     await session.refresh(cotizacion)
 
-    if body.status in _PUSH_ON_STATUS:
+    # Notificar solo al avanzar en el flujo (no al retroceder ni reactivar).
+    moved_forward = (
+        old_status in STATUS_FLOW and body.status in STATUS_FLOW
+        and STATUS_FLOW.index(body.status) > STATUS_FLOW.index(old_status)
+    )
+    if moved_forward and body.status in _PUSH_ON_STATUS:
         title, base_body = _PUSH_ON_STATUS[body.status]
-        client_suffix = f" — {cotizacion.client_name}" if cotizacion.client_name else ""
+        cliente_name = None
+        if cotizacion.cliente_id:
+            cliente = await session.get(ImportCliente, cotizacion.cliente_id)
+            cliente_name = cliente.name if cliente else None
+        client_suffix = f" — {cliente_name}" if cliente_name else ""
         await send_push_to_tenant(
             session=session,
             tenant_id=tenant_id,

@@ -265,6 +265,30 @@ export function SmartCalculator(_props: AppProps) {
       {activeTab === 'calc' && (
       <div className="w-full">
 
+        {/* Resumen compacto fijo — solo móvil: Precio · Costo · Ganancia siempre a la vista */}
+        <div className="lg:hidden sticky top-0 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-1 pb-3 mb-2 bg-nodo-canvas/95 backdrop-blur">
+          <div className="rounded-2xl px-4 py-2.5 flex items-center gap-3"
+            style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)', boxShadow: 'var(--nodo-shadow-fab)' }}>
+            <div className="min-w-0 flex-1">
+              <p className="text-[8px] font-bold uppercase tracking-wider opacity-70 leading-none">
+                {inputs.mode === 'margin' ? 'Precio sugerido' : 'Precio final'}
+              </p>
+              <p className="text-xl font-black tabular-nums leading-tight mt-0.5 truncate">{fmtGTQ(result.salePriceGTQ)}</p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-[8px] font-bold uppercase tracking-wider opacity-70 leading-none">Costo</p>
+              <p className="text-sm font-black tabular-nums leading-tight mt-0.5">{fmtGTQ(result.totalLandedCostGTQ)}</p>
+            </div>
+            <div className="w-px h-7 bg-white/20 shrink-0" />
+            <div className="text-right shrink-0">
+              <p className="text-[8px] font-bold uppercase tracking-wider opacity-70 leading-none">Ganancia</p>
+              <p className={`text-sm font-black tabular-nums leading-tight mt-0.5 ${result.isViable ? '' : 'text-red-200'}`}>
+                {fmtGTQ(result.netProfitGTQ)}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Parámetros del courier → chip engranaje compacto */}
         <div className="flex justify-end mb-4">
           <button
@@ -296,9 +320,14 @@ export function SmartCalculator(_props: AppProps) {
             </div>
 
             <div>
-              <FL>Precio en USA — todo incluido</FL>
+              <FL>Precio en USA por unidad — todo incluido</FL>
               <NumInput prefix="$" xl value={inputs.unitCostUSD}
                 onChange={v => updateInput('unitCostUSD', v)} />
+              {inputs.qty > 1 && (
+                <p className="text-[11px] font-semibold text-nodo-sub mt-1.5 tabular-nums">
+                  × {inputs.qty} unidades = ${(inputs.unitCostUSD * inputs.qty).toFixed(2)} en producto
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <MiniStepper label="Peso del lote" value={inputs.totalWeightLbs}
@@ -456,7 +485,7 @@ export function SmartCalculator(_props: AppProps) {
             {/* Stats */}
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-white/10 backdrop-blur rounded-2xl p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">Costo landed</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">Costo</p>
                 <p className="text-lg font-black tabular-nums leading-tight mt-0.5">{fmtGTQ(result.totalLandedCostGTQ)}</p>
                 <p className="text-[11px] opacity-70 tabular-nums">{fmtGTQ(result.unitLandedCostGTQ)} / unidad</p>
               </div>
@@ -489,11 +518,11 @@ export function SmartCalculator(_props: AppProps) {
                   <HRow label="Total importación" value={fmtGTQ(result.totalImportCostGTQ)} bold />
                 </div>
 
-                <p className="text-[10px] font-bold uppercase tracking-wider opacity-70 pt-2">Costo landed</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider opacity-70 pt-2">Costo</p>
                 <HRow label="Producto (real)" value={fmtGTQ(result.realProductGTQ)} />
                 <HRow label="Importación" value={fmtGTQ(result.totalImportCostGTQ)} />
                 <div className="border-t border-white/20 pt-2 space-y-2">
-                  <HRow label="Landed total" value={fmtGTQ(result.totalLandedCostGTQ)} bold />
+                  <HRow label="Costo total" value={fmtGTQ(result.totalLandedCostGTQ)} bold />
                   <HRow label={`Por unidad (${inputs.qty}u)`} value={fmtGTQ(result.unitLandedCostGTQ)} dim />
                 </div>
 
@@ -610,7 +639,7 @@ export function SmartCalculator(_props: AppProps) {
               <p className="text-lg font-black tabular-nums text-nodo-ink">{fmtGTQ(result.salePriceGTQ)}</p>
             </div>
             <div>
-              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Landed</p>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Costo</p>
               <p className="text-lg font-black tabular-nums text-nodo-sub">{fmtGTQ(result.totalLandedCostGTQ)}</p>
             </div>
             <div>

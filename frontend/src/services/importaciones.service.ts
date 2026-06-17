@@ -36,6 +36,15 @@ export const NEXT_STATUS_ACTION: Partial<Record<CotizacionStatus, string>> = {
   entregado:   'Marcar pagado',
 };
 
+/** Estado anterior para retroceder un paso en el flujo. */
+export const PREV_STATUS: Partial<Record<CotizacionStatus, CotizacionStatus>> = {
+  confirmado:  'cotizado',
+  comprado:    'confirmado',
+  en_transito: 'comprado',
+  entregado:   'en_transito',
+  pagado:      'entregado',
+};
+
 export interface ClienteMini {
   id: string;
   name: string;

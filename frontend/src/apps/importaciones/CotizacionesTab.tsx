@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Package2, Truck, CheckCircle2, DollarSign, Clock, AlertTriangle,
   ChevronRight, RotateCcw, Pencil, X, Check, Loader2, MapPin,
-  Calendar, FileText, Calculator, Share2, Search, Plus,
+  Calendar, FileText, Calculator, Share2, Search, Plus, Undo2,
 } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { ShareSheet } from '@/components/ui/ShareSheet';
@@ -17,6 +17,7 @@ import {
   STATUS_LABEL,
   NEXT_STATUS,
   NEXT_STATUS_ACTION,
+  PREV_STATUS,
 } from '@/services/importaciones.service';
 import {
   fmtGTQ, fmtPct, CATEGORY_DAI_RATE,
@@ -161,7 +162,7 @@ function LogisticsSheet({
             type="date"
             value={delivery}
             onChange={e => setDelivery(e.target.value)}
-            className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors"
+            className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors appearance-none min-w-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-date-and-time-value]:m-0 [&::-webkit-calendar-picker-indicator]:ml-auto [&::-webkit-calendar-picker-indicator]:opacity-60"
           />
         </div>
         <div>
@@ -249,7 +250,7 @@ function EditSheet({
               <p className="text-lg font-black tabular-nums text-nodo-ink">{fmtGTQ(result.salePriceGTQ)}</p>
             </div>
             <div>
-              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Landed</p>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Costo</p>
               <p className="text-lg font-black tabular-nums text-nodo-sub">{fmtGTQ(result.totalLandedCostGTQ)}</p>
             </div>
             <div>
@@ -443,6 +444,7 @@ function CotizacionCard({
   const status     = displayStatus(cotizacion.status);
   const expired    = isExpired(cotizacion);
   const nextStatus = NEXT_STATUS[status];
+  const prevStatus = PREV_STATUS[status];
   const salePrice  = resultField<number>(cotizacion, 'salePriceGTQ');
   const landed     = resultField<number>(cotizacion, 'totalLandedCostGTQ');
   const margin     = resultField<number>(cotizacion, 'actualMargin');
@@ -459,10 +461,31 @@ function CotizacionCard({
     }
   }
 
+  async function handleGoBack() {
+    if (!prevStatus) return;
+    setAdvancing(true);
+    try {
+      const { data } = await importacionesService.advanceStatus(cotizacion.id, prevStatus);
+      onUpdate(data);
+    } finally {
+      setAdvancing(false);
+    }
+  }
+
   async function handleCancel() {
     setAdvancing(true);
     try {
       const { data } = await importacionesService.advanceStatus(cotizacion.id, 'cancelado');
+      onUpdate(data);
+    } finally {
+      setAdvancing(false);
+    }
+  }
+
+  async function handleReactivar() {
+    setAdvancing(true);
+    try {
+      const { data } = await importacionesService.advanceStatus(cotizacion.id, 'cotizado');
       onUpdate(data);
     } finally {
       setAdvancing(false);
@@ -523,7 +546,7 @@ function CotizacionCard({
                     {fmtGTQ(salePrice)}
                   </p>
                   <p className="text-xs text-nodo-dim tabular-nums">
-                    landed {fmtGTQ(landed)} · {fmtPct(margin)}
+                    costo {fmtGTQ(landed)} · {fmtPct(margin)}
                   </p>
                 </div>
               </div>
@@ -567,48 +590,80 @@ function CotizacionCard({
               </div>
 
               {/* Actions */}
-              {!isClosed && (
-                <div className="flex gap-2 mt-3">
-                  {nextStatus && (
-                    <button
-                      onClick={handleAdvance}
-                      disabled={advancing}
-                      className="flex-1 h-10 rounded-full font-bold text-xs flex items-center justify-center gap-1.5
-                                 shadow-sm active:scale-[0.97] transition-transform disabled:opacity-40"
-                      style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
-                    >
-                      {advancing
-                        ? <Loader2 size={13} className="animate-spin" />
-                        : <ChevronRight size={13} />
-                      }
-                      {NEXT_STATUS_ACTION[status] ?? STATUS_LABEL[nextStatus]}
-                    </button>
-                  )}
+              <div className="flex gap-2 mt-3">
+                {/* Retroceder un paso (o reabrir si está pagada) */}
+                {prevStatus && (
                   <button
-                    onClick={() => setShowLogistics(true)}
-                    className="h-10 px-4 rounded-full border border-nodo-line text-nodo-sub font-bold text-xs flex items-center gap-1.5 hover:bg-nodo-inset active:scale-[0.97] transition-all"
+                    onClick={handleGoBack}
+                    disabled={advancing}
+                    title={`Volver a ${STATUS_LABEL[prevStatus]}`}
+                    className={`h-10 rounded-full border border-nodo-line text-nodo-sub font-bold text-xs
+                                flex items-center justify-center gap-1.5 hover:bg-nodo-inset hover:text-nodo-ink
+                                active:scale-[0.97] transition-all disabled:opacity-40
+                                ${isClosed ? 'flex-1 px-4' : 'px-3'}`}
                   >
-                    <Pencil size={12} />
-                    <span className="hidden sm:inline">Logística</span>
+                    {advancing ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
+                    {isClosed && <span>Reabrir</span>}
                   </button>
-                  <button
-                    onClick={() => setShowEdit(true)}
-                    className="h-10 px-4 rounded-full border border-nodo-line text-nodo-sub font-bold text-xs flex items-center gap-1.5 hover:bg-nodo-inset active:scale-[0.97] transition-all"
-                  >
-                    <Calculator size={12} />
-                    <span className="hidden sm:inline">Cálculo</span>
-                  </button>
-                  {status !== 'entregado' && (
+                )}
+
+                {!isClosed && (
+                  <>
+                    {nextStatus && (
+                      <button
+                        onClick={handleAdvance}
+                        disabled={advancing}
+                        className="flex-1 h-10 rounded-full font-bold text-xs flex items-center justify-center gap-1.5
+                                   shadow-sm active:scale-[0.97] transition-transform disabled:opacity-40"
+                        style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
+                      >
+                        {advancing
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : <ChevronRight size={13} />
+                        }
+                        {NEXT_STATUS_ACTION[status] ?? STATUS_LABEL[nextStatus]}
+                      </button>
+                    )}
                     <button
-                      onClick={handleCancel}
-                      disabled={advancing}
-                      className="h-10 px-3 rounded-full border border-nodo-line text-nodo-dim hover:border-nodo-danger-bd hover:text-nodo-danger-tx hover:bg-nodo-danger-bg active:scale-[0.97] transition-all disabled:opacity-40"
+                      onClick={() => setShowLogistics(true)}
+                      className="h-10 px-4 rounded-full border border-nodo-line text-nodo-sub font-bold text-xs flex items-center gap-1.5 hover:bg-nodo-inset active:scale-[0.97] transition-all"
                     >
-                      <X size={13} />
+                      <Pencil size={12} />
+                      <span className="hidden sm:inline">Logística</span>
                     </button>
-                  )}
-                </div>
-              )}
+                    <button
+                      onClick={() => setShowEdit(true)}
+                      className="h-10 px-4 rounded-full border border-nodo-line text-nodo-sub font-bold text-xs flex items-center gap-1.5 hover:bg-nodo-inset active:scale-[0.97] transition-all"
+                    >
+                      <Calculator size={12} />
+                      <span className="hidden sm:inline">Cálculo</span>
+                    </button>
+                    {status !== 'entregado' && (
+                      <button
+                        onClick={handleCancel}
+                        disabled={advancing}
+                        className="h-10 px-3 rounded-full border border-nodo-line text-nodo-dim hover:border-nodo-danger-bd hover:text-nodo-danger-tx hover:bg-nodo-danger-bg active:scale-[0.97] transition-all disabled:opacity-40"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {/* Cancelada → reactivar */}
+                {status === 'cancelado' && (
+                  <button
+                    onClick={handleReactivar}
+                    disabled={advancing}
+                    className="flex-1 h-10 px-4 rounded-full border border-nodo-line text-nodo-sub font-bold text-xs
+                               flex items-center justify-center gap-1.5 hover:bg-nodo-inset hover:text-nodo-ink
+                               active:scale-[0.97] transition-all disabled:opacity-40"
+                  >
+                    {advancing ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                    Reactivar
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -765,20 +820,19 @@ export function CotizacionesTab({ onNew }: { onNew?: () => void }) {
             label="Invertido"
             value={invertido}
             sub={`${activas.length} ${activas.length === 1 ? 'cotización activa' : 'cotizaciones activas'}`}
-            chart="bars"
+            chart="none"
           />
           <MoneyKpi
             label="Pendiente"
             value={pendiente}
             sub="por cobrar"
-            chart="area"
+            chart="none"
           />
           <MoneyKpi
             label="Ganancia"
             value={ganancia}
             sub={ganancia > 0 ? `margen ${margenAgregado.toFixed(0)}%` : 'proyectada'}
-            chart="area"
-            trend={[5, 8, 7, 11, 10, 14, 15, 18]}
+            chart="none"
           />
         </div>
       )}

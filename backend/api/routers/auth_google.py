@@ -204,6 +204,10 @@ async def google_callback(request: Request, code: str = None, state: str = None,
                 )
                 db.add(member)
 
+                # Trial automático para el alta orgánica (mismo flujo que register-workspace)
+                from api.services.trial_service import start_trial, get_default_trial_days
+                await start_trial(db, new_tenant, await get_default_trial_days(db))
+
             await db.commit()
             
     except Exception as e:

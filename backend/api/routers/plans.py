@@ -2,11 +2,12 @@ import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete as sa_delete
 from sqlmodel import select, update
 from pydantic import BaseModel
 
 from db.session import get_session
-from models import SubscriptionPlan, PlanModule
+from models import SubscriptionPlan, PlanModule, Tenant, Subscription
 from models.schemas import SubscriptionPlanRead, SubscriptionPlanCreate, SubscriptionPlanUpdate
 from api.deps import fastapi_users
 
@@ -79,13 +80,32 @@ async def update_plan(plan_id: uuid.UUID, plan_in: SubscriptionPlanUpdate, sessi
     session.add(plan)
 
     if plan_in.module_ids is not None:
-        old_modules = await session.execute(select(PlanModule).where(PlanModule.plan_id == plan_id))
-        for om in old_modules.scalars().all():
-            await session.delete(om)
+        old_pm = (await session.execute(
+            select(PlanModule).where(PlanModule.plan_id == plan_id)
+        )).scalars().all()
+        old_set = {pm.module_id for pm in old_pm}
+        new_set = set(plan_in.module_ids)
 
-        for mod_id in plan_in.module_ids:
-            pm = PlanModule(plan_id=plan.id, module_id=mod_id)
-            session.add(pm)
+        # Solo tocamos datos si el set de módulos del plan realmente cambió.
+        if old_set != new_set:
+            for om in old_pm:
+                await session.delete(om)
+            for mod_id in plan_in.module_ids:
+                session.add(PlanModule(plan_id=plan.id, module_id=mod_id))
+
+            # Retroactivo: las empresas que YA tienen este plan se re-sincronizan al
+            # nuevo bundle (mismo modelo que assign_tenant_plan — el plan define sus
+            # módulos). Sin esto, editar un plan no afectaría a sus clientes actuales.
+            tenant_ids = list((await session.execute(
+                select(Tenant.id).where(Tenant.plan_id == plan_id)
+            )).scalars().all())
+            if tenant_ids:
+                await session.execute(
+                    sa_delete(Subscription).where(Subscription.tenant_id.in_(tenant_ids))
+                )
+                for tid in tenant_ids:
+                    for mod_id in plan_in.module_ids:
+                        session.add(Subscription(tenant_id=tid, module_id=mod_id, status="active"))
 
     await session.commit()
     await session.refresh(plan)

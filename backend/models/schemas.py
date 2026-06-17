@@ -1,6 +1,6 @@
 import uuid
 from typing import Optional, List, Literal
-from datetime import datetime, date
+from datetime import datetime, date, time
 from pydantic import BaseModel
 from fastapi_users import schemas
 from models.bakery import ExpenseCategory
@@ -52,6 +52,12 @@ class SessionRead(BaseModel):
     tenant_theme_color: Optional[str] = None
     member_type: Optional[str] = None
     is_tenant_admin: bool = False
+    # Facturación / trial (gancho de venta + enforcement)
+    billing_status: Optional[str] = None
+    access_state: Optional[str] = None  # active | trialing | grace | locked
+    trial_ends_at: Optional[datetime] = None
+    trial_days_remaining: Optional[int] = None
+    grace_days_remaining: Optional[int] = None
     # Multi-tenant switcher
     available_tenants: List[TenantSummary] = []
     # Invitaciones pendientes
@@ -782,3 +788,384 @@ class ShopperOrderRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ==========================================
+# VENTAS (Catálogo público con stock)
+# ==========================================
+
+class StoreSettingsRead(BaseModel):
+    public_token: uuid.UUID
+    is_open: bool
+    reservation_ttl_minutes: int
+
+
+class StoreSettingsUpdate(BaseModel):
+    is_open: Optional[bool] = None
+    reservation_ttl_minutes: Optional[int] = None
+
+
+class StoreProductCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    cost: float = 0
+    # Gancho de venta: precio "antes" tachado + etiqueta llamativa
+    compare_at_price: Optional[float] = None
+    badge: Optional[str] = None
+    image_url: Optional[str] = None
+    stock_qty: int = 0
+    is_published: bool = True
+
+
+class StoreProductUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    cost: Optional[float] = None
+    compare_at_price: Optional[float] = None
+    badge: Optional[str] = None
+    image_url: Optional[str] = None
+    stock_qty: Optional[int] = None
+    is_published: Optional[bool] = None
+
+
+class StoreProductRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    price: float
+    cost: float
+    compare_at_price: Optional[float] = None
+    badge: Optional[str] = None
+    image_url: Optional[str] = None
+    stock_qty: int
+    reserved_qty: int
+    available: int
+    is_published: bool
+
+
+class StoreOrderItemRead(BaseModel):
+    product_id: uuid.UUID
+    product_name: str
+    qty: int
+    unit_price: float
+
+
+class StoreOrderRead(BaseModel):
+    id: uuid.UUID
+    short_code: str
+    public_token: uuid.UUID
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    channel: str
+    status: str
+    expires_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
+    payment_method: Optional[str] = None
+    total: float
+    created_at: datetime
+    items: List[StoreOrderItemRead]
+
+
+class StoreKpis(BaseModel):
+    nuevos: int
+    por_entregar: int
+    por_cobrar: int
+    cobrado_hoy: float
+    ganancia_hoy: float
+    invertido: float
+    stock_critico: int
+
+
+class StoreMonitorRead(BaseModel):
+    orders: List[StoreOrderRead]
+    kpis: StoreKpis
+
+
+class QuickSaleItem(BaseModel):
+    product_id: uuid.UUID
+    qty: int
+    unit_price: Optional[float] = None   # None → usa el precio del catálogo
+
+
+class QuickSaleCreate(BaseModel):
+    items: List[QuickSaleItem]
+    payment_method: str = "efectivo"
+
+
+class WasteItemIn(BaseModel):
+    product_id: uuid.UUID
+    qty: int
+
+
+class StoreWasteCreate(BaseModel):
+    items: List[WasteItemIn]
+    reason: str   # se_arruino | perdida | correccion
+    note: Optional[str] = None
+
+
+class StoreClientRead(BaseModel):
+    customer_phone: str
+    customer_name: str
+    orders_count: int
+    total_paid: float
+    last_order_at: datetime
+
+
+PromoType = Literal["percent", "two_for_one", "compare_at", "bundle", "badge"]
+
+
+class StorePromotionCreate(BaseModel):
+    title: str
+    promo_type: PromoType = "percent"
+    value: Optional[float] = None
+    product_id: Optional[uuid.UUID] = None
+    description: Optional[str] = None
+    urgency_text: Optional[str] = None
+    starts_on: Optional[date] = None
+    ends_on: Optional[date] = None
+    is_published: bool = True
+
+
+class StorePromotionUpdate(BaseModel):
+    title: Optional[str] = None
+    promo_type: Optional[PromoType] = None
+    value: Optional[float] = None
+    product_id: Optional[uuid.UUID] = None
+    description: Optional[str] = None
+    urgency_text: Optional[str] = None
+    starts_on: Optional[date] = None
+    ends_on: Optional[date] = None
+    is_published: Optional[bool] = None
+
+
+class StorePromotionRead(BaseModel):
+    id: uuid.UUID
+    title: str
+    promo_type: PromoType
+    value: Optional[float] = None
+    product_id: Optional[uuid.UUID] = None
+    product_name: Optional[str] = None
+    description: Optional[str] = None
+    urgency_text: Optional[str] = None
+    starts_on: Optional[date] = None
+    ends_on: Optional[date] = None
+    is_published: bool
+    # Calculado: hoy ∈ [starts_on, ends_on] y is_published
+    is_live: bool
+
+
+# ==========================================
+# CITAS (Agenda pública con confirmación)
+# ==========================================
+
+class BookingSettingsRead(BaseModel):
+    public_token: uuid.UUID
+    is_open: bool
+    confirmation_mode: str
+    slot_granularity_minutes: int
+    min_notice_hours: int
+    max_days_ahead: int
+    timezone: str
+
+
+class BookingSettingsUpdate(BaseModel):
+    is_open: Optional[bool] = None
+    confirmation_mode: Optional[Literal["manual", "auto"]] = None
+    slot_granularity_minutes: Optional[int] = None
+    min_notice_hours: Optional[int] = None
+    max_days_ahead: Optional[int] = None
+    timezone: Optional[str] = None
+
+
+class BookingServiceCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float = 0
+    duration_minutes: int = 30
+    is_published: bool = True
+
+
+class BookingServiceUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    duration_minutes: Optional[int] = None
+    is_published: Optional[bool] = None
+
+
+class BookingServiceRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    price: float
+    duration_minutes: int
+    is_published: bool
+
+
+class BookingHourIn(BaseModel):
+    weekday: int
+    start_time: time
+    end_time: time
+
+
+class BookingHourRead(BaseModel):
+    id: uuid.UUID
+    weekday: int
+    start_time: time
+    end_time: time
+
+
+class BookingExceptionCreate(BaseModel):
+    date: date
+    is_closed: bool = True
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    note: Optional[str] = None
+
+
+class BookingExceptionRead(BaseModel):
+    id: uuid.UUID
+    date: date
+    is_closed: bool
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    note: Optional[str] = None
+
+
+class BookingAppointmentRead(BaseModel):
+    id: uuid.UUID
+    short_code: str
+    public_token: uuid.UUID
+    customer_name: str
+    customer_phone: str
+    customer_note: Optional[str] = None
+    service_id: uuid.UUID
+    service_name: str
+    service_price: float
+    duration_minutes: int
+    starts_at: datetime
+    ends_at: datetime
+    status: str
+    confirmed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancelled_by: Optional[str] = None
+    created_at: datetime
+
+
+class BookingAgendaRead(BaseModel):
+    appointments: List[BookingAppointmentRead]
+    pending_count: int
+
+
+class BookingAppointmentCreate(BaseModel):
+    """Cita creada por el negocio (walk-in o por teléfono) — nace confirmada."""
+    service_id: uuid.UUID
+    starts_at: datetime
+    customer_name: str
+    customer_phone: str
+    customer_note: Optional[str] = None
+
+
+# ── OFERTAS (gancho por días específicos) ──
+
+OfferType = Literal["percent", "two_for_one", "fixed"]
+
+
+class BookingOfferCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    offer_type: OfferType
+    value: Optional[float] = None          # percent: % | fixed: precio rebajado | 2x1: null
+    service_id: Optional[uuid.UUID] = None  # null = todos los servicios
+    starts_on: date
+    ends_on: date
+    is_published: bool = True
+
+
+class BookingOfferUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    offer_type: Optional[OfferType] = None
+    value: Optional[float] = None
+    service_id: Optional[uuid.UUID] = None
+    starts_on: Optional[date] = None
+    ends_on: Optional[date] = None
+    is_published: Optional[bool] = None
+
+
+class BookingOfferRead(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: Optional[str] = None
+    offer_type: str
+    value: Optional[float] = None
+    service_id: Optional[uuid.UUID] = None
+    service_name: Optional[str] = None
+    starts_on: date
+    ends_on: date
+    is_published: bool
+
+
+# ── RESUMEN DE MES / PENDIENTES (calendario del dueño) ──
+
+class BookingDaySummary(BaseModel):
+    date: date
+    total: int          # citas activas (pendiente + confirmada) del día
+    pending: int        # de esas, cuántas están por confirmar
+    has_offer: bool     # hay alguna oferta vigente ese día
+
+
+class BookingMonthRead(BaseModel):
+    month: str          # "YYYY-MM"
+    days: List[BookingDaySummary]
+    pending_total: int  # pendientes futuras del tenant (foco al abrir el módulo)
+
+
+# ==========================================
+# BILLING (suscripción del tenant — pago manual)
+# ==========================================
+class BillingPlanRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    price: float
+    currency: str
+    module_ids: List[uuid.UUID]
+
+
+class BillingRequestCreate(BaseModel):
+    plan_id: uuid.UUID
+    note: Optional[str] = None
+
+
+class BillingRequestRead(BaseModel):
+    id: uuid.UUID
+    plan_id: uuid.UUID
+    plan_name: Optional[str] = None
+    status: str
+    note: Optional[str] = None
+    created_at: datetime
+
+
+class BillingMeRead(BaseModel):
+    billing_status: Optional[str] = None
+    access_state: Optional[str] = None
+    trial_ends_at: Optional[datetime] = None
+    trial_days_remaining: Optional[int] = None
+    grace_days_remaining: Optional[int] = None
+    current_plan_id: Optional[uuid.UUID] = None
+    current_plan_name: Optional[str] = None
+    pending_request: Optional[BillingRequestRead] = None
+
+
+class AdminBillingRequestRead(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    tenant_name: Optional[str] = None
+    plan_id: uuid.UUID
+    plan_name: Optional[str] = None
+    status: str
+    note: Optional[str] = None
+    created_at: datetime

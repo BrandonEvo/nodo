@@ -132,6 +132,11 @@ async def register_workspace(
         tenant_id=new_tenant.id,
         member_type="owner",
     ))
+
+    # Trial automático: acceso full a todos los módulos por N días (configurable).
+    from api.services.trial_service import start_trial, get_default_trial_days
+    await start_trial(session, new_tenant, await get_default_trial_days(session))
+
     await session.commit()
     await session.refresh(new_user)
     await session.refresh(new_tenant)

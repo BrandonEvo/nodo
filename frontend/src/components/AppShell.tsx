@@ -5,6 +5,7 @@ import { Topbar } from './navigation/Topbar';
 import { BottomNav } from './navigation/BottomNav';
 import { DashboardCanvas } from './dashboard/DashboardCanvas';
 import { PushBanner } from './ui/PushBanner';
+import { TrialBanner } from './ui/TrialBanner';
 import { NodoMark, NodoWordmark } from './ui/NodoLogo';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { usePushPermission } from '@/hooks/usePushPermission';
@@ -202,6 +203,15 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
 
                 {/* ── CONTENT CANVAS ── */}
                 <main className="flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 pb-28 lg:pb-10 overflow-y-auto flex flex-col">
+                    {!realIsSuperAdmin && userSession?.access_state && userSession.access_state !== 'active' && (
+                        <div className="mb-5">
+                            <TrialBanner
+                                accessState={userSession.access_state}
+                                trialDaysRemaining={userSession.trial_days_remaining}
+                                graceDaysRemaining={userSession.grace_days_remaining}
+                            />
+                        </div>
+                    )}
                     {showPushBanner && (
                         <div className="mb-5">
                             <PushBanner

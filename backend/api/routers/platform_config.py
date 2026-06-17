@@ -32,6 +32,11 @@ DEFAULT_CONFIGS = [
         "value": "50",
         "description": "Límite máximo de invitaciones pendientes por empresa según su suscripción.",
     },
+    {
+        "key": "default_trial_days",
+        "value": "14",
+        "description": "Días de prueba gratuita que recibe automáticamente una empresa al registrarse.",
+    },
 ]
 
 

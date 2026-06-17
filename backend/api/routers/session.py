@@ -12,6 +12,7 @@ from db.session import get_session
 from api.deps import current_active_user
 from models import User, TenantMember, Tenant, Invitation
 from models.schemas import SessionRead, PendingInvitationRead
+from core.trial import compute_access
 
 router = APIRouter(tags=["Auth: Session"])
 
@@ -54,6 +55,7 @@ async def get_session_enriched(
     member_type = None
     is_tenant_admin = False
     available_tenants = []
+    access: dict = {}
 
     if membership:
         tenant = await session.get(Tenant, membership.tenant_id)
@@ -63,6 +65,8 @@ async def get_session_enriched(
         tenant_theme_color = tenant.theme_color if tenant else None
         member_type        = membership.member_type
         is_tenant_admin    = membership.member_type in ("owner", "admin")
+        if tenant:
+            access = compute_access(tenant)
 
         # Lista de todos los tenants disponibles para el switcher
         all_mems_result = await session.execute(
@@ -110,6 +114,11 @@ async def get_session_enriched(
         tenant_theme_color=tenant_theme_color,
         member_type=member_type,
         is_tenant_admin=is_tenant_admin or current_user.is_superuser,
+        billing_status=access.get("billing_status"),
+        access_state=access.get("access_state"),
+        trial_ends_at=access.get("trial_ends_at"),
+        trial_days_remaining=access.get("trial_days_remaining"),
+        grace_days_remaining=access.get("grace_days_remaining"),
         has_pending_invites=len(pending_invitations) > 0,
         pending_invitations=pending_invitations,
         available_tenants=available_tenants,

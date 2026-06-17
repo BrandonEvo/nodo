@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['icon.svg', 'apple-touch-icon.png', 'bg-nodo.png'],
       manifest: {
         name: 'Nodo — Gestión de Panadería',
@@ -80,7 +80,7 @@ export default defineConfig({
           },
         ],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/tracking/],
+        navigateFallbackDenylist: [/^\/api/, /^\/tracking/, /^\/tienda/, /^\/pedido/],
       },
       devOptions: {
         enabled: false,

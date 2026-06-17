@@ -4,7 +4,7 @@ import {
   LogOut, User, Moon, ChevronRight, Briefcase,
   Settings, Send, SlidersHorizontal, Shield,
   Warehouse, ChefHat, Store, Lock, BookOpen,
-  Activity, RefreshCw, Clock, ArrowUpRight,
+  Activity, RefreshCw, Clock, ArrowUpRight, CalendarDays, CreditCard,
 } from 'lucide-react';
 import { useState, useEffect, Suspense } from 'react';
 import { AdminTenants } from '../admin/AdminTenants';
@@ -14,9 +14,11 @@ import { AdminRoles } from '../admin/AdminRoles';
 import { AdminSubscriptions } from '../admin/AdminSubscriptions';
 import { TeamManagement } from '../admin/TeamManagement';
 import { TenantConfigPanel } from '../admin/TenantConfigPanel';
+import { SubscriptionScreen } from '../SubscriptionScreen';
 import { useToast } from '@/components/ui/Toaster';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { InstallPWACard } from '@/components/ui/InstallPWACard';
 import { tenantMeService } from '@/services/tenantMe.service';
 import { resolveApp } from '@/apps/index';
 import api from '@/lib/api';
@@ -332,9 +334,10 @@ export function DashboardCanvas({
 
 
   // ── TENANT ADMIN MANAGEMENT ──
-  if (activeTab === 'mgmt_employees') return <TenantEmployeeManager activeModules={activeModules} />;
-  if (activeTab === 'mgmt_team')      return <TeamManagement />;
-  if (activeTab === 'mgmt_config')    return <TenantConfigPanel />;
+  if (activeTab === 'mgmt_employees')    return <TenantEmployeeManager activeModules={activeModules} />;
+  if (activeTab === 'mgmt_team')         return <TeamManagement />;
+  if (activeTab === 'mgmt_subscription') return <SubscriptionScreen />;
+  if (activeTab === 'mgmt_config')       return <TenantConfigPanel />;
 
   // ── PROFILE ──
   if (activeTab === 'profile') {
@@ -410,6 +413,8 @@ export function DashboardCanvas({
       PERSONAL_SHOPPER: { pasteBg: '#FFE0E4', deepColor: '#E83A4F', icon: ShoppingCart },
       GASTOS:           { pasteBg: '#FFF0CC', deepColor: '#D4920C', icon: DollarSign   },
       REPORTES:         { pasteBg: '#D4F2E4', deepColor: '#1EA05E', icon: BarChart3    },
+      VENTAS:           { pasteBg: '#D4F2E4', deepColor: '#1EA05E', icon: ShoppingCart },
+      CITAS:            { pasteBg: '#D9F0F7', deepColor: '#0E7FA8', icon: CalendarDays },
     };
 
     const getModuleCfg = (code: string) =>
@@ -449,6 +454,9 @@ export function DashboardCanvas({
             </button>
             <p className="text-sm font-bold text-nodo-ink mt-1">{m.name}</p>
             <p className="text-xs text-nodo-dim">Toca para abrir</p>
+          </div>
+          <div className="mt-10 w-full max-w-sm text-left">
+            <InstallPWACard />
           </div>
         </div>
       );
@@ -532,9 +540,10 @@ export function DashboardCanvas({
             </p>
             <div className="nodo-card overflow-hidden divide-y divide-nodo-line">
               {[
-                { id: 'mgmt_employees', label: 'Empleados',     desc: 'Gestionar equipo',   icon: Briefcase, pasteBg: '#DFF0FF', deepColor: '#3A8ADF' },
-                { id: 'mgmt_team',      label: 'Invitaciones',  desc: 'Invitar miembros',   icon: Send,      pasteBg: '#ECE4FF', deepColor: '#7B50DC' },
-                { id: 'mgmt_config',    label: 'Configuración', desc: 'Ajustes de empresa', icon: Settings,  pasteBg: '#F0F0F2', deepColor: '#64748b' },
+                { id: 'mgmt_employees',    label: 'Empleados',     desc: 'Gestionar equipo',   icon: Briefcase,  pasteBg: '#DFF0FF', deepColor: '#3A8ADF' },
+                { id: 'mgmt_team',         label: 'Invitaciones',  desc: 'Invitar miembros',   icon: Send,       pasteBg: '#ECE4FF', deepColor: '#7B50DC' },
+                { id: 'mgmt_subscription', label: 'Suscripción',   desc: 'Plan y pago',        icon: CreditCard, pasteBg: '#DCFCE7', deepColor: '#16a34a' },
+                { id: 'mgmt_config',       label: 'Configuración', desc: 'Ajustes de empresa', icon: Settings,   pasteBg: '#F0F0F2', deepColor: '#64748b' },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
@@ -555,6 +564,9 @@ export function DashboardCanvas({
             </div>
           </div>
         )}
+
+        {/* ── INSTALAR PWA — solo si la app no corre ya como PWA ── */}
+        <InstallPWACard />
 
       </div>
     );
