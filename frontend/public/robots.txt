@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Allow: /catalogo/
+Allow: /pedido/
+
+# Bloquear rutas de app autenticada y API
+Disallow: /api/
+Disallow: /settings
+Disallow: /admin
+
+Sitemap: https://hellonodo.com/sitemap.xml
