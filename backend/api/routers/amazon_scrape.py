@@ -115,6 +115,24 @@ def _parse_price_from_json(html: str) -> float | None:
     return None
 
 
+def _parse_image(soup: BeautifulSoup, html: str) -> str | None:
+    # data-old-hires es la imagen hi-res sin lazy-loading (más fiable)
+    img = soup.select_one("#landingImage[data-old-hires]")
+    if img and img.get("data-old-hires", "").startswith("http"):
+        return img["data-old-hires"]
+    # Fallback: src del #landingImage cuando ya está cargado
+    img = soup.select_one("#landingImage, #imgTagWrapperId img, #main-image-container img")
+    if img:
+        src = str(img.get("src") or "")
+        if src.startswith("http") and "transparent-pixel" not in src and src.endswith((".jpg", ".png", ".webp")):
+            return src
+    # Último recurso: JSON embebido de colorImages
+    m = re.search(r'"hiRes"\s*:\s*"(https://m\.media-amazon\.com/images/I/[^"]+\.jpg)"', html)
+    if m:
+        return m.group(1)
+    return None
+
+
 def _parse_price(html: str, soup: BeautifulSoup) -> float | None:
     # Con el zip de USA activo el buybox muestra USD (símbolo $).
     # Buscar primero en selectores específicos del buybox con precio en USD.
@@ -145,6 +163,7 @@ class ScrapeResponse(BaseModel):
     asin: str
     name: str | None
     price_usd: float | None
+    image_url: str | None
     url: str
 
 
@@ -212,7 +231,8 @@ async def _try_relay(url: str) -> ScrapeResponse | None:
         d = r.json()
         return ScrapeResponse(
             asin=d["asin"], name=d.get("name"),
-            price_usd=d.get("price_usd"), url=d.get("url", url),
+            price_usd=d.get("price_usd"), image_url=d.get("image_url"),
+            url=d.get("url", url),
         )
     if r.status_code == 422:
         raise HTTPException(status_code=422, detail="No se pudo extraer el ASIN de la URL.")
@@ -282,7 +302,8 @@ async def scrape_amazon(body: ScrapeRequest, request: Request):
                 title_el = soup.select_one("#productTitle")
                 name = title_el.get_text(strip=True) if title_el else None
                 price = _parse_price(r.text, soup)
-                return ScrapeResponse(asin=asin, name=name, price_usd=price, url=product_url)
+                image = _parse_image(soup, r.text)
+                return ScrapeResponse(asin=asin, name=name, price_usd=price, image_url=image, url=product_url)
             last_detail = f"Amazon devolvió una página anti-bot (status {r.status_code})."
 
         # Backoff incremental antes de reintentar (no tras el último intento)

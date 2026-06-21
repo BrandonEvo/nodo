@@ -6,7 +6,7 @@ MÓDULO 8: PERSONAL SHOPPER
 - DELETE /api/personal-shopper/{id}      → Soft-delete
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -100,7 +100,7 @@ async def create_order(
         product_description=body.product_description,
         quantity=body.quantity,
         unit=body.unit,
-        delivery_date=body.delivery_date,
+        delivery_date=body.delivery_date if body.delivery_date is not None else date.today() + timedelta(days=30),
         status=body.status,
         quoted_price=Decimal(str(body.quoted_price)) if body.quoted_price is not None else None,
         notes=body.notes,

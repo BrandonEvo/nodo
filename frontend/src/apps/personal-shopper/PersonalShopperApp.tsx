@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Loader2, AlertTriangle,
   ShoppingBag, ClipboardList, CheckCircle2, Clock, XCircle,
-  Search, Calculator, X, Check, Phone, Calendar, Sparkles, TrendingUp, Share2, Users,
+  Search, Calculator, X, Check, Phone, Calendar, Sparkles, TrendingUp, Share2, Users, ChevronRight, MapPin, Globe,
 } from 'lucide-react';
 import type { AppProps } from '../index';
 import { ShopperCalculator, type CalcResult } from './ShopperCalculator';
 import { ClientesPanel } from './ClientesPanel';
 import { TrackingTimeline, TrackingMiniBar } from './TrackingTimeline';
+import { TripMode } from './TripMode';
+import { CatalogMode } from './CatalogMode';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { ShareSheet } from '@/components/ui/ShareSheet';
@@ -61,19 +63,44 @@ const ALL_STATUSES: OrderStatus[] = [
 const fmt = (n: number) =>
   'Q' + n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const EMPTY_FORM = {
+const defaultDeliveryDate = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return d.toISOString().split('T')[0];
+};
+
+const makeEmptyForm = () => ({
   client_name: '',
   client_phone: '',
   product_description: '',
   quantity: '1',
   unit: 'unidades',
-  delivery_date: '',
+  delivery_date: defaultDeliveryDate(),
   status: 'pendiente' as OrderStatus,
   quoted_price: '',
   notes: '',
+});
+
+// Avance lineal de estados (cancelado solo desde el sheet completo)
+const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
+  pendiente:  'cotizado',
+  cotizado:   'aprobado',
+  aprobado:   'en_proceso',
+  en_proceso: 'entregado',
 };
 
-type Tab = 'pedidos' | 'calculadora' | 'clientes';
+function deliveryBadge(dateStr: string | null | undefined): { label: string; className: string } | null {
+  if (!dateStr) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due   = new Date(dateStr + 'T00:00:00');
+  const days  = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  if (days > 7)  return { label: `Entrega en ${days}d`, className: 'text-nodo-dim' };
+  if (days > 0)  return { label: `Entrega en ${days}d`, className: 'text-amber-500 dark:text-amber-400 font-semibold' };
+  if (days === 0) return { label: 'Entrega hoy',         className: 'text-nodo-success-tx font-semibold' };
+  return           { label: `Venció hace ${Math.abs(days)}d`, className: 'text-nodo-danger-tx font-semibold' };
+}
+
+type Tab = 'pedidos' | 'calculadora' | 'clientes' | 'viaje' | 'catalogo';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENTES AUXILIARES
@@ -136,7 +163,7 @@ export function PersonalShopperApp(_props: AppProps) {
   const [clientSheet, setClientSheet]       = useState<{ result: CalcResult } | null>(null);
   const [trackingSheet, setTrackingSheet]   = useState<ShopperOrder | null>(null);
 
-  const [form, setForm]                     = useState({ ...EMPTY_FORM });
+  const [form, setForm]                     = useState(makeEmptyForm);
   const [quickClient, setQuickClient]       = useState('');
   const [quickProduct, setQuickProduct]     = useState('');
   const [quickPrice, setQuickPrice]         = useState('');
@@ -198,12 +225,23 @@ export function PersonalShopperApp(_props: AppProps) {
       product_description: order.product_description,
       quantity:            String(order.quantity),
       unit:                order.unit,
-      delivery_date:       order.delivery_date ?? '',
+      delivery_date:       order.delivery_date ?? defaultDeliveryDate(),
       status:              order.status,
       quoted_price:        order.quoted_price != null ? String(order.quoted_price) : '',
       notes:               order.notes ?? '',
     });
     setEditSheet(order);
+  };
+
+  const handleNextStatus = async (order: ShopperOrder) => {
+    const next = NEXT_STATUS[order.status];
+    if (!next) return;
+    try {
+      const updated = await personalShopperService.update(order.id, { status: next });
+      setOrders(prev => prev.map(o => o.id === order.id ? updated : o));
+    } catch {
+      setError('No se pudo actualizar el estado.');
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -338,18 +376,28 @@ export function PersonalShopperApp(_props: AppProps) {
               </p>
             </div>
           </div>
-          <SegmentedControl
-            options={[
-              { value: 'calculadora', label: 'Calculadora', icon: <Calculator size={14} /> },
-              { value: 'pedidos',     label: 'Pedidos',     icon: <ShoppingBag size={14} /> },
-              { value: 'clientes',    label: 'Clientes',    icon: <Users size={14} /> },
-            ]}
-            value={tab}
-            onChange={v => setTab(v as Tab)}
-            size="sm"
-            className="sm:w-[340px] shrink-0"
-          />
+          <div className="overflow-x-auto scrollbar-none -mx-1 sm:mx-0">
+            <SegmentedControl
+              options={[
+                { value: 'viaje',       label: 'Viaje',     icon: <MapPin size={13} /> },
+                { value: 'catalogo',    label: 'Catálogo',  icon: <Globe size={13} /> },
+                { value: 'pedidos',     label: 'Pedidos',   icon: <ShoppingBag size={13} /> },
+                { value: 'calculadora', label: 'Calc',      icon: <Calculator size={13} /> },
+                { value: 'clientes',    label: 'Clientes',  icon: <Users size={13} /> },
+              ]}
+              value={tab}
+              onChange={v => setTab(v as Tab)}
+              size="sm"
+              className="min-w-max sm:min-w-0 sm:w-full sm:max-w-[520px]"
+            />
+          </div>
         </div>
+
+        {/* ─────────── TAB: VIAJE ─────────── */}
+        {tab === 'viaje' && <TripMode />}
+
+        {/* ─────────── TAB: CATÁLOGO ─────────── */}
+        {tab === 'catalogo' && <CatalogMode />}
 
         {/* ─────────── TAB: CALCULADORA ─────────── */}
         {tab === 'calculadora' && (
@@ -488,6 +536,7 @@ export function PersonalShopperApp(_props: AppProps) {
                         onStatusClick={() => setStatusSheet(order)}
                         onCardClick={() => openEdit(order)}
                         onTrackingClick={() => setTrackingSheet(order)}
+                        onNextStatus={() => handleNextStatus(order)}
                       />
                     ))}
                   </div>
@@ -871,16 +920,19 @@ function FilterChip({
 }
 
 function OrderCard({
-  order, onStatusClick, onCardClick, onTrackingClick,
+  order, onStatusClick, onCardClick, onTrackingClick, onNextStatus,
 }: {
   order: ShopperOrder;
   onStatusClick: () => void;
   onCardClick: () => void;
   onTrackingClick: () => void;
+  onNextStatus: () => void;
 }) {
   const hasTracking = order.tracking_status !== null;
   const [showShare, setShowShare] = useState(false);
   const trackingUrl = `${window.location.origin}/tracking/${order.tracking_token}`;
+  const nextStatus = NEXT_STATUS[order.status];
+  const delivery = deliveryBadge(order.delivery_date);
 
   return (
     <>
@@ -920,13 +972,13 @@ function OrderCard({
                 {order.client_phone}
               </span>
             )}
-            {order.delivery_date && (
-              <span className="inline-flex items-center gap-1 text-xs text-nodo-dim">
-                <Calendar className="w-3 h-3" />
-                {order.delivery_date}
+            {delivery && (
+              <span className={`inline-flex items-center gap-1 text-xs ${delivery.className}`}>
+                <Calendar className="w-3 h-3 shrink-0" />
+                {delivery.label}
               </span>
             )}
-            {/* Compartir + tracking */}
+            {/* Acciones rápidas */}
             <div className="ml-auto flex items-center gap-1.5">
               {order.tracking_token && (
                 <button
@@ -948,6 +1000,18 @@ function OrderCard({
                   ✈️ Rastrear
                 </span>
               </div>
+              {/* Botón de avance de estado — un toque, sin modal */}
+              {nextStatus && (
+                <button
+                  onClick={e => { e.stopPropagation(); onNextStatus(); }}
+                  title={`Avanzar a ${STATUS_LABELS[nextStatus]}`}
+                  className="inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-1 rounded-full
+                             bg-nodo-ink text-nodo-canvas active:scale-90 transition-transform"
+                >
+                  {STATUS_LABELS[nextStatus]}
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              )}
             </div>
           </div>
 

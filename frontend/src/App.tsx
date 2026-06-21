@@ -10,6 +10,8 @@ import { StorePage } from '@/components/StorePage'
 import { StoreOrderPage } from '@/components/StoreOrderPage'
 import { BookingPage } from '@/components/BookingPage'
 import { BookingStatusPage } from '@/components/BookingStatusPage'
+import { ShopperCatalogPage } from '@/components/ShopperCatalogPage'
+import { ShopperReservationPage } from '@/components/ShopperReservationPage'
 import { ToastProvider } from '@/components/ui/Toaster'
 import { UpdatePrompt } from '@/components/ui/UpdatePrompt'
 import { authService, SessionData } from '@/services/auth.service'
@@ -54,6 +56,18 @@ function getBookingToken(): string | null {
 // /cita/<token> — comprobante público de una cita del módulo Citas
 function getAppointmentToken(): string | null {
   const match = window.location.pathname.match(/^\/cita\/([0-9a-f-]{36})$/i);
+  return match ? match[1] : null;
+}
+
+// /catalogo/<token> — catálogo público del Personal Shopper
+function getShopperCatalogToken(): string | null {
+  const match = window.location.pathname.match(/^\/catalogo\/([0-9a-f-]{36})$/i);
+  return match ? match[1] : null;
+}
+
+// /mis-pedidos/<client_token> — vista de reserva del cliente (Personal Shopper)
+function getShopperReservationToken(): string | null {
+  const match = window.location.pathname.match(/^\/mis-pedidos\/([0-9a-f-]{36})$/i);
   return match ? match[1] : null;
 }
 
@@ -207,13 +221,15 @@ function AuthedApp() {
 
 // ── Root router ──────────────────────────────────────────────────────────────
 export default function App() {
-  const trackingToken       = getTrackingToken();
-  const importTrackingToken = getImportTrackingToken();
-  const inviteToken         = getInviteToken();
-  const storeToken          = getStoreToken();
-  const storeOrderToken     = getStoreOrderToken();
-  const bookingToken        = getBookingToken();
-  const appointmentToken    = getAppointmentToken();
+  const trackingToken         = getTrackingToken();
+  const importTrackingToken   = getImportTrackingToken();
+  const inviteToken           = getInviteToken();
+  const storeToken            = getStoreToken();
+  const storeOrderToken       = getStoreOrderToken();
+  const bookingToken          = getBookingToken();
+  const appointmentToken      = getAppointmentToken();
+  const shopperCatalogToken      = getShopperCatalogToken();
+  const shopperReservationToken  = getShopperReservationToken();
 
   const handleInviteAccepted = () => {
     // Limpiar la URL y cargar la app autenticada
@@ -238,6 +254,10 @@ export default function App() {
         ? <BookingPage token={bookingToken} />
         : appointmentToken
         ? <BookingStatusPage token={appointmentToken} />
+        : shopperCatalogToken
+        ? <ShopperCatalogPage token={shopperCatalogToken} />
+        : shopperReservationToken
+        ? <ShopperReservationPage clientToken={shopperReservationToken} />
         : <AuthedApp />}
     </ToastProvider>
   );

@@ -791,6 +791,208 @@ class ShopperOrderRead(BaseModel):
 
 
 # ==========================================
+# SHOPPER TRIPS (Modo Viaje de Compras)
+# ==========================================
+
+class ShopperTripCreate(BaseModel):
+    store_name: str
+    notes: Optional[str] = None
+
+
+class ShopperTripUpdate(BaseModel):
+    store_name: Optional[str] = None
+    notes: Optional[str] = None
+    ended_at: Optional[datetime] = None
+
+
+class ShopperTripRead(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    store_name: str
+    notes: Optional[str] = None
+    started_at: datetime
+    ended_at: Optional[datetime] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ShopperTripItemCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    price_gtq: Optional[float] = None
+    stock: int = 1
+    notes: Optional[str] = None
+
+
+class ShopperTripItemUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    price_gtq: Optional[float] = None
+    stock: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class ShopperTripItemRead(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    trip_id: uuid.UUID
+    title: str
+    description: Optional[str] = None
+    price_gtq: Optional[float] = None
+    stock: int
+    notes: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ==========================================
+# SHOPPER CATALOG (Catálogo público shopper)
+# ==========================================
+
+class ShopperCatalogSettingsRead(BaseModel):
+    public_token: uuid.UUID
+    business_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ShopperCatalogSettingsUpdate(BaseModel):
+    business_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+
+
+class ShopperCatalogItemCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    price_gtq: Optional[float] = None
+    stock_total: int = 1
+    is_published: bool = False
+    amazon_url: Optional[str] = None
+    image_url: Optional[str] = None
+    notes: Optional[str] = None
+    source: str = "manual"
+
+
+class ShopperCatalogItemUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    price_gtq: Optional[float] = None
+    stock_total: Optional[int] = None
+    stock_sold: Optional[int] = None
+    is_published: Optional[bool] = None
+    amazon_url: Optional[str] = None
+    image_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ShopperCatalogItemRead(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    source: str
+    trip_item_id: Optional[uuid.UUID] = None
+    title: str
+    description: Optional[str] = None
+    price_gtq: Optional[float] = None
+    stock_total: int
+    stock_sold: int
+    stock_available: int
+    is_published: bool
+    published_at: Optional[datetime] = None
+    amazon_url: Optional[str] = None
+    image_url: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PublicShopperCatalogItem(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: Optional[str] = None
+    price_gtq: Optional[float] = None
+    stock_available: int
+    stock_total: int
+    amazon_url: Optional[str] = None
+    image_url: Optional[str] = None
+
+
+class PublicShopperCatalog(BaseModel):
+    business_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    items: list[PublicShopperCatalogItem]
+
+
+# ── Reservas ──────────────────────────────
+
+class ShopperReservationCreate(BaseModel):
+    client_name: str
+    client_phone: str
+    quantity: int = 1
+    deposit_amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class ShopperReservationUpdate(BaseModel):
+    status: Optional[str] = None          # confirmada | completada | cancelada
+    payment_reference: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ShopperReservationRead(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    catalog_item_id: uuid.UUID
+    client_name: str
+    client_phone: str
+    client_token: uuid.UUID
+    quantity: int
+    status: str
+    deposit_amount: Optional[float] = None
+    payment_reference: Optional[str] = None
+    notes: Optional[str] = None
+    expires_at: datetime
+    confirmed_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    # Desnormalizado para el vendor
+    item_title: Optional[str] = None
+    item_price_gtq: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PublicReservationRead(BaseModel):
+    id: uuid.UUID
+    client_token: uuid.UUID
+    client_name: str
+    quantity: int
+    status: str
+    deposit_amount: Optional[float] = None
+    expires_at: datetime
+    item_title: str
+    item_price_gtq: Optional[float] = None
+    whatsapp_number: Optional[str] = None
+    created_at: datetime
+
+
+# ==========================================
 # VENTAS (Catálogo público con stock)
 # ==========================================
 

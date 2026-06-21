@@ -322,3 +322,89 @@ class ShopperOrder(AuditBase, table=True):
     calc_tax_rate:          Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(6, 2),  nullable=True))
     calc_weight_lbs:        Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(8, 3),  nullable=True))
     calc_cost_per_lb:       Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(8, 4),  nullable=True))
+
+
+class ShopperTrip(AuditBase, table=True):
+    """Sesión de compras en una tienda (viaje)."""
+    __tablename__ = "shopper_trips"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    tenant_id: uuid.UUID = Field(foreign_key="tenants.id", index=True)
+    store_name: str = Field(max_length=150)
+    notes: Optional[str] = Field(default=None, max_length=500)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    ended_at: Optional[datetime] = Field(default=None)
+
+
+class ShopperTripItem(AuditBase, table=True):
+    """Producto capturado durante un viaje de compras."""
+    __tablename__ = "shopper_trip_items"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    tenant_id: uuid.UUID = Field(foreign_key="tenants.id", index=True)
+    trip_id: uuid.UUID = Field(foreign_key="shopper_trips.id", index=True)
+    title: str = Field(max_length=200)
+    description: Optional[str] = Field(default=None, max_length=500)
+    price_gtq: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(12, 2), nullable=True))
+    stock: int = Field(default=1)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class ShopperCatalogSettings(AuditBase, table=True):
+    """Token público del catálogo personal shopper por tenant."""
+    __tablename__ = "shopper_catalog_settings"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    tenant_id: uuid.UUID = Field(foreign_key="tenants.id", unique=True, index=True)
+    public_token: uuid.UUID = Field(default_factory=uuid.uuid4, unique=True, index=True)
+    business_name: Optional[str] = Field(default=None, max_length=150)
+    whatsapp_number: Optional[str] = Field(default=None, max_length=30)
+
+
+class ShopperCatalogItem(AuditBase, table=True):
+    """Producto publicado en el catálogo público del personal shopper."""
+    __tablename__ = "shopper_catalog_items"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    tenant_id: uuid.UUID = Field(foreign_key="tenants.id", index=True)
+    source: str = Field(default="manual", max_length=20)   # manual | trip | amazon
+    trip_item_id: Optional[uuid.UUID] = Field(default=None, foreign_key="shopper_trip_items.id")
+
+    title: str = Field(max_length=200)
+    description: Optional[str] = Field(default=None, max_length=500)
+    price_gtq: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(12, 2), nullable=True))
+
+    stock_total: int = Field(default=1)
+    stock_reserved: int = Field(default=0)
+    stock_sold: int = Field(default=0)
+
+    is_published: bool = Field(default=False)
+    published_at: Optional[datetime] = Field(default=None)
+
+    amazon_url: Optional[str] = Field(default=None, max_length=500)
+    image_url: Optional[str] = Field(default=None, max_length=1000)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class ShopperReservation(AuditBase, table=True):
+    """Reserva de un ítem del catálogo hecha por un cliente."""
+    __tablename__ = "shopper_reservations"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    tenant_id: uuid.UUID = Field(foreign_key="tenants.id", index=True)
+    catalog_item_id: uuid.UUID = Field(foreign_key="shopper_catalog_items.id", index=True)
+
+    client_name: str = Field(max_length=150)
+    client_phone: str = Field(max_length=30)
+    client_token: uuid.UUID = Field(default_factory=uuid.uuid4, unique=True, index=True)
+
+    quantity: int = Field(default=1)
+    status: str = Field(default="pendiente", max_length=20)   # pendiente|confirmada|completada|cancelada
+    deposit_amount: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(12, 2), nullable=True))
+    payment_reference: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+    expires_at: datetime = Field()           # created_at + 2h — set in router
+    confirmed_at: Optional[datetime] = Field(default=None)
+    completed_at: Optional[datetime] = Field(default=None)
+
