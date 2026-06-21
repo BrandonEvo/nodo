@@ -29,6 +29,10 @@ Thumbs.db
 *.png
 *.jpg
 *.jpeg
+# Pero los assets de frontend/public sí van al repo
+!frontend/public/*.png
+!frontend/public/*.jpg
+!frontend/public/*.jpeg
 .playwright-mcp/
 
 # Archivos accidentales
