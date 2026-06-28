@@ -37,3 +37,8 @@ Thumbs.db
 
 # Archivos accidentales
 =*
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
