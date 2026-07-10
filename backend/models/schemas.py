@@ -993,6 +993,322 @@ class PublicReservationRead(BaseModel):
 
 
 # ==========================================
+# IMPORTACIONES — Catálogo público
+# (espejo de ShopperCatalog*, nativo del módulo importaciones)
+# ==========================================
+
+class ImportCatalogSettingsRead(BaseModel):
+    public_token: uuid.UUID
+    business_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    delivery_days_min: int = 5
+    delivery_days_max: int = 7
+    trip_name: Optional[str] = None
+    trip_close_at: Optional[datetime] = None
+    trip_label: Optional[str] = None
+    origin_label: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account_holder: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_account_type: Optional[str] = None
+    ai_copy_enabled: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class ImportCatalogSettingsUpdate(BaseModel):
+    business_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    delivery_days_min: Optional[int] = None
+    delivery_days_max: Optional[int] = None
+    trip_name: Optional[str] = None
+    trip_close_at: Optional[datetime] = None
+    trip_label: Optional[str] = None
+    origin_label: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account_holder: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_account_type: Optional[str] = None
+    ai_copy_enabled: Optional[bool] = None
+
+
+class ImportCatalogItemCreate(BaseModel):
+    title: str
+    hook: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    price_gtq: Optional[float] = None
+    is_made_to_order: bool = True
+    stock_total: int = 1
+    is_published: bool = False
+    is_offer: bool = False
+    compare_at_price_gtq: Optional[float] = None
+    offer_ends_at: Optional[datetime] = None
+    amazon_url: Optional[str] = None
+    amazon_asin: Optional[str] = None
+    image_url: Optional[str] = None
+    notes: Optional[str] = None
+    source: str = "manual"
+
+
+class ImportCatalogItemUpdate(BaseModel):
+    title: Optional[str] = None
+    hook: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    price_gtq: Optional[float] = None
+    is_made_to_order: Optional[bool] = None
+    stock_total: Optional[int] = None
+    stock_sold: Optional[int] = None
+    is_published: Optional[bool] = None
+    is_offer: Optional[bool] = None
+    compare_at_price_gtq: Optional[float] = None
+    offer_ends_at: Optional[datetime] = None
+    amazon_url: Optional[str] = None
+    amazon_asin: Optional[str] = None
+    image_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ImportCatalogItemRead(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    source: str
+    cotizacion_id: Optional[uuid.UUID] = None
+    title: str
+    hook: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    price_gtq: Optional[float] = None
+    is_made_to_order: bool = True
+    stock_total: int
+    stock_sold: int
+    stock_available: int
+    is_published: bool
+    is_offer: bool = False
+    compare_at_price_gtq: Optional[float] = None
+    offer_ends_at: Optional[datetime] = None
+    published_at: Optional[datetime] = None
+    last_reserved_at: Optional[datetime] = None
+    amazon_url: Optional[str] = None
+    amazon_asin: Optional[str] = None
+    image_url: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PublicImportCatalogItem(BaseModel):
+    id: uuid.UUID
+    title: str
+    hook: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    price_gtq: Optional[float] = None
+    is_offer: bool = False
+    compare_at_price_gtq: Optional[float] = None
+    offer_ends_at: Optional[datetime] = None
+    # Por encargo: se compra cuando el cliente aparta. El front no muestra escasez.
+    is_made_to_order: bool = True
+    # Cuántas unidades más puede pedir el cliente. En un ítem por encargo es un tope
+    # de cordura, no un inventario; en uno con stock físico son las unidades libres.
+    stock_available: int
+    # Unidades ya apartadas de este ítem (reservadas + vendidas). Dato real, sin
+    # denominador inventado: alimenta el ranking "Los más apartados".
+    reserved_count: int = 0
+    # `stock_total` NO se expone: en los ítems por encargo no significa nada y en
+    # los de stock físico revelaría el inventario del negocio.
+    # amazon_url / asin NO se exponen: el cliente no debe poder rastrear la fuente.
+    image_url: Optional[str] = None
+    last_reserved_at: Optional[datetime] = None
+    # "Frecuentemente juntos": IDs de ítems que otros clientes apartaron en el
+    # mismo pedido que éste (co-ocurrencia real por order_token). Heurística pura,
+    # sin IA ni datos personales — el front resuelve los IDs contra los ítems que
+    # ya tiene y los muestra como sugerencia priorizada.
+    bought_with: list[uuid.UUID] = []
+
+
+class PublicPayInfo(BaseModel):
+    """Datos de pago que ve el cliente (nunca datos internos del tenant)."""
+    bank_name: Optional[str] = None
+    bank_account_holder: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_account_type: Optional[str] = None
+
+
+class PublicImportCatalog(BaseModel):
+    business_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    # Logo del negocio (Tenant.logo_url, data URI o URL) para brandear el
+    # encabezado del catálogo público de forma profesional.
+    logo_url: Optional[str] = None
+    # Color de marca del negocio (Tenant.theme_color) para que la página pública
+    # respete la identidad de cada empresa en vez del verde fijo de Nodo.
+    theme_color: Optional[str] = None
+    delivery_days_min: int = 5
+    delivery_days_max: int = 7
+    trip_name: Optional[str] = None
+    trip_close_at: Optional[datetime] = None
+    # Terminología configurable (null = usar default en el cliente).
+    trip_label: Optional[str] = None
+    origin_label: Optional[str] = None
+    categories: list[str] = []
+    # Momentum real del lote en vuelo: cuánta gente ya apartó y cuántas unidades
+    # llevan. Sustituye a la barra de "cupo apartado", que dividía entre un
+    # `stock_total` inventado. Números absolutos, sin porcentaje.
+    reserved_people: int = 0
+    reserved_units: int = 0
+    pay_info: Optional[PublicPayInfo] = None
+    items: list[PublicImportCatalogItem]
+
+
+class ImportReservationCreate(BaseModel):
+    client_name: str
+    client_phone: str
+    quantity: int = 1
+    deposit_amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class ImportReservationUpdate(BaseModel):
+    # status: cualquiera de STATUS_FLOW / OFF_RAMP (ver models.import_catalog).
+    # La validez de la transición la impone VALID_TRANSITIONS en el router.
+    status: Optional[str] = None
+    payment_reference: Optional[str] = None
+    notes: Optional[str] = None
+    # Sólo relevantes al salir del flujo feliz (no_disponible / cancelada).
+    resolution: Optional[str] = None
+    resolution_note: Optional[str] = None
+    suggested_item_id: Optional[uuid.UUID] = None
+
+
+class ImportReservationRead(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    catalog_item_id: uuid.UUID
+    order_token: Optional[uuid.UUID] = None
+    client_name: str
+    client_phone: str
+    client_token: uuid.UUID
+    quantity: int
+    status: str
+    deposit_amount: Optional[float] = None
+    payment_reference: Optional[str] = None
+    notes: Optional[str] = None
+    expires_at: datetime
+    confirmed_at: Optional[datetime] = None
+    comprada_at: Optional[datetime] = None
+    en_camino_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    no_disponible_at: Optional[datetime] = None
+    cancelada_at: Optional[datetime] = None
+    resolution: Optional[str] = None
+    resolution_note: Optional[str] = None
+    suggested_item_id: Optional[uuid.UUID] = None
+    replaces_reservation_id: Optional[uuid.UUID] = None
+    client_notified_at: Optional[datetime] = None
+    resolved_by_substitute: bool = False
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    item_title: Optional[str] = None
+    item_image_url: Optional[str] = None
+    item_price_gtq: Optional[float] = None
+    # Link de compra en Amazon del ítem: sólo se expone al DUEÑO (esta lectura va
+    # por get_current_tenant_id), para que sepa exactamente qué comprar al confirmar.
+    # NUNCA se expone en las lecturas públicas (ver _public_item / PublicImportCatalogItem).
+    item_amazon_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PublicImportReservationRead(BaseModel):
+    id: uuid.UUID
+    client_token: uuid.UUID
+    order_token: Optional[uuid.UUID] = None
+    # PIN de 4 dígitos del pedido — el cliente lo guarda para recuperar su pedido
+    # con su WhatsApp + PIN sin el link directo.
+    order_pin: Optional[str] = None
+    client_name: str
+    quantity: int
+    status: str
+    deposit_amount: Optional[float] = None
+    expires_at: datetime
+    item_title: str
+    item_price_gtq: Optional[float] = None
+    whatsapp_number: Optional[str] = None
+    created_at: datetime
+
+
+class PublicImportOrderLine(BaseModel):
+    """Una reserva dentro del pedido acumulado del cliente."""
+    id: uuid.UUID
+    item_id: uuid.UUID
+    item_title: str
+    item_image_url: Optional[str] = None
+    item_price_gtq: Optional[float] = None
+    quantity: int
+    status: str
+    # El cliente solo puede editar/quitar mientras la línea esté 'pendiente'.
+    editable: bool = False
+    stock_available: int = 0
+    expires_at: datetime
+    created_at: datetime
+    # Desenlace no_disponible: mensaje cálido del vendedor + reemplazos ofrecidos
+    # (el fijado por el vendedor primero, luego auto-rankeados por heurística).
+    resolution: Optional[str] = None
+    resolution_note: Optional[str] = None
+    suggested_items: list[PublicImportCatalogItem] = []
+    # True si esta línea no_disponible ya fue resuelta con una sustituta activa.
+    resolved_by_substitute: bool = False
+
+
+class PublicOrderLineUpdate(BaseModel):
+    """Cliente edita la cantidad de una línea pendiente de su pedido."""
+    quantity: int
+
+
+class OrderLookupBody(BaseModel):
+    """Cliente recupera su pedido con su WhatsApp + PIN de 4 dígitos.
+
+    `catalog_token` acota la búsqueda al negocio dueño de ese catálogo: sin él, un
+    (teléfono, PIN) que coincidiera en dos negocios podría devolver el pedido del
+    otro.
+    """
+    phone: str
+    pin: str
+    catalog_token: uuid.UUID
+
+
+class PublicImportOrder(BaseModel):
+    """Pedido acumulado: todas las reservas de un mismo cliente, sin login."""
+    order_token: uuid.UUID
+    order_pin: Optional[str] = None
+    catalog_token: Optional[uuid.UUID] = None
+    client_name: str
+    business_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    logo_url: Optional[str] = None
+    theme_color: Optional[str] = None
+    trip_name: Optional[str] = None
+    trip_close_at: Optional[datetime] = None
+    trip_label: Optional[str] = None
+    origin_label: Optional[str] = None
+    delivery_days_min: int = 5
+    delivery_days_max: int = 7
+    pay_info: Optional[PublicPayInfo] = None
+    lines: list[PublicImportOrderLine]
+    total_gtq: float = 0
+    total_items: int = 0
+
+
+# ==========================================
 # VENTAS (Catálogo público con stock)
 # ==========================================
 
