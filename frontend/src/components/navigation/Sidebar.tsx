@@ -2,7 +2,7 @@ import {
   Home, Shield, Building2, Users, Package,
   ShoppingCart, Settings, LogOut, ChevronLeft,
   ChevronRight, Briefcase, User, Send,
-  SlidersHorizontal, Warehouse, ChefHat, Store, Lock, BookOpen, CreditCard,
+  SlidersHorizontal, Warehouse, ChefHat, Store, Lock, BookOpen, CreditCard, Activity, Archive,
 } from 'lucide-react';
 import { resolveModuleIcon } from '@/lib/module-icons';
 import { NodoMark, NodoWordmark } from '@/components/ui/NodoLogo';
@@ -56,6 +56,8 @@ export function Sidebar({
         { id: 'admin_roles',         icon: Shield,           label: 'Roles',           section: 'Gestión'   },
         { id: 'admin_modules',       icon: Package,          label: 'Módulos',         section: 'Gestión'   },
         { id: 'admin_subscriptions', icon: ShoppingCart,     label: 'Suscripciones',   section: 'Gestión'   },
+        { id: 'admin_presence',      icon: Activity,         label: 'En línea',        section: 'Monitoreo' },
+        { id: 'admin_backups',       icon: Archive,          label: 'Cartuchera',      section: 'Monitoreo' },
         { id: 'admin_platform_config',icon: SlidersHorizontal,label: 'Configuración',  section: 'Gestión'   },
       ];
     }

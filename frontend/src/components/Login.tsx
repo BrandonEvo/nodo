@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useToast } from "@/components/ui/Toaster"
 import { authService } from "@/services/auth.service"
+import { webauthnService, isPasskeyCancel, isCeremonyTimeout, getPasskeyHint } from "@/services/webauthn.service"
 import { isServerUnreachable } from "@/lib/api"
-import { EyeOff, Eye, Mail, Lock, Store, ArrowLeft, Loader2 } from "lucide-react"
+import { EyeOff, Eye, Mail, Lock, Store, ArrowLeft, Loader2, ScanFace } from "lucide-react"
 import { PrivacyPolicyModal } from "@/components/PrivacyPolicyModal"
 import { NodoWordmark } from "@/components/ui/NodoLogo"
 
@@ -12,19 +13,90 @@ interface LoginProps {
   onLoginSuccess: () => void;
 }
 
-type AuthView = 'login' | 'register' | 'forgot';
+type AuthView = 'unlock' | 'login' | 'register' | 'forgot';
 
 const inputClass = "w-full h-[52px] px-4 pr-12 bg-nodo-card border border-nodo-line rounded-2xl text-base font-medium text-nodo-ink placeholder:text-nodo-dim outline-none focus:border-nodo-line-s transition-colors"
 
+function goToGoogle() {
+  const base = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api').replace(/\/api\/?$/, '');
+  window.location.href = `${base}/api/auth/google/login`;
+}
+
+// La landing manda a /portal?registro=1 desde sus CTA de alta. Sin esto el
+// visitante que hizo clic en "Crear mi cuenta gratis" aterrizaría en el
+// formulario de login y tendría que buscar el enlace de registro.
+function wantsRegister(): boolean {
+  return new URLSearchParams(window.location.search).has('registro')
+}
+
 export function Login({ onLoginSuccess }: LoginProps) {
   const toast = useToast()
-  const [view, setView] = useState<AuthView>('login')
+  const [passkeySupported] = useState(() => webauthnService.isSupported())
+  const [passkeyHint] = useState(() => getPasskeyHint())
+  // El desbloqueo con Face ID solo aparece en dispositivos donde ya hubo sesión
+  // con passkey registrado — nunca como opción genérica del formulario de login.
+  const [view, setView] = useState<AuthView>(
+    wantsRegister() ? 'register' : passkeySupported && passkeyHint ? 'unlock' : 'login'
+  )
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [tenantName, setTenantName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [showPrivacy, setShowPrivacy] = useState(false)
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
+  const [passkeyOptions, setPasskeyOptions] = useState<any>(null)
+
+  // Pre-cargar las opciones preserva el gesto de usuario en iOS Safari (la
+  // ceremonia se llama en el click sin ningún await previo). El challenge del
+  // backend caduca a los 5 min → refrescar mientras la vista siga abierta.
+  // Sin opciones el botón queda en "Preparando…" → si el fetch falla,
+  // reintento corto acotado además del refresco de fondo.
+  useEffect(() => {
+    if (view !== 'unlock') return
+    let alive = true
+    const fetchOptions = (attempt = 0) => {
+      webauthnService.loginBegin()
+        .then(o => { if (alive) setPasskeyOptions(o) })
+        .catch(() => {
+          if (!alive) return
+          setPasskeyOptions(null)
+          if (attempt < 3) setTimeout(() => { if (alive) fetchOptions(attempt + 1) }, 8000)
+        })
+    }
+    fetchOptions()
+    const timer = setInterval(() => fetchOptions(), 4 * 60 * 1000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [view])
+
+  const handlePasskeyLogin = async () => {
+    // El botón está deshabilitado hasta tener opciones pre-cargadas: cualquier
+    // await antes de la ceremonia haría que WebKit descarte el gesto de usuario
+    // y get() se cuelgue sin diálogo. Guard por si acaso.
+    const options = passkeyOptions
+    if (!options) return
+    setPasskeyBusy(true)
+    try {
+      await webauthnService.loginFinish(options)
+      onLoginSuccess()
+    } catch (err: any) {
+      if (!isPasskeyCancel(err)) {
+        console.error('[passkey] login', err)
+        if (isCeremonyTimeout(err)) {
+          toast.error("El sistema no mostró el diálogo de Face ID. Cierra la app por completo y vuelve a abrirla, o entra con tu contraseña.")
+        } else if (isServerUnreachable(err)) {
+          toast.error(SERVER_DOWN_MSG)
+        } else {
+          toast.error("No se pudo entrar con Face ID. Entra con tu contraseña; puedes reactivarlo desde tu perfil.")
+          setView('login')
+        }
+        // Opciones de un solo uso: refrescar para el próximo intento.
+        webauthnService.loginBegin().then(setPasskeyOptions).catch(() => setPasskeyOptions(null))
+      }
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -93,6 +165,43 @@ export function Login({ onLoginSuccess }: LoginProps) {
           <div className="text-center mb-12" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
             <NodoWordmark className="text-[46px] text-nodo-ink" />
           </div>
+
+          {/* VISTA: DESBLOQUEO — solo en dispositivos con sesión previa + passkey */}
+          {view === 'unlock' && (
+            <div className="w-full animate-in fade-in zoom-in-95 duration-300">
+              <h2 className="text-[22px] font-black text-nodo-ink text-center mb-2 tracking-tight">
+                Hola de nuevo{passkeyHint?.name ? `, ${passkeyHint.name.split(' ')[0]}` : ''}.
+              </h2>
+              <p className="text-sm text-nodo-sub font-medium text-center mb-9">
+                Vuelve a tu sesión con Face ID o huella.
+              </p>
+
+              <button
+                type="button"
+                onClick={handlePasskeyLogin}
+                disabled={passkeyBusy || !passkeyOptions}
+                className="w-full h-[52px] rounded-full font-bold text-base flex items-center justify-center gap-2.5 shadow-lg active:scale-[0.97] transition-transform disabled:opacity-40"
+                style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
+              >
+                {passkeyBusy
+                  ? <><Loader2 size={18} className="animate-spin" /> Verificando…</>
+                  : !passkeyOptions
+                    ? <><Loader2 size={18} className="animate-spin" /> Preparando…</>
+                    : <><ScanFace size={20} /> Entrar con Face ID</>
+                }
+              </button>
+
+              <div className="flex justify-center mt-6">
+                <button
+                  type="button"
+                  onClick={() => setView('login')}
+                  className="text-sm font-bold text-nodo-sub hover:text-nodo-ink transition-colors py-1"
+                >
+                  Usar contraseña
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* VISTA: LOGIN */}
           {view === 'login' && (
@@ -170,10 +279,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
               {/* Google */}
               <button
                 type="button"
-                onClick={() => {
-                  const base = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api').replace(/\/api\/?$/, '');
-                  window.location.href = `${base}/api/auth/google/login`;
-                }}
+                onClick={goToGoogle}
                 className="w-full h-[52px] bg-nodo-card border border-nodo-line hover:bg-nodo-inset text-nodo-ink font-bold text-sm rounded-full transition-all active:scale-[0.98] flex items-center justify-center gap-3 shadow-sm"
               >
                 <GoogleLogo />
@@ -191,6 +297,27 @@ export function Login({ onLoginSuccess }: LoginProps) {
               <p className="text-sm text-nodo-sub font-medium text-center mb-9">
                 Configura tu entorno de trabajo en segundos.
               </p>
+
+              {/* Google es la vía primaria de alta: el correo llega verificado
+                  por Google, sin necesidad de SMTP ni de un paso extra. */}
+              <button
+                type="button"
+                onClick={goToGoogle}
+                className="w-full h-[52px] rounded-full font-bold text-base flex items-center justify-center gap-3 shadow-lg active:scale-[0.97] transition-transform"
+                style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
+              >
+                <GoogleLogo />
+                Continuar con Google
+              </button>
+              <p className="text-[11px] text-nodo-dim font-medium text-center mt-3">
+                Sin contraseña que recordar. Le damos nombre a tu empresa en el siguiente paso.
+              </p>
+
+              <div className="relative flex items-center py-6">
+                <div className="flex-grow border-t border-nodo-line" />
+                <span className="flex-shrink-0 mx-4 text-nodo-dim text-xs font-semibold">o usa tu correo</span>
+                <div className="flex-grow border-t border-nodo-line" />
+              </div>
 
               <form onSubmit={handleRegister} className="w-full space-y-3.5">
                 <div className="relative">
@@ -236,8 +363,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full h-[52px] rounded-full font-bold text-base flex items-center justify-center gap-2.5 shadow-lg active:scale-[0.97] transition-transform disabled:opacity-40"
-                    style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
+                    className="w-full h-[52px] rounded-full border-2 border-nodo-line-s bg-nodo-card text-nodo-ink font-bold text-base flex items-center justify-center gap-2.5 hover:bg-nodo-inset active:scale-[0.97] transition-all disabled:opacity-40"
                   >
                     {isLoading
                       ? <><Loader2 size={18} className="animate-spin" /> Creando…</>

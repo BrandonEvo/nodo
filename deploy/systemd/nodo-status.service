@@ -1,0 +1,8 @@
+[Unit]
+Description=Nodo — escribe status.json (RAM, Docker, último backup) para el panel admin
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=__REPO_DIR__/scripts/nodo_status.sh
+Nice=15

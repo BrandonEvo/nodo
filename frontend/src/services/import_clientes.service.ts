@@ -7,15 +7,35 @@ export interface Cliente {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  source: 'manual' | 'catalogo' | 'qr' | string;
+  attribution: string | null;
+  phone_verified: boolean;
   created_at: string;
   updated_at: string;
   cotizaciones_count: number;
   total_pagado_gtq: string;
   last_cotizacion_at: string | null;
+  // Acumulado del pedido en línea (reservas del catálogo) por estado.
+  reservado_gtq: string;
+  pedido_actual_gtq: string;
+  entregado_gtq: string;
+  reservas_activas: number;
+}
+
+export interface ClienteReserva {
+  id: string;
+  item_title: string;
+  item_image_url: string | null;
+  quantity: number;
+  status: string;
+  line_total_gtq: string;
+  created_at: string;
+  order_token: string | null;
 }
 
 export interface ClienteDetail extends Cliente {
   cotizaciones: Cotizacion[];
+  reservas: ClienteReserva[];
 }
 
 export interface ClienteCreate {

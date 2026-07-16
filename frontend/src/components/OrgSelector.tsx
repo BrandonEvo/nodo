@@ -3,8 +3,8 @@ import { ArrowRight, LogOut, CheckCircle2 } from "lucide-react"
 
 export function OrgSelector({ onSelect, onLogout }: { onSelect: (org: any) => void, onLogout: () => void }) {
   const organizations = [
-    { id: 't1', name: 'Panadería Central', type: 'Bakery', icon: '🍞' },
-    { id: 't2', name: 'Sucursal Norte', type: 'Bakery', icon: '🥐' }
+    { id: 't1', name: 'Tienda Central', type: 'Comercio', icon: '🛍️' },
+    { id: 't2', name: 'Sucursal Norte', type: 'Comercio', icon: '🏪' }
   ];
 
   return (

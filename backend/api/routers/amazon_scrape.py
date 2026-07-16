@@ -3,16 +3,30 @@ import asyncio
 import random
 import base64
 import json
+import logging
 import urllib.parse
-from fastapi import APIRouter, HTTPException, Request
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 import httpx
 from bs4 import BeautifulSoup
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.limiter import limiter
 from core.config import settings
+from db.session import get_session
+from models.bakery import AmazonScrapeCache
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["Amazon"])
+
+# Ventana de frescura de la cache. Dentro de este plazo devolvemos el scrape cacheado sin
+# volver a pegarle a Amazon (evita el 503 anti-bot). Fuera de plazo re-scrapeamos, pero si
+# Amazon bloquea caemos a la entrada vieja como fallback (dato viejo > nada).
+_CACHE_TTL_HOURS = 24
 
 _USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -155,6 +169,30 @@ def _parse_price(html: str, soup: BeautifulSoup) -> float | None:
     return _parse_price_from_json(html)
 
 
+def _parse_bullets(soup: BeautifulSoup) -> str | None:
+    """Viñetas 'About this item' (#feature-bullets) — materia prima de la descripción.
+
+    Se queda con lo IMPORTANTE: hasta 3 viñetas, cada una recortada a ~90 chars,
+    y el total tope a 240. El vendedor luego puede resumir/editar en el panel.
+    """
+    bullets: list[str] = []
+    for el in soup.select("#feature-bullets ul li span.a-list-item"):
+        t = el.get_text(" ", strip=True)
+        if not t or len(t) < 12:
+            continue
+        low = t.lower()
+        if "make sure this fits" in low or "see more product details" in low:
+            continue
+        if len(t) > 90:
+            t = t[:88].rstrip() + "…"
+        bullets.append(t)
+        if len(bullets) >= 3:
+            break
+    if not bullets:
+        return None
+    return "\n".join(f"• {b}" for b in bullets)[:240]
+
+
 class ScrapeRequest(BaseModel):
     url: str
 
@@ -165,6 +203,8 @@ class ScrapeResponse(BaseModel):
     price_usd: float | None
     image_url: str | None
     url: str
+    # Viñetas de Amazon como base editable para la descripción de venta.
+    description: str | None = None
 
 
 def _browser_headers() -> dict:
@@ -207,6 +247,66 @@ def _is_blocked(r: httpx.Response) -> bool:
 _MAX_ATTEMPTS = 3
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _cache_to_response(row: AmazonScrapeCache) -> ScrapeResponse:
+    return ScrapeResponse(
+        asin=row.asin, name=row.name,
+        price_usd=float(row.price_usd) if row.price_usd is not None else None,
+        image_url=row.image_url, url=row.product_url, description=row.description,
+    )
+
+
+async def _cache_get(session: AsyncSession, asin: str) -> AmazonScrapeCache | None:
+    try:
+        return await session.get(AmazonScrapeCache, asin)
+    except Exception:  # una falla de cache nunca debe romper el scrape
+        log.warning("amazon cache lookup failed for %s", asin, exc_info=True)
+        return None
+
+
+async def _cache_serve(session: AsyncSession, row: AmazonScrapeCache) -> ScrapeResponse:
+    """Devuelve la respuesta cacheada e incrementa hit_count (best-effort)."""
+    resp = _cache_to_response(row)
+    try:
+        await session.execute(
+            AmazonScrapeCache.__table__.update()
+            .where(AmazonScrapeCache.__table__.c.asin == row.asin)
+            .values(hit_count=AmazonScrapeCache.__table__.c.hit_count + 1)
+        )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        log.warning("amazon cache hit bump failed for %s", row.asin, exc_info=True)
+    return resp
+
+
+async def _cache_upsert(session: AsyncSession, r: ScrapeResponse, source: str) -> None:
+    """Guarda/actualiza el scrape exitoso (UPSERT por ASIN, tolera carrera entre tenants).
+    Nunca propaga errores — la cache es un extra, no debe tumbar la respuesta al usuario."""
+    now = _now()
+    try:
+        stmt = pg_insert(AmazonScrapeCache.__table__).values(
+            asin=r.asin, name=r.name,
+            price_usd=Decimal(str(r.price_usd)) if r.price_usd is not None else None,
+            image_url=r.image_url, product_url=r.url, description=r.description,
+            source=source, hit_count=0, created_at=now, updated_at=now,
+        ).on_conflict_do_update(
+            index_elements=['asin'],
+            set_=dict(name=r.name,
+                      price_usd=Decimal(str(r.price_usd)) if r.price_usd is not None else None,
+                      image_url=r.image_url, product_url=r.url, description=r.description,
+                      source=source, updated_at=now),
+        )
+        await session.execute(stmt)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        log.warning("amazon cache upsert failed for %s", r.asin, exc_info=True)
+
+
 async def _try_relay(url: str) -> ScrapeResponse | None:
     """
     Reenvía el scraping al relay residencial (si está configurado), porque Amazon
@@ -232,7 +332,7 @@ async def _try_relay(url: str) -> ScrapeResponse | None:
         return ScrapeResponse(
             asin=d["asin"], name=d.get("name"),
             price_usd=d.get("price_usd"), image_url=d.get("image_url"),
-            url=d.get("url", url),
+            url=d.get("url", url), description=d.get("description"),
         )
     if r.status_code == 422:
         raise HTTPException(status_code=422, detail="No se pudo extraer el ASIN de la URL.")
@@ -241,22 +341,31 @@ async def _try_relay(url: str) -> ScrapeResponse | None:
 
 @router.post("/scrape", response_model=ScrapeResponse)
 @limiter.limit("30/minute")
-async def scrape_amazon(body: ScrapeRequest, request: Request):
-    # Relay residencial primero (Amazon bloquea la IP del datacenter).
-    relayed = await _try_relay(body.url)
-    if relayed is not None:
-        return relayed
-
+async def scrape_amazon(
+    body: ScrapeRequest, request: Request,
+    session: AsyncSession = Depends(get_session),
+):
     base_headers = _browser_headers()
 
+    # 1. Resolver ASIN localmente (para la cache). Links cortos → seguir el redirect.
     asin = _extract_asin(body.url)
-
-    # Links cortos (a.co, amzn.to, amzn.eu...) no traen el ASIN: seguir el redirect.
     if not asin:
         host = (urllib.parse.urlparse(body.url.strip()).hostname or "").lower()
         host = host[4:] if host.startswith("www.") else host
         if host in _SHORTLINK_HOSTS:
             asin = await _resolve_shortlink(body.url.strip(), base_headers)
+
+    # 2. Cache FRESCA → devolver ya, sin pegarle a Amazon (esquiva el 503 anti-bot).
+    #    Un scrape exitoso de cualquier tenant sirve a todos.
+    cached = await _cache_get(session, asin) if asin else None
+    if cached is not None and cached.updated_at >= _now() - timedelta(hours=_CACHE_TTL_HOURS):
+        return await _cache_serve(session, cached)
+
+    # 3. Relay residencial (Amazon bloquea la IP del datacenter). Éxito → cachear.
+    relayed = await _try_relay(body.url)
+    if relayed is not None:
+        await _cache_upsert(session, relayed, source="relay")
+        return relayed
 
     if not asin:
         raise HTTPException(status_code=422, detail="No se pudo extraer el ASIN de la URL.")
@@ -303,12 +412,21 @@ async def scrape_amazon(body: ScrapeRequest, request: Request):
                 name = title_el.get_text(strip=True) if title_el else None
                 price = _parse_price(r.text, soup)
                 image = _parse_image(soup, r.text)
-                return ScrapeResponse(asin=asin, name=name, price_usd=price, image_url=image, url=product_url)
+                description = _parse_bullets(soup)
+                resp = ScrapeResponse(asin=asin, name=name, price_usd=price,
+                                      image_url=image, url=product_url, description=description)
+                await _cache_upsert(session, resp, source="direct")   # sirve a los demás tenants
+                return resp
             last_detail = f"Amazon devolvió una página anti-bot (status {r.status_code})."
 
         # Backoff incremental antes de reintentar (no tras el último intento)
         if attempt < _MAX_ATTEMPTS - 1:
             await asyncio.sleep(random.uniform(1.2, 2.5) * (attempt + 1))
+
+    # Amazon bloqueó todo. Si había una entrada vieja en cache, servirla (dato viejo > 503:
+    # el dueño ve nombre/imagen/descripción y ajusta el precio a mano).
+    if cached is not None:
+        return await _cache_serve(session, cached)
 
     raise HTTPException(
         status_code=503,

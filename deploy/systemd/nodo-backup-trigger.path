@@ -1,0 +1,12 @@
+[Unit]
+Description=Nodo — dispara un backup manual cuando el panel crea el marcador .trigger
+
+[Path]
+# El backend (Súper Admin) escribe /var/backups/nodo/.trigger; esto lanza el
+# backup sin exponer el docker.sock al contenedor. El botón "Backup ahora" del
+# panel se conecta aquí en una fase posterior.
+PathExists=/var/backups/nodo/.trigger
+Unit=nodo-backup-trigger.service
+
+[Install]
+WantedBy=paths.target

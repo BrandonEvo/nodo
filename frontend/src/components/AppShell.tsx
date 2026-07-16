@@ -10,6 +10,7 @@ import { NodoMark, NodoWordmark } from './ui/NodoLogo';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { usePushPermission } from '@/hooks/usePushPermission';
 import { authService } from '@/services/auth.service';
+import { presenceService } from '@/services/presence.service';
 import { hexToRgb, darkenHex, luminance, irisFromTenant } from '@/lib/utils';
 
 interface AppShellProps {
@@ -105,6 +106,18 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
             setActiveTab('home');
         }
     }, [appViewMode]);
+
+    // Heartbeat de presencia: envía la app abierta al montar, al cambiar de
+    // pestaña, y cada 60s mientras la sesión está en primer plano. Fire-and-forget.
+    useEffect(() => {
+        void presenceService.ping(activeTab).catch(() => {});
+        const id = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                void presenceService.ping(activeTab).catch(() => {});
+            }
+        }, 60_000);
+        return () => clearInterval(id);
+    }, [activeTab]);
 
     return (
         <div className="min-h-screen nodo-canvas-ambient" style={tenantCssVars}>

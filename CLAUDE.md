@@ -1,6 +1,17 @@
 # Nodo — Guía de Diseño y Desarrollo
 
-Sistema de gestión para panaderías. FastAPI + PostgreSQL en backend, React + TypeScript + Tailwind en frontend. Arquitectura multi-tenant con autenticación JWT.
+Sistema de gestión modular para negocios (SaaS multi-vertical: ventas, inventario, citas, importaciones, catálogo online). FastAPI + PostgreSQL en backend, React + TypeScript + Tailwind en frontend. Arquitectura multi-tenant con autenticación JWT. En textos visibles al usuario y SEO, nunca posicionar el producto como exclusivo de un rubro (p. ej. panaderías).
+
+---
+
+## ⚠️ ESTE HOST CORRE PRODUCCIÓN — NO ES ENTORNO DE DESARROLLO
+
+**Este servidor (`/home/nodo/Docker/nodo`) es el deploy de PRODUCCIÓN de `hellonodo.com`.** Acá **no** se usa el docker de desarrollo. Regla operativa obligatoria:
+
+- Los contenedores vivos son producción real con clientes: `nodo_proxy` (nginx 80/443), `nodo_backend` (uvicorn), `nodo_db` (postgres 16). Levantar con `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` — **nunca** `up` pelado (el `docker-compose.override.yml` es solo dev).
+- El backend está **bind-mounted** (`backend/ -> /app`) pero desde 2026-07-12 corre **`--workers 2` SIN `--reload`**: editar un archivo del backend **ya NO recarga solo**. Para aplicar cambios de backend hay que recrear: `docker compose -f docker-compose.yml -f docker-compose.override.yml up -d backend`. ⚠️ **Ese recreate corre `entrypoint.sh` → `alembic upgrade head`**: si hay una migración pendiente, el recreate la aplica a producción. Verificá SIEMPRE `alembic current` vs `heads` antes de recrear.
+- **No** aplicar migraciones, ni reiniciar/rebuild del backend, ni matar contenedores, ni correr load tests agresivos **sin confirmar antes con el usuario**. Preferir ventanas off-peak.
+- Nota de estado (2026-07-12): capacidad optimizada tras load test — `--workers 2 --proxy-headers` (2 cores), rate-limit por-IP real arreglado (`core/limiter.py`), nginx `api_zone` 300r/m, pool DB 10+15. **Pendiente**: cutover real a `docker-compose.prod.yml` (hoy sigue corriendo el `override.yml` con `ports 8000:8000` publicado y bind-mount) y fix E (adelgazar middlewares). Ver memoria `capacity-plan`.
 
 ---
 

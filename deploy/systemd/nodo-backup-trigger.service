@@ -1,0 +1,12 @@
+[Unit]
+Description=Nodo — backup manual disparado desde el panel Súper Admin
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Borra el marcador ANTES de correr para no re-dispararse en bucle.
+ExecStartPre=/bin/rm -f /var/backups/nodo/.trigger
+ExecStart=__REPO_DIR__/scripts/backup_nodo.sh
+Nice=10
+IOSchedulingClass=idle

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Check, Tag, Pencil, PowerOff, Trash2, ShieldAlert, Loader2 } from "lucide-react";
+import { Plus, Check, Globe, Tag, Pencil, PowerOff, Trash2, ShieldAlert, Loader2 } from "lucide-react";
 import { resolveModuleIcon } from "@/lib/module-icons";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useToast } from "@/components/ui/Toaster";
@@ -20,6 +20,16 @@ export function AdminSubscriptions() {
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // Copy de marketing — lo consume la landing pública vía /api/public/plans
+  const [tagline, setTagline] = useState("");
+  const [description, setDescription] = useState("");
+  const [featuresText, setFeaturesText] = useState("");
+  const [badgeLabel, setBadgeLabel] = useState("");
+  const [ctaLabel, setCtaLabel] = useState("");
+  const [isFeatured, setIsFeatured] = useState(false);
+  const [isPublic, setIsPublic] = useState(false);
+  const [sortOrder, setSortOrder] = useState("0");
+
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [masterPassword, setMasterPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -39,9 +49,16 @@ export function AdminSubscriptions() {
 
   useEffect(() => { loadData(); }, []);
 
+  const resetCopy = () => {
+    setTagline(""); setDescription(""); setFeaturesText("");
+    setBadgeLabel(""); setCtaLabel("");
+    setIsFeatured(false); setIsPublic(false); setSortOrder("0");
+  };
+
   const openCreate = () => {
     setEditingPlanId(null);
     setName(""); setPrice(""); setSelectedModules([]);
+    resetCopy();
     setFormOpen(true);
   };
 
@@ -50,6 +67,14 @@ export function AdminSubscriptions() {
     setName(plan.name);
     setPrice(plan.price.toString());
     setSelectedModules(plan.module_ids || []);
+    setTagline(plan.tagline ?? "");
+    setDescription(plan.description ?? "");
+    setFeaturesText((plan.features ?? []).join("\n"));
+    setBadgeLabel(plan.badge_label ?? "");
+    setCtaLabel(plan.cta_label ?? "");
+    setIsFeatured(!!plan.is_featured);
+    setIsPublic(!!plan.is_public);
+    setSortOrder(String(plan.sort_order ?? 0));
     setFormOpen(true);
   };
 
@@ -57,6 +82,7 @@ export function AdminSubscriptions() {
     setFormOpen(false);
     setEditingPlanId(null);
     setName(""); setPrice(""); setSelectedModules([]);
+    resetCopy();
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -64,7 +90,20 @@ export function AdminSubscriptions() {
     if (!name.trim() || !price) return;
     setSaving(true);
     try {
-      const payload = { name: name.trim(), price: Number(price), currency: "GTQ", module_ids: selectedModules };
+      const payload = {
+        name: name.trim(),
+        price: Number(price),
+        currency: "GTQ",
+        module_ids: selectedModules,
+        tagline: tagline.trim() || null,
+        description: description.trim() || null,
+        features: featuresText.split("\n").map(f => f.trim()).filter(Boolean),
+        badge_label: badgeLabel.trim() || null,
+        cta_label: ctaLabel.trim() || null,
+        is_featured: isFeatured,
+        is_public: isPublic,
+        sort_order: Number(sortOrder) || 0,
+      };
       if (editingPlanId) {
         await subscriptionsService.update(editingPlanId, payload);
         toast.success("Plan actualizado");
@@ -194,15 +233,22 @@ export function AdminSubscriptions() {
 
                       {/* Status + actions */}
                       <div className="flex items-center justify-between mb-5">
-                        <span
-                          className="px-2.5 py-1 rounded-full text-[9px] font-black tracking-widest uppercase"
-                          style={plan.is_active
-                            ? { background: `${colors.accent}22`, color: colors.accent }
-                            : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.35)' }
-                          }
-                        >
-                          {plan.is_active ? 'Activo' : 'Inactivo'}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="px-2.5 py-1 rounded-full text-[9px] font-black tracking-widest uppercase"
+                            style={plan.is_active
+                              ? { background: `${colors.accent}22`, color: colors.accent }
+                              : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.35)' }
+                            }
+                          >
+                            {plan.is_active ? 'Activo' : 'Inactivo'}
+                          </span>
+                          {plan.is_public && (
+                            <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black tracking-widest uppercase bg-white/10 text-white/70">
+                              <Globe size={9} /> Landing
+                            </span>
+                          )}
+                        </div>
 
                         <div className="flex items-center gap-1">
                           <button
@@ -365,6 +411,129 @@ export function AdminSubscriptions() {
                 })
               )}
             </div>
+          </div>
+
+          {/* ── Copy de la landing pública ── */}
+          <div className="pt-2 border-t border-nodo-line">
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1">Landing pública</p>
+            <p className="text-xs text-nodo-sub mb-4">
+              Solo los planes marcados como públicos aparecen en la página de precios de hellonodo.com.
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPublic(v => !v)}
+                disabled={saving}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-colors ${isPublic ? "bg-nodo-raised border-nodo-ink" : "bg-nodo-inset border-nodo-line"}`}
+              >
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${isPublic ? "bg-nodo-ink border-nodo-ink" : "border-nodo-line-s"}`}>
+                  {isPublic && <Check size={11} className="text-nodo-canvas" />}
+                </div>
+                <span className="text-sm font-semibold text-nodo-ink">Mostrar en la landing</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsFeatured(v => !v)}
+                disabled={saving}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-colors ${isFeatured ? "bg-nodo-raised border-nodo-ink" : "bg-nodo-inset border-nodo-line"}`}
+              >
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${isFeatured ? "bg-nodo-ink border-nodo-ink" : "border-nodo-line-s"}`}>
+                  {isFeatured && <Check size={11} className="text-nodo-canvas" />}
+                </div>
+                <span className="text-sm font-semibold text-nodo-ink">Plan destacado</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Frase corta
+            </label>
+            <input
+              type="text"
+              maxLength={120}
+              placeholder="Ej. Para el que ya vende todos los días"
+              value={tagline}
+              onChange={e => setTagline(e.target.value)}
+              disabled={saving}
+              className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50"
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Descripción
+            </label>
+            <textarea
+              rows={2}
+              placeholder="Párrafo bajo el precio…"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              disabled={saving}
+              className="w-full px-4 py-3 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50 resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Viñetas — una por línea
+            </label>
+            <textarea
+              rows={4}
+              placeholder={"Ventas e inventario\nCatálogo online\nReportes de margen"}
+              value={featuresText}
+              onChange={e => setFeaturesText(e.target.value)}
+              disabled={saving}
+              className="w-full px-4 py-3 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50 resize-none"
+            />
+            <p className="text-[10px] text-nodo-dim mt-1.5">Si lo dejas vacío, la landing lista los módulos incluidos.</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+                Etiqueta
+              </label>
+              <input
+                type="text"
+                maxLength={40}
+                placeholder="Más popular"
+                value={badgeLabel}
+                onChange={e => setBadgeLabel(e.target.value)}
+                disabled={saving}
+                className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+                Texto del botón
+              </label>
+              <input
+                type="text"
+                maxLength={40}
+                placeholder="Empezar gratis"
+                value={ctaLabel}
+                onChange={e => setCtaLabel(e.target.value)}
+                disabled={saving}
+                className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block">
+              Orden en la landing
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={sortOrder}
+              onChange={e => setSortOrder(e.target.value)}
+              disabled={saving}
+              className="w-full h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl text-sm font-semibold text-nodo-ink focus:border-nodo-ink outline-none transition-colors placeholder:text-nodo-dim disabled:opacity-50 tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
           </div>
 
         </form>

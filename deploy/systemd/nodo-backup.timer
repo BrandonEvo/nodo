@@ -1,0 +1,13 @@
+[Unit]
+Description=Nodo — agenda diaria del backup GFS (03:30, fuera de horas de uso)
+
+[Timer]
+# 03:30 local: lejos del deploy (que corre 'alembic upgrade' al arrancar) para
+# no chocar ACCESS SHARE de pg_dump con el ACCESS EXCLUSIVE de las migraciones.
+OnCalendar=*-*-* 03:30:00
+# Si el server estuvo apagado a esa hora, corre al prender.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

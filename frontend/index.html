@@ -12,9 +12,9 @@
     <meta name="apple-mobile-web-app-title" content="Nodo" />
 
     <!-- SEO primario -->
-    <title>Nodo — Sistema de Gestión para Panaderías</title>
-    <meta name="description" content="Gestiona pedidos, inventario, cotizaciones y clientes de tu panadería desde el celular. Catálogo online, personal shopper y facturación en un solo lugar." />
-    <meta name="keywords" content="sistema gestión panadería, software panadería Guatemala, pedidos panadería, inventario panadería, personal shopper panadería" />
+    <title>Nodo — Sistema de Gestión para tu Negocio</title>
+    <meta name="description" content="Ventas, inventario, pedidos, citas, importaciones y catálogo online — todo desde el celular. Nodo es el sistema de gestión modular que se adapta a cualquier negocio." />
+    <meta name="keywords" content="sistema de gestión, software para negocios, punto de venta, control de inventario, agenda de citas, catálogo online, importaciones, facturación, saas guatemala" />
     <meta name="author" content="Nodo" />
     <link rel="canonical" href="https://hellonodo.com/" />
     <meta name="robots" content="index, follow" />
@@ -22,19 +22,19 @@
     <!-- Open Graph (Facebook, WhatsApp, LinkedIn) -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://hellonodo.com/" />
-    <meta property="og:title" content="Nodo — Sistema de Gestión para Panaderías" />
-    <meta property="og:description" content="Gestiona pedidos, inventario, cotizaciones y clientes de tu panadería desde el celular. Catálogo online, personal shopper y facturación en un solo lugar." />
+    <meta property="og:title" content="Nodo — Sistema de Gestión para tu Negocio" />
+    <meta property="og:description" content="Ventas, inventario, pedidos, citas, importaciones y catálogo online — todo desde el celular. El sistema de gestión modular que se adapta a cualquier negocio." />
     <meta property="og:image" content="https://hellonodo.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Nodo — Sistema de Gestión para Panaderías" />
+    <meta property="og:image:alt" content="Nodo — Sistema de Gestión para tu Negocio" />
     <meta property="og:site_name" content="Nodo" />
     <meta property="og:locale" content="es_GT" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Nodo — Sistema de Gestión para Panaderías" />
-    <meta name="twitter:description" content="Gestiona pedidos, inventario, cotizaciones y clientes de tu panadería desde el celular." />
+    <meta name="twitter:title" content="Nodo — Sistema de Gestión para tu Negocio" />
+    <meta name="twitter:description" content="Ventas, inventario, pedidos, citas, importaciones y catálogo online — todo desde el celular." />
     <meta name="twitter:image" content="https://hellonodo.com/og-image.png" />
 
     <!-- JSON-LD: Software como producto -->
@@ -44,23 +44,26 @@
       "@type": "SoftwareApplication",
       "name": "Nodo",
       "url": "https://hellonodo.com",
-      "description": "Sistema de gestión para panaderías: pedidos, inventario, cotizaciones, personal shopper y catálogo online.",
+      "description": "Sistema de gestión modular para negocios: ventas, inventario, pedidos, citas, importaciones, personal shopper y catálogo online.",
       "applicationCategory": "BusinessApplication",
       "operatingSystem": "Web, Android, iOS",
       "offers": {
-        "@type": "Offer",
-        "price": "0",
+        "@type": "AggregateOffer",
         "priceCurrency": "GTQ",
-        "description": "Prueba gratuita disponible"
+        "lowPrice": "99",
+        "highPrice": "599",
+        "offerCount": "4",
+        "description": "Planes mensuales por módulo. Prueba gratuita de 14 días, sin tarjeta."
       },
       "featureList": [
-        "Gestión de pedidos personalizados",
+        "Ventas y punto de venta",
         "Inventario y bodega",
+        "Gestión de pedidos personalizados",
         "Cotizador con calculadora de importación",
         "Personal shopper con catálogo Amazon",
-        "Reservas de productos online",
-        "Facturación y billing",
+        "Reservas y catálogo online",
         "Agenda de citas",
+        "Facturación y billing",
         "Rastreo de pedidos para clientes"
       ],
       "inLanguage": "es",
@@ -68,12 +71,119 @@
     }
     </script>
 
+    <!-- JSON-LD: Organización -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Nodo",
+      "url": "https://hellonodo.com",
+      "logo": "https://hellonodo.com/pwa-512x512.png",
+      "description": "Sistema de gestión modular para negocios.",
+      "areaServed": "GT",
+      "sameAs": []
+    }
+    </script>
+
+    <!-- JSON-LD: FAQ (espeja la sección de preguntas de la landing) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "¿Mis datos están seguros?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Sí. Cada empresa vive aislada a nivel de base de datos, las sesiones usan cookies que el navegador no puede leer, y hay respaldos automáticos cifrados." }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Qué pasa cuando terminan los 14 días?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Te avisamos antes. Si no eliges un plan, tu cuenta queda unos días en modo lectura: sigues viendo todo lo tuyo, pero no puedes registrar nuevos movimientos. No borramos nada ni te cobramos sin avisar." }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Tengo que instalar algo?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Nodo funciona en el navegador y se puede instalar como app en el celular con un toque." }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Puedo usar solo un módulo?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Sí, para eso es modular. Activas únicamente lo que tu negocio necesita hoy y agregas más cuando haga falta." }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Y si me quiero ir?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Te llevas tus datos. Cancelas cuando quieras desde el panel, sin llamadas ni formularios de retención." }
+        }
+      ]
+    }
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Nunito:wght@400;500;600;700;800;900;1000&display=swap" rel="stylesheet" />
+
+    <style>
+      body { margin: 0; background: #F4F2EE; }
+      html.dark, html.dark body { background: #000000; }
+      /* El hero estático solo existe para el primer paint y para los rastreadores
+         que no ejecutan JS. Fuera de la landing no debe verse ni un frame. */
+      html[data-route="app"] #seo-hero { display: none; }
+      #seo-hero {
+        max-width: 46rem; margin: 0 auto; padding: 9rem 1.5rem 0;
+        font-family: Nunito, Inter, system-ui, sans-serif; text-align: center; color: #FFFFFF;
+      }
+      #seo-hero h1 { font-size: 2.75rem; font-weight: 900; line-height: 1; letter-spacing: -0.02em; margin: 0; }
+      #seo-hero p  { margin: 1.5rem 0 0; font-size: 1.05rem; line-height: 1.6; color: rgba(255,255,255,0.62); }
+    </style>
+
+    <script>
+      // Antes del primer paint: la landing se compromete con el tema oscuro, y
+      // /portal no debe indexarse ni mostrar el hero estático de SEO.
+      (function () {
+        // App instalada (PWA) abierta en `/`: nunca mostrar la landing, que es
+        // material de venta para visitantes. El `start_url: /portal` del
+        // manifest cubre la instalación estándar, pero iOS anterior a 16.4 lo
+        // ignora y abre la URL desde la que se añadió a la pantalla de inicio.
+        var standalone =
+          window.navigator.standalone === true ||
+          (window.matchMedia &&
+            ['standalone', 'fullscreen', 'minimal-ui'].some(function (m) {
+              return window.matchMedia('(display-mode: ' + m + ')').matches;
+            }));
+        if (standalone && window.location.pathname === '/') {
+          window.location.replace('/portal');
+          return;
+        }
+
+        var isLanding = window.location.pathname === '/';
+        var root = document.documentElement;
+        root.dataset.route = isLanding ? 'landing' : 'app';
+        if (isLanding) root.classList.add('dark');
+        if (/^\/portal\/?$/.test(window.location.pathname)) {
+          var m = document.head.querySelector('meta[name="robots"]');
+          if (!m) {
+            m = document.createElement('meta');
+            m.name = 'robots';
+            document.head.appendChild(m);
+          }
+          m.content = 'noindex, nofollow';
+        }
+      })();
+    </script>
   </head>
-  <body style="background:#f8fafc;margin:0">
-    <div id="root"></div>
+  <body>
+    <div id="root">
+      <div id="seo-hero">
+        <h1>Tu negocio entero, en una sola pantalla.</h1>
+        <p>
+          Ventas, inventario, pedidos, citas e importaciones. Nodo es el sistema de gestión
+          modular que reemplaza el cuaderno, la hoja de Excel y los tres grupos de WhatsApp —
+          y le da a tus clientes una página propia para comprarte.
+        </p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

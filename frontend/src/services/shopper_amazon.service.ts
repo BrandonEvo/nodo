@@ -6,6 +6,7 @@ export interface AmazonProduct {
   price_usd: number | null;
   image_url: string | null;
   url: string;
+  description: string | null;
 }
 
 export const shopperAmazonService = {

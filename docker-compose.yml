@@ -46,6 +46,9 @@ services:
       - VAPID_CONTACT_EMAIL=${VAPID_CONTACT_EMAIL}
       - AMAZON_RELAY_URL=${AMAZON_RELAY_URL}
       - AMAZON_RELAY_TOKEN=${AMAZON_RELAY_TOKEN}
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID}
+      - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME}
+      - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN}
     networks:
       - nodo_network
     depends_on:

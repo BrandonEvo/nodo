@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="iris" x1="0" y1="0" x2="1200" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFB86B"/>
+      <stop offset="50%" stop-color="#9B59B6"/>
+      <stop offset="100%" stop-color="#4158D0"/>
+    </linearGradient>
+    <linearGradient id="iris-tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFB86B"/>
+      <stop offset="55%" stop-color="#9B59B6"/>
+      <stop offset="100%" stop-color="#4158D0"/>
+    </linearGradient>
+    <radialGradient id="blob-orange" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#FF8A3D" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#FF8A3D" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blob-purple" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#7C4DFF" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#7C4DFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Fondo -->
+  <rect width="1200" height="630" fill="#0B0B10"/>
+  <circle cx="120" cy="120" r="420" fill="url(#blob-orange)"/>
+  <circle cx="1020" cy="420" r="480" fill="url(#blob-purple)"/>
+  <circle cx="1090" cy="430" r="270" fill="#1A1A24" opacity="0.35"/>
+
+  <!-- Barra superior iris -->
+  <rect width="1200" height="12" fill="url(#iris)"/>
+
+  <!-- Tile del logo -->
+  <rect x="80" y="208" width="100" height="100" rx="26" fill="url(#iris-tile)"/>
+  <text x="130" y="282" font-family="Inter, sans-serif" font-size="60" font-weight="800" fill="#FFFFFF" text-anchor="middle">N</text>
+
+  <!-- Wordmark -->
+  <text x="208" y="288" font-family="Inter, sans-serif" font-size="92" font-weight="900" fill="#FFFFFF">Nodo</text>
+
+  <!-- Subtítulo -->
+  <text x="80" y="356" font-family="Inter, sans-serif" font-size="34" font-weight="600" fill="#C9C9D4">Sistema de Gestión para tu Negocio</text>
+
+  <!-- Subrayado iris -->
+  <rect x="80" y="380" width="380" height="6" rx="3" fill="url(#iris)"/>
+
+  <!-- Módulos -->
+  <text x="80" y="436" font-family="Inter, sans-serif" font-size="24" font-weight="500" fill="#8B8B98">Ventas · Inventario · Citas · Importaciones · Catálogo Online</text>
+
+  <!-- Tarjetas decorativas -->
+  <rect x="740" y="158" width="380" height="218" rx="26" fill="#17171F"/>
+  <rect x="772" y="196" width="160" height="16" rx="8" fill="#2A2A35"/>
+  <rect x="772" y="224" width="240" height="10" rx="5" fill="#232330"/>
+  <rect x="772" y="246" width="200" height="10" rx="5" fill="#232330"/>
+  <rect x="772" y="282" width="60" height="22" rx="11" fill="url(#iris-tile)"/>
+
+  <rect x="762" y="400" width="338" height="126" rx="26" fill="#14141B"/>
+  <rect x="792" y="430" width="140" height="14" rx="7" fill="#262633"/>
+  <rect x="792" y="456" width="220" height="10" rx="5" fill="#20202B"/>
+  <rect x="792" y="478" width="180" height="10" rx="5" fill="#20202B"/>
+
+  <!-- URL -->
+  <text x="80" y="598" font-family="Inter, sans-serif" font-size="22" font-weight="500" fill="#6E6E7A">hellonodo.com</text>
+  <circle cx="1140" cy="590" r="6" fill="#9B59B6"/>
+</svg>

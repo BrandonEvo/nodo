@@ -4,10 +4,13 @@ from .core import Module
 from .users import User
 from .tenants import Tenant, Subscription, SubscriptionPlan, PlanModule
 from .iam import TenantMember, TenantMemberModuleAccess
+from .webauthn import WebAuthnCredential
 from .audit import AuditLog
 from .invitations import Invitation
 from .platform_config import PlatformConfig
-from .importaciones import ImportCotizacion, ImportCliente
+from .importaciones import ImportCotizacion, ImportCliente, ImportPaquete
+from .import_catalog import ImportCatalogSettings, ImportCatalogItem, ImportReservation
+from .presence import UserPresence
 from .bakery import (
     InventoryItem,
     Recipe,
@@ -35,6 +38,7 @@ from .citas import (
     BookingOffer,
 )
 from .billing import BillingRequest
+from .backup import BackupSettings, BackupRecord, BackupRestoreLog
 
 __all__ = [
     "AuditBase",
@@ -46,12 +50,20 @@ __all__ = [
     "PlanModule",
     "TenantMember",
     "TenantMemberModuleAccess",
+    "WebAuthnCredential",
     "AuditLog",
     "Invitation",
     "PlatformConfig",
     # Importaciones
     "ImportCotizacion",
     "ImportCliente",
+    "ImportPaquete",
+    # Importaciones — catálogo público
+    "ImportCatalogSettings",
+    "ImportCatalogItem",
+    "ImportReservation",
+    # Presencia (usuarios conectados)
+    "UserPresence",
     # Bakery modules
     "InventoryItem",
     "Recipe",
@@ -77,4 +89,8 @@ __all__ = [
     "BookingOffer",
     # Billing (suscripción del tenant)
     "BillingRequest",
+    # Cartuchera (backups — plataforma, sin RLS)
+    "BackupSettings",
+    "BackupRecord",
+    "BackupRestoreLog",
 ]

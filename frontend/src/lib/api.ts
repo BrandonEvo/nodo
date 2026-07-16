@@ -17,6 +17,14 @@ const api = axios.create({
  * proxy) de un error real de la app. Útil para mostrar "reintenta" en vez de
  * un mensaje engañoso como "credenciales inválidas".
  */
+// Cliente para datos PÚBLICOS (catálogo/pulso): sin withCredentials → no manda la
+// cookie de sesión, así una cookie residual (el dueño mirando su propio link) nunca
+// desactiva el cache de Cloudflare. Sin interceptor de refresh (no hay auth que refrescar).
+export const publicApi = axios.create({
+  baseURL: base.endsWith('/api') ? base.replace(/\/api\/?$/, '') : base,
+  timeout: 45000,
+});
+
 export function isServerUnreachable(error: any): boolean {
   if (error?.code === 'ECONNABORTED') return true;   // timeout de axios
   if (error?.code === 'ERR_NETWORK') return true;    // sin red / DNS / CORS

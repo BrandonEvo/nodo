@@ -451,6 +451,9 @@
 }
 .nodo-input-number::-webkit-outer-spin-button,
 .nodo-input-number::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; }
+/* Input con símbolo superpuesto (Q, $, %). Los tokens viven fuera de @layer y por
+   eso pisan a las utilidades de Tailwind: un `pl-8` en el JSX no tendría efecto. */
+.nodo-input-prefixed { padding-left: 2rem; }
 
 .nodo-textarea {
   width: 100%;
@@ -594,6 +597,33 @@
   border-right: 1px solid var(--nodo-line);
 }
 
+/* Liquid Glass (iOS 26) — cristal líquido con brillo especular para las
+   superficies del módulo Importaciones. Construido sobre los tokens glass:
+   base traslúcida + blur + borde de luz + reflejo especular en capas de
+   background (sin pseudo-elemento ni position → seguro sobre elementos
+   fixed/absolute). Cae con gracia a superficie sólida donde no hay
+   backdrop-filter o el usuario pidió menos transparencia (abajo). */
+.liquid-glass {
+  background:
+    linear-gradient(178deg, var(--nodo-glass-highlight) 0%, transparent 34%),
+    radial-gradient(120% 80% at 12% -15%, rgba(255,255,255,0.16) 0%, transparent 52%),
+    var(--nodo-glass-bg-strong);
+  backdrop-filter: blur(var(--nodo-glass-blur)) saturate(var(--nodo-glass-saturate));
+  -webkit-backdrop-filter: blur(var(--nodo-glass-blur)) saturate(var(--nodo-glass-saturate));
+  border: 1px solid var(--nodo-glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--nodo-glass-highlight),
+    inset 0 -8px 24px -12px var(--nodo-glass-edge),
+    var(--nodo-shadow-card);
+}
+/* Variante "hero" con más presencia (sombra elevada). */
+.liquid-glass-hero {
+  box-shadow:
+    inset 0 1px 0 var(--nodo-glass-highlight),
+    inset 0 -10px 30px -14px var(--nodo-glass-edge),
+    var(--nodo-shadow-hero);
+}
+
 /* ── Compatibilidad: dispositivos sin backdrop-filter → superficies sólidas ── */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root, .dark {
@@ -602,6 +632,7 @@
     --nodo-glass-highlight: transparent;
   }
   .nodo-glass-bar, .nodo-glass-panel, .nodo-glass-sidebar { background: var(--nodo-card); }
+  .liquid-glass { background: var(--nodo-card); }
 }
 
 /* Usuarios con transparencia reducida (accesibilidad iOS/macOS) */
@@ -612,10 +643,75 @@
     --nodo-glass-highlight: transparent;
   }
   .nodo-glass-bar, .nodo-glass-panel, .nodo-glass-sidebar { background: var(--nodo-card); }
+  .liquid-glass { background: var(--nodo-card); }
 }
 
 /* ── Móvil: blur más ligero (GPU) y 16px en inputs (evita zoom de iOS al enfocar) ── */
 @media (pointer: coarse) {
   :root { --nodo-glass-blur: 16px; }
   .nodo-input, .nodo-input-number, .nodo-select, .nodo-textarea { font-size: 1rem; }
+}
+
+/* ============================================================
+   Landing pública — movimiento
+   ============================================================ */
+
+/* Reveal al entrar en viewport. El estado oculto lo aplica useReveal por JS,
+   nunca el CSS base: si el observer no corre (JS caído, bot de indexación),
+   el contenido queda visible en lugar de invisible para siempre. */
+.nodo-reveal-hidden {
+  opacity: 0;
+  transform: translate3d(0, 28px, 0);
+}
+.nodo-reveal-in {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 700ms ease,
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes nodo-float-slow {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -14px, 0); }
+}
+.nodo-float-slow {
+  animation: nodo-float-slow 7s ease-in-out infinite;
+}
+
+/* Barrido especular sobre el plan destacado y el CTA final. */
+@keyframes nodo-shimmer {
+  0%   { background-position: -180% 0; }
+  100% { background-position: 280% 0; }
+}
+.nodo-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.14) 48%,
+    transparent 66%
+  );
+  background-size: 200% 100%;
+  animation: nodo-shimmer 6s ease-in-out infinite;
+}
+
+/* Deriva lenta del gradiente iridiscente en el hero. */
+@keyframes nodo-iris-pan {
+  0%, 100% { transform: translate3d(-4%, -2%, 0) scale(1.05); }
+  50%      { transform: translate3d(4%, 3%, 0) scale(1.12); }
+}
+.nodo-iris-pan {
+  animation: nodo-iris-pan 22s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nodo-float-slow,
+  .nodo-iris-pan { animation: none; }
+  .nodo-shimmer::after { display: none; }
+  .nodo-reveal-hidden { opacity: 1; transform: none; }
 }

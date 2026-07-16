@@ -11,6 +11,16 @@ services:
     # bloquea por mixed-content (HTTPS->HTTP). El acceso al backend solo es
     # posible desde la red interna de Docker (puerto 8000 no publicado).
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
+    # Bind-mount de los backups del host: el widget de disco mide este path
+    # (statvfs cruza al filesystem real del host) y aquí vive status.json y el
+    # marcador .trigger del botón "backup ahora". :rw para poder crear .trigger.
+    volumes:
+      - /var/backups/nodo:/backups:rw
+    environment:
+      - BACKUP_DIR=/backups
+      # Inyectada por scripts/deploy.sh (el contenedor no puede leer la versión
+      # de Docker del host sin exponer el docker.sock).
+      - DOCKER_VERSION=${DOCKER_VERSION:-unknown}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 20s

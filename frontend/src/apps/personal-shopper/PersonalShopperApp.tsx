@@ -1,1121 +1,1748 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  Plus, Trash2, Loader2, AlertTriangle,
-  ShoppingBag, ClipboardList, CheckCircle2, Clock, XCircle,
-  Search, Calculator, X, Check, Phone, Calendar, Sparkles, TrendingUp, Share2, Users, ChevronRight, MapPin, Globe,
+  Plus, Loader2, AlertTriangle, Check, X, Trash2, Search, Camera, Link2, PencilLine,
+  Bell, Settings2, Share2, Package, Users, Tag, MessageCircle, Box, Sparkles, ArrowRight,
+  Store, Radio, Zap, Clock, Flame, Minus, Play, ShoppingBag, Ticket, Dices, Power, ChevronDown,
+  Maximize2,
 } from 'lucide-react';
 import type { AppProps } from '../index';
-import { ShopperCalculator, type CalcResult } from './ShopperCalculator';
-import { ClientesPanel } from './ClientesPanel';
-import { TrackingTimeline, TrackingMiniBar } from './TrackingTimeline';
-import { TripMode } from './TripMode';
-import { CatalogMode } from './CatalogMode';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
-import { ShareSheet } from '@/components/ui/ShareSheet';
-import { Avatar } from '@/components/ui/Avatar';
-import { MoneyKpi } from '@/components/ui/MoneyKpi';
+import { haptic } from '@/utils/haptic';
+import { fileToResizedDataUrl } from '@/utils/image';
 import {
-  personalShopperService,
-  type ShopperOrder,
-  type OrderStatus,
-} from '@/services/personal_shopper.service';
+  shopperCatalogService as svc,
+  type ShopperCatalogItem, type ShopperCatalogSettings, type ShopperCalcSettings,
+  type ShopperReservation, type ShopperResStatus, type ShopperListing,
+  type ShopperCoupon, type ShopperCouponInput, type CouponDiscountType,
+  type ShopperStats,
+} from '@/services/shopper_catalog.service';
+import { shopperAmazonService } from '@/services/shopper_amazon.service';
+import {
+  calculate, toSnapshot, suggestPrices,
+  fmtGTQ, fmtUSD, type CalcConfig, type FreightMode,
+} from './shopperPricing';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// CONSTANTES VISUALES
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  pendiente:  'Pendiente',
-  cotizado:   'Cotizado',
-  aprobado:   'Aprobado',
-  en_proceso: 'En proceso',
-  entregado:  'Entregado',
-  cancelado:  'Cancelado',
+// ── Estados de reserva ──────────────────────────────────────────────────────────
+const RES_META: Record<ShopperResStatus, { label: string; emoji: string; cls: string }> = {
+  pendiente:     { label: 'Apartado',      emoji: '🕒', cls: 'bg-nodo-warn-bg text-nodo-warn-tx' },
+  confirmada:    { label: 'Confirmado',    emoji: '✅', cls: 'bg-nodo-pastel-blue text-blue-700 dark:text-blue-300' },
+  comprada:      { label: 'Comprado',      emoji: '🛍️', cls: 'bg-nodo-pastel-lavender text-violet-700 dark:text-violet-300' },
+  en_camino:     { label: 'En camino',     emoji: '📦', cls: 'bg-nodo-pastel-peach text-amber-700 dark:text-amber-300' },
+  entregada:     { label: 'Entregado',     emoji: '🎉', cls: 'bg-nodo-success-bg text-nodo-success-tx' },
+  no_disponible: { label: 'No lo conseguí', emoji: '😔', cls: 'bg-nodo-inset text-nodo-sub' },
+  cancelada:     { label: 'Cancelado',     emoji: '✖️', cls: 'bg-nodo-danger-bg text-nodo-danger-tx' },
 };
+const FLOW: ShopperResStatus[] = ['pendiente', 'confirmada', 'comprada', 'en_camino', 'entregada'];
 
-// Acentos intencionales por estado (informativos) — dark-mode aware
-const STATUS_THEME: Record<OrderStatus, {
-  bg: string; text: string; dot: string; ring: string;
-  darkBg: string; darkText: string; darkRing: string;
-}> = {
-  pendiente:  { bg: 'bg-amber-100',   text: 'text-amber-800',   dot: 'bg-amber-500',   ring: 'ring-amber-200',   darkBg: 'dark:bg-amber-500/20',   darkText: 'dark:text-amber-300',   darkRing: 'dark:ring-amber-500/30'   },
-  cotizado:   { bg: 'bg-sky-100',     text: 'text-sky-800',     dot: 'bg-sky-500',     ring: 'ring-sky-200',     darkBg: 'dark:bg-sky-500/20',     darkText: 'dark:text-sky-300',     darkRing: 'dark:ring-sky-500/30'     },
-  aprobado:   { bg: 'bg-violet-100',  text: 'text-violet-800',  dot: 'bg-violet-500',  ring: 'ring-violet-200',  darkBg: 'dark:bg-violet-500/20',  darkText: 'dark:text-violet-300',  darkRing: 'dark:ring-violet-500/30'  },
-  en_proceso: { bg: 'bg-fuchsia-100', text: 'text-fuchsia-800', dot: 'bg-fuchsia-500', ring: 'ring-fuchsia-200', darkBg: 'dark:bg-fuchsia-500/20', darkText: 'dark:text-fuchsia-300', darkRing: 'dark:ring-fuchsia-500/30' },
-  entregado:  { bg: 'bg-emerald-100', text: 'text-emerald-800', dot: 'bg-emerald-500', ring: 'ring-emerald-200', darkBg: 'dark:bg-emerald-500/20', darkText: 'dark:text-emerald-300', darkRing: 'dark:ring-emerald-500/30' },
-  cancelado:  { bg: 'bg-rose-100',    text: 'text-rose-800',    dot: 'bg-rose-500',    ring: 'ring-rose-200',    darkBg: 'dark:bg-rose-500/20',    darkText: 'dark:text-rose-300',    darkRing: 'dark:ring-rose-500/30'    },
-};
-
-const STATUS_ICONS: Record<OrderStatus, typeof Clock> = {
-  pendiente:  Clock,
-  cotizado:   ClipboardList,
-  aprobado:   CheckCircle2,
-  en_proceso: ShoppingBag,
-  entregado:  Sparkles,
-  cancelado:  XCircle,
-};
-
-const ALL_STATUSES: OrderStatus[] = [
-  'pendiente', 'cotizado', 'aprobado', 'en_proceso', 'entregado', 'cancelado',
-];
-
-const fmt = (n: number) =>
-  'Q' + n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const defaultDeliveryDate = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 30);
-  return d.toISOString().split('T')[0];
-};
-
-const makeEmptyForm = () => ({
-  client_name: '',
-  client_phone: '',
-  product_description: '',
-  quantity: '1',
-  unit: 'unidades',
-  delivery_date: defaultDeliveryDate(),
-  status: 'pendiente' as OrderStatus,
-  quoted_price: '',
-  notes: '',
-});
-
-// Avance lineal de estados (cancelado solo desde el sheet completo)
-const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
-  pendiente:  'cotizado',
-  cotizado:   'aprobado',
-  aprobado:   'en_proceso',
-  en_proceso: 'entregado',
-};
-
-function deliveryBadge(dateStr: string | null | undefined): { label: string; className: string } | null {
-  if (!dateStr) return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due   = new Date(dateStr + 'T00:00:00');
-  const days  = Math.round((due.getTime() - today.getTime()) / 86_400_000);
-  if (days > 7)  return { label: `Entrega en ${days}d`, className: 'text-nodo-dim' };
-  if (days > 0)  return { label: `Entrega en ${days}d`, className: 'text-amber-500 dark:text-amber-400 font-semibold' };
-  if (days === 0) return { label: 'Entrega hoy',         className: 'text-nodo-success-tx font-semibold' };
-  return           { label: `Venció hace ${Math.abs(days)}d`, className: 'text-nodo-danger-tx font-semibold' };
+function toConfig(cs: ShopperCalcSettings): CalcConfig {
+  return {
+    freightMode: cs.freight_mode,
+    exchangeRate: cs.exchange_rate,
+    taxRate: cs.tax_rate,
+    defaultMarkupPct: cs.default_markup_pct,
+    suitcaseCostUsd: cs.suitcase_cost_usd ?? null,
+    suitcaseCapacityLbs: cs.suitcase_capacity_lbs ?? null,
+    boxCostUsd: cs.box_cost_usd ?? null,
+    boxLengthIn: cs.box_length_in ?? null,
+    boxWidthIn: cs.box_width_in ?? null,
+    boxHeightIn: cs.box_height_in ?? null,
+    dimUnit: cs.dim_unit,
+  };
 }
 
-type Tab = 'pedidos' | 'calculadora' | 'clientes' | 'viaje' | 'catalogo';
+const num = (v: string) => parseFloat((v || '').replace(',', '.')) || 0;
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// COMPONENTES AUXILIARES
-// ═══════════════════════════════════════════════════════════════════════════════
+// El backend serializa datetimes naive en UTC (sin 'Z'); hay que forzar UTC al parsear.
+const toMs = (iso?: string | null): number | null => {
+  if (!iso) return null;
+  const s = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + 'Z';
+  return new Date(s).getTime();
+};
 
-function StatusPill({
-  status, onClick, size = 'sm',
-}: { status: OrderStatus; onClick?: () => void; size?: 'sm' | 'md' }) {
-  const t = STATUS_THEME[status];
-  const Icon = STATUS_ICONS[status];
-  const classes = size === 'md'
-    ? 'px-3 py-1.5 text-sm gap-1.5'
-    : 'px-2.5 py-1 text-xs gap-1';
-  return (
-    <button
-      onClick={onClick}
-      disabled={!onClick}
-      className={`inline-flex items-center rounded-full font-semibold
-                  ${t.bg} ${t.text} ${t.darkBg} ${t.darkText} ${classes}
-                  ${onClick ? 'active:scale-95 active:opacity-80 transition-all cursor-pointer' : 'cursor-default'}`}
-    >
-      <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`} />
-      {STATUS_LABELS[status]}
-      {onClick && <Icon className="w-3 h-3 opacity-60" />}
-    </button>
+// Reloj vivo que sólo tickea cuando hace falta (tienda abierta / countdown visible).
+function useNow(active: boolean, ms = 1000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(t);
+  }, [active, ms]);
+  return now;
+}
+
+// Formatea el countdown de un drop: días si falta mucho, si no H:MM:SS / MM:SS.
+function fmtClock(diffMs: number): { big: string; small: string; urgent: boolean } {
+  if (diffMs <= 0) return { big: '0:00', small: 'cerrada', urgent: true };
+  const s = Math.floor(diffMs / 1000);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const p = (n: number) => String(n).padStart(2, '0');
+  if (d > 0) return { big: `${d}d ${h}h`, small: 'para el cierre', urgent: false };
+  if (h > 0) return { big: `${h}:${p(m)}:${p(sec)}`, small: 'para el cierre', urgent: false };
+  return { big: `${m}:${p(sec)}`, small: 'para el cierre', urgent: m < 10 };
+}
+
+// Link al pedido acumulado del cliente ("En mi maleta") — acceso rápido para compartir.
+const orderLink = (orderToken?: string | null): string | null =>
+  orderToken ? `${window.location.origin}/mi-maleta/${orderToken}` : null;
+
+// ── Lightbox de imagen ──────────────────────────────────────────────────────────
+// Portal a document.body: el contenido del BottomSheet vive dentro de .nodo-glass-panel
+// (backdrop-filter), que es bloque contenedor de los `fixed` → sin portal quedaría recortado.
+function ImageLightbox({ src, title, onClose }: { src: string; title?: string | null; onClose: () => void }) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [onClose]);
+  return createPortal(
+    <div onClick={onClose}
+      className="fixed inset-0 z-[80] bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+      <button onClick={onClose}
+        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 text-white flex items-center justify-center active:scale-90 transition-transform">
+        <X size={20} />
+      </button>
+      <img src={src} alt={title || ''} onClick={e => e.stopPropagation()}
+        className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl" />
+      {title && <p className="mt-4 text-white/90 text-sm font-bold text-center max-w-md line-clamp-2">{title}</p>}
+    </div>,
+    document.body,
   );
 }
 
-// CTA de marca — gradiente iris del tenant
-function IrisButton({
-  onClick, disabled, children,
-}: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="w-full h-[52px] rounded-full font-bold text-base flex items-center justify-center gap-2.5
-                 shadow-lg active:scale-[0.97] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
-      style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
-    >
-      {children}
-    </button>
+// ── Resultado del drop (clímax al cerrar) ────────────────────────────────────────
+type DropResultData = {
+  units: number;
+  reservations: number;
+  clients: number;
+  revenueGtq: number;
+  topTitle: string | null;
+  topUnits: number;
+};
+
+// Scope-drop: reservas vivas (no canceladas/no_disponible) creadas desde que abriste la
+// tienda. Es el "potencial" del drop — plata apartada, aún no cobrada (por eso el copy).
+function computeDropResult(
+  reservations: ShopperReservation[], items: ShopperCatalogItem[], openedMs: number,
+): DropResultData {
+  const byId = new Map(items.map(i => [i.id, i]));
+  let units = 0, revenueGtq = 0, count = 0;
+  const phones = new Set<string>();
+  const perItem = new Map<string, { title: string; units: number }>();
+  for (const r of reservations) {
+    if (!r.is_active || r.status === 'cancelada' || r.status === 'no_disponible') continue;
+    if (openedMs && (toMs(r.created_at) ?? 0) < openedMs - 5000) continue;
+    const it = byId.get(r.catalog_item_id);
+    const price = it?.price_gtq ?? r.item_price_gtq ?? 0;
+    units += r.quantity;
+    revenueGtq += price * r.quantity;
+    count += 1;
+    if (r.client_phone) phones.add(r.client_phone);
+    const title = it?.title ?? r.item_title ?? '—';
+    const p = perItem.get(r.catalog_item_id) ?? { title, units: 0 };
+    p.units += r.quantity; perItem.set(r.catalog_item_id, p);
+  }
+  let topTitle: string | null = null, topUnits = 0;
+  for (const p of perItem.values()) if (p.units > topUnits) { topUnits = p.units; topTitle = p.title; }
+  return { units, reservations: count, clients: phones.size, revenueGtq, topTitle, topUnits };
+}
+
+function DropResultModal({ data, onClose, onNewDrop }: {
+  data: DropResultData; onClose: () => void; onNewDrop: () => void;
+}) {
+  const empty = data.reservations === 0;
+  return createPortal(
+    <div className="fixed inset-0 z-[80] bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-5 animate-in fade-in duration-200">
+      <div className="w-full max-w-sm nodo-card-hero p-6 text-center animate-in zoom-in-95 duration-300">
+        <div className="text-5xl mb-2">{empty ? '🌱' : '🏁'}</div>
+        <h2 className="text-[26px] font-black text-nodo-ink leading-tight">
+          {empty ? 'Drop cerrado' : '¡Cerraste el drop!'}
+        </h2>
+        <p className="text-sm font-semibold text-nodo-sub mt-1">
+          {empty
+            ? 'Esta vez nadie apartó. Probá otro horario o avisá antes por WhatsApp.'
+            : `${data.clients} cliente${data.clients === 1 ? '' : 's'} apartaron en tu tienda 🎉`}
+        </p>
+
+        {!empty && (
+          <>
+            <div className="mt-5 rounded-2xl bg-nodo-primary text-nodo-on-primary p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-nodo-on-primary/80">Apartado en el drop</p>
+              <p className="text-[40px] font-black tabular-nums leading-none mt-1">{fmtGTQ(data.revenueGtq)}</p>
+              <p className="text-[11px] font-bold text-nodo-on-primary/80 mt-1">
+                {data.units} unidad{data.units === 1 ? '' : 'es'} · {data.reservations} reserva{data.reservations === 1 ? '' : 's'}
+              </p>
+            </div>
+            {data.topTitle && (
+              <div className="mt-2.5 rounded-2xl bg-nodo-inset p-3 text-left">
+                <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Lo más apartado</p>
+                <p className="text-sm font-black text-nodo-ink line-clamp-1 mt-0.5">{data.topTitle}</p>
+                <p className="text-[11px] font-bold text-nodo-sub tabular-nums">{data.topUnits} unidad{data.topUnits === 1 ? '' : 'es'}</p>
+              </div>
+            )}
+            <p className="text-[11px] font-semibold text-nodo-dim mt-3">
+              Confirmá y cobrá desde Reservas. Tu ganancia real vive en “Cómo te fue”.
+            </p>
+          </>
+        )}
+
+        <button onClick={() => { haptic.tap(); onNewDrop(); }}
+          className="nodo-btn-primary mt-5">
+          <Radio size={18} /> Abrir otro drop
+        </button>
+        <button onClick={onClose}
+          className="w-full h-12 mt-2 rounded-2xl font-black text-sm text-nodo-sub active:scale-95 transition-transform">
+          Listo
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// COMPONENTE PRINCIPAL
-// ═══════════════════════════════════════════════════════════════════════════════
-
 export function PersonalShopperApp(_props: AppProps) {
-  const [tab, setTab]                       = useState<Tab>('calculadora');
-  const [orders, setOrders]                 = useState<ShopperOrder[]>([]);
-  const [loading, setLoading]               = useState(true);
-  const [saving, setSaving]                 = useState(false);
-  const [error, setError]                   = useState<string | null>(null);
+  const [items, setItems] = useState<ShopperCatalogItem[]>([]);
+  const [settings, setSettings] = useState<ShopperCatalogSettings | null>(null);
+  const [calc, setCalc] = useState<ShopperCalcSettings | null>(null);
+  const [reservations, setReservations] = useState<ShopperReservation[]>([]);
+  const [coupons, setCoupons] = useState<ShopperCoupon[]>([]);
+  const [stats, setStats] = useState<ShopperStats | null>(null);
+  const [dropResult, setDropResult] = useState<DropResultData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
 
-  const [statusSheet, setStatusSheet]       = useState<ShopperOrder | null>(null);
-  const [quickSheet, setQuickSheet]         = useState(false);
-  const [editSheet, setEditSheet]           = useState<ShopperOrder | null>(null);
-  const [clientSheet, setClientSheet]       = useState<{ result: CalcResult } | null>(null);
-  const [trackingSheet, setTrackingSheet]   = useState<ShopperOrder | null>(null);
+  const [createListing, setCreateListing] = useState<ShopperListing | null>(null);
+  const [showOpen, setShowOpen] = useState(false);
+  const [showReservas, setShowReservas] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showClients, setShowClients] = useState(false);
+  const [showCoupons, setShowCoupons] = useState(false);
 
-  const [form, setForm]                     = useState(makeEmptyForm);
-  const [quickClient, setQuickClient]       = useState('');
-  const [quickProduct, setQuickProduct]     = useState('');
-  const [quickPrice, setQuickPrice]         = useState('');
-  const [clientName, setClientName]         = useState('');
-  const [clientPhone, setClientPhone]       = useState('');
-  const [productNameInput, setProductNameInput] = useState('');
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
+  const flash = useCallback((kind: 'ok' | 'err', msg: string) => {
+    setToast({ kind, msg });
+    setTimeout(() => setToast(null), 2600);
+  }, []);
 
-  const [search, setSearch]                 = useState('');
-  const [filterStatus, setFilterStatus]     = useState<OrderStatus | 'todos'>('todos');
-
-  const loadOrders = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(async () => {
     try {
-      setOrders(await personalShopperService.list());
+      const [its, st, cs, res, cps, sts] = await Promise.all([
+        svc.list(), svc.getSettings(), svc.getCalcSettings(), svc.listReservations(),
+        svc.listCoupons().catch(() => [] as ShopperCoupon[]),
+        svc.getStats().catch(() => null),
+      ]);
+      setItems(its); setSettings(st); setCalc(cs); setReservations(res); setCoupons(cps);
+      setStats(sts);
     } catch {
-      setError('No se pudieron cargar los pedidos.');
+      flash('err', 'No se pudo cargar tu tienda.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [flash]);
+  useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => { loadOrders(); }, [loadOrders]);
+  const rawLive = settings?.store_status === 'live';
+  const now = useNow(rawLive || loading === false);   // tickea mientras haya tienda abierta
+  const closesMs = toMs(settings?.store_closes_at);
+  const timedOut = rawLive && closesMs != null && closesMs <= now;
+  const storeLive = rawLive && !timedOut;
 
-  const handleQuickStatus = async (orderId: string, newStatus: OrderStatus) => {
-    setStatusSheet(null);
+  const pendingCount = reservations.filter(r => r.status === 'pendiente' && r.is_active).length;
+  const activeCoupons = coupons.filter(c => c.is_active).length;
+  const couponRedeemed = coupons.reduce((s, c) => s + c.redeemed_count, 0);
+  const openedMs = toMs(settings?.store_opened_at) ?? 0;
+
+  // Reporting HONESTO: viene del endpoint /stats (baldes realizado/en firme/potencial,
+  // neteados de cupón). El summary local viejo mentía — mezclaba pendiente con cobrado y
+  // no restaba cupones. `hasStats` = hay al menos una línea viva para mostrar la tarjeta.
+  const assumedLines = stats
+    ? stats.realized.assumed_cost_lines + stats.committed.assumed_cost_lines + stats.potential.assumed_cost_lines
+    : 0;
+  const hasStats = !!stats
+    && (stats.realized.lines + stats.committed.lines + stats.potential.lines) > 0;
+
+  // Ítems del drop actual = publicados 'live' durante esta sesión de tienda.
+  const liveItems = useMemo(
+    () => items.filter(i => i.listing === 'live' && i.is_published && i.is_active
+      && (!openedMs || (toMs(i.published_at) ?? Infinity) >= openedMs - 5000)),
+    [items, openedMs],
+  );
+  const catalogItems = useMemo(
+    () => items.filter(i => i.listing === 'catalog' && i.is_active),
+    [items],
+  );
+
+  const publicUrl = settings ? `${window.location.origin}/catalogo/${settings.public_token}` : '';
+  const share = useCallback(async () => {
+    haptic.tap();
+    const ok = await navigator.share?.({ title: 'Mi tienda en vivo', url: publicUrl }).then(() => true).catch(() => false);
+    if (!ok) { await navigator.clipboard?.writeText(publicUrl); flash('ok', 'Enlace copiado'); }
+  }, [publicUrl, flash]);
+
+  const openStore = useCallback(async (storeName: string, minutes: number | null) => {
+    setBusy(true);
     try {
-      const updated = await personalShopperService.update(orderId, { status: newStatus });
-      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      const st = await svc.openStore({ store_name: storeName || null, minutes });
+      setSettings(st); setShowOpen(false);
+      haptic.done();
+      flash('ok', '¡Tienda abierta! 🔴 En vivo');
     } catch {
-      setError('No se pudo actualizar el estado.');
-    }
-  };
+      flash('err', 'No se pudo abrir la tienda.');
+    } finally { setBusy(false); }
+  }, [flash]);
 
-  const handleQuickCreate = async () => {
-    if (!quickClient.trim() || !quickProduct.trim()) return;
-    setSaving(true);
+  const closeStore = useCallback(async () => {
+    if (!confirm('¿Cerrar la tienda? Ya no entran reservas nuevas. Las que ya hiciste quedan firmes.')) return;
+    setBusy(true);
+    // Snapshot de la ventana del drop ANTES de que settings pase a cerrado (openedMs se
+    // deriva de settings). El resultado es scope-drop: reservas creadas desde que abriste.
+    const opened = toMs(settings?.store_opened_at) ?? 0;
     try {
-      const created = await personalShopperService.create({
-        client_name:         quickClient.trim(),
-        product_description: quickProduct.trim(),
-        quoted_price:        quickPrice !== '' ? Number(quickPrice) : null,
-        status:              'pendiente',
-      });
-      setOrders(prev => [created, ...prev]);
-      setQuickClient(''); setQuickProduct(''); setQuickPrice('');
-      setQuickSheet(false);
+      const st = await svc.closeStore();
+      setSettings(st);
+      haptic.done();
+      const result = computeDropResult(reservations, items, opened);
+      setDropResult(result);   // clímax: pantalla "Resultado del drop"
+      void load();             // refresca stats para el reporting de arriba
     } catch {
-      setError('Error al crear el pedido.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openEdit = (order: ShopperOrder) => {
-    setForm({
-      client_name:         order.client_name,
-      client_phone:        order.client_phone ?? '',
-      product_description: order.product_description,
-      quantity:            String(order.quantity),
-      unit:                order.unit,
-      delivery_date:       order.delivery_date ?? defaultDeliveryDate(),
-      status:              order.status,
-      quoted_price:        order.quoted_price != null ? String(order.quoted_price) : '',
-      notes:               order.notes ?? '',
-    });
-    setEditSheet(order);
-  };
-
-  const handleNextStatus = async (order: ShopperOrder) => {
-    const next = NEXT_STATUS[order.status];
-    if (!next) return;
-    try {
-      const updated = await personalShopperService.update(order.id, { status: next });
-      setOrders(prev => prev.map(o => o.id === order.id ? updated : o));
-    } catch {
-      setError('No se pudo actualizar el estado.');
-    }
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editSheet) return;
-    if (!form.client_name.trim() || !form.product_description.trim()) return;
-    setSaving(true);
-    try {
-      const payload = {
-        client_name:         form.client_name.trim(),
-        client_phone:        form.client_phone.trim() || null,
-        product_description: form.product_description.trim(),
-        quantity:            Number(form.quantity) || 1,
-        unit:                form.unit.trim() || 'unidades',
-        delivery_date:       form.delivery_date || null,
-        status:              form.status,
-        quoted_price:        form.quoted_price !== '' ? Number(form.quoted_price) : null,
-        notes:               form.notes.trim() || null,
-      };
-      const updated = await personalShopperService.update(editSheet.id, payload);
-      setOrders(prev => prev.map(o => o.id === editSheet.id ? updated : o));
-      setEditSheet(null);
-    } catch {
-      setError('Error al guardar los cambios.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar este pedido?')) return;
-    try {
-      await personalShopperService.remove(id);
-      setOrders(prev => prev.filter(o => o.id !== id));
-      setEditSheet(null);
-    } catch {
-      setError('No se pudo eliminar el pedido.');
-    }
-  };
-
-  const handleTrackingUpdate = (updated: ShopperOrder) => {
-    setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
-    setTrackingSheet(updated);
-  };
-
-  const handleSaveQuote = (result: CalcResult) => {
-    setClientSheet({ result });
-    setProductNameInput(''); setClientName(''); setClientPhone('');
-  };
-
-  const confirmSaveQuote = async () => {
-    if (!clientSheet || !clientName.trim() || !productNameInput.trim()) return;
-    setSaving(true);
-    try {
-      const { result } = clientSheet;
-      const created = await personalShopperService.create({
-        client_name:         clientName.trim(),
-        client_phone:        clientPhone.trim() || null,
-        product_description: productNameInput.trim(),
-        quantity:            1,
-        unit:                'unidades',
-        status:              'cotizado',
-        quoted_price:        result.sale_price_gtq,
-        calc: {
-          product_price_usd: result.product_price_usd,
-          tax_usd:           result.tax_usd,
-          shipping_usd:      result.shipping_usd,
-          total_cost_usd:    result.total_cost_usd,
-          total_cost_gtq:    result.total_cost_gtq,
-          profit_gtq:        result.profit_gtq,
-          margin_pct:        result.margin_pct,
-          exchange_rate:     result.exchange_rate,
-          tax_rate:          result.tax_rate,
-          weight_lbs:        result.weight_lbs,
-          cost_per_lb:       result.cost_per_lb,
-        },
-      });
-      setOrders(prev => [created, ...prev]);
-      setClientSheet(null);
-      setTab('pedidos');
-    } catch {
-      setError('No se pudo guardar la cotización.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const statusCounts = orders.reduce((acc, o) => {
-    acc[o.status] = (acc[o.status] ?? 0) + 1;
-    return acc;
-  }, {} as Partial<Record<OrderStatus, number>>);
-
-  const filtered = orders.filter(o => {
-    const q = search.toLowerCase();
-    const matchSearch = !q
-      || o.client_name.toLowerCase().includes(q)
-      || o.product_description.toLowerCase().includes(q);
-    return matchSearch && (filterStatus === 'todos' || o.status === filterStatus);
-  });
-
-  const activos      = orders.filter(o => o.status !== 'cancelado' && o.status !== 'entregado');
-  const valorActivos = activos.reduce((s, o) => s + (o.quoted_price ?? 0), 0);
-
-  const invertido = activos.reduce((s, o) => s + (o.calc_total_cost_gtq ?? 0), 0);
-  const ganancia  = activos.reduce((s, o) => {
-    if (o.calc_profit_gtq != null) return s + o.calc_profit_gtq;
-    if (o.quoted_price != null && o.calc_total_cost_gtq != null)
-      return s + (o.quoted_price - o.calc_total_cost_gtq);
-    return s;
-  }, 0);
-  const margenAgregado = valorActivos > 0 ? (ganancia / valorActivos) * 100 : 0;
+      flash('err', 'No se pudo cerrar la tienda.');
+    } finally { setBusy(false); }
+  }, [flash, settings, reservations, items, load]);
 
   return (
     <>
-      <div className="flex flex-col gap-5 pb-6 w-full max-w-5xl mx-auto">
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[70] flex items-center gap-3 text-sm font-bold px-4 py-3 rounded-2xl shadow-lg max-w-xs
+          ${toast.kind === 'ok' ? 'bg-nodo-success-bg border border-nodo-success-bd text-nodo-success-tx'
+                                : 'bg-nodo-danger-bg border border-nodo-danger-bd text-nodo-danger-tx'}`}>
+          {toast.kind === 'ok' ? <Check size={16} /> : <AlertTriangle size={16} />}
+          <span>{toast.msg}</span>
+        </div>
+      )}
 
-        {/* ─────────── HEADER + TABS (una sola fila en desktop) ─────────── */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
-              style={{ background: 'var(--nodo-iris)', boxShadow: 'var(--nodo-shadow-fab)' }}
-            >
-              <ShoppingBag className="w-6 h-6" style={{ color: 'var(--nodo-on-iris)' }} />
-            </div>
-            <div>
-              <h1 className="nodo-module-title">Personal Shopper</h1>
-              <p className="nodo-module-subtitle">
-                {activos.length === 0
-                  ? 'Sin pedidos activos'
-                  : `${activos.length} ${activos.length === 1 ? 'pedido activo' : 'pedidos activos'}`}
-                {valorActivos > 0 && ` · ${fmt(valorActivos)}`}
-              </p>
-            </div>
+      <div className="flex flex-col gap-5 pb-28">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-[28px] font-black text-nodo-ink leading-tight flex items-center gap-2">
+              <ShoppingBag size={26} className="text-nodo-primary" /> Mi Tienda
+            </h1>
+            <p className="text-nodo-sub text-sm font-medium mt-0.5">
+              {storeLive ? 'Estás en vivo — el reloj corre' : 'Abrí tu tienda o publicá en tu catálogo'}
+            </p>
           </div>
-          <div className="overflow-x-auto scrollbar-none -mx-1 sm:mx-0">
-            <SegmentedControl
-              options={[
-                { value: 'viaje',       label: 'Viaje',     icon: <MapPin size={13} /> },
-                { value: 'catalogo',    label: 'Catálogo',  icon: <Globe size={13} /> },
-                { value: 'pedidos',     label: 'Pedidos',   icon: <ShoppingBag size={13} /> },
-                { value: 'calculadora', label: 'Calc',      icon: <Calculator size={13} /> },
-                { value: 'clientes',    label: 'Clientes',  icon: <Users size={13} /> },
-              ]}
-              value={tab}
-              onChange={v => setTab(v as Tab)}
-              size="sm"
-              className="min-w-max sm:min-w-0 sm:w-full sm:max-w-[520px]"
-            />
+          <div className="flex items-center gap-2">
+            <button onClick={() => { haptic.tap(); setShowReservas(true); }}
+              className="relative w-11 h-11 rounded-2xl bg-nodo-card border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 transition-transform">
+              <Bell size={18} />
+              {pendingCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-nodo-primary text-nodo-on-primary text-[10px] font-black flex items-center justify-center">{pendingCount}</span>
+              )}
+            </button>
+            <button onClick={() => { haptic.tap(); setShowCoupons(true); }}
+              className="relative w-11 h-11 rounded-2xl bg-nodo-card border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 transition-transform">
+              <Ticket size={18} />
+              {activeCoupons > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-nodo-success-tx text-white text-[10px] font-black flex items-center justify-center">{activeCoupons}</span>
+              )}
+            </button>
+            <button onClick={() => { haptic.tap(); setShowSettings(true); }}
+              className="w-11 h-11 rounded-2xl bg-nodo-card border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 transition-transform">
+              <Settings2 size={18} />
+            </button>
           </div>
         </div>
 
-        {/* ─────────── TAB: VIAJE ─────────── */}
-        {tab === 'viaje' && <TripMode />}
-
-        {/* ─────────── TAB: CATÁLOGO ─────────── */}
-        {tab === 'catalogo' && <CatalogMode />}
-
-        {/* ─────────── TAB: CALCULADORA ─────────── */}
-        {tab === 'calculadora' && (
-          <ShopperCalculator onSaveQuote={handleSaveQuote} />
-        )}
-
-        {/* ─────────── TAB: PEDIDOS ─────────── */}
-        {tab === 'pedidos' && (
+        {loading ? (
+          <div className="nodo-spinner-container"><Loader2 className="w-8 h-8 animate-spin text-nodo-sub" /></div>
+        ) : storeLive ? (
+          /* ══════════ TIENDA EN VIVO ══════════ */
           <>
-          {/* ── KPIs financieros (pedidos activos) ── */}
-          {orders.length > 0 && (
-            <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
-              <MoneyKpi
-                label="Invertido"
-                value={invertido}
-                sub={`${activos.length} ${activos.length === 1 ? 'pedido activo' : 'pedidos activos'}`}
-                chart="bars"
-              />
-              <MoneyKpi
-                label="Pendiente"
-                value={valorActivos}
-                sub="por cobrar"
-                chart="area"
-              />
-              <MoneyKpi
-                label="Ganancia"
-                value={ganancia}
-                sub={ganancia > 0 ? `margen ${margenAgregado.toFixed(0)}%` : 'proyectada'}
-                chart="area"
-                trend={[5, 8, 7, 11, 10, 14, 15, 18]}
-              />
+            <LiveHero
+              storeName={settings?.store_name}
+              closesMs={closesMs} now={now}
+              items={liveItems.length}
+              reserving={reservations.filter(r => r.is_active && r.status === 'pendiente').length}
+              onClose={closeStore} onShare={share} busy={busy}
+            />
+
+            <div className="flex items-center justify-between">
+              <p className="nodo-section-label !mb-0">En el drop ({liveItems.length})</p>
+              {liveItems.length > 0 && (
+                <button onClick={share} className="text-xs font-black text-nodo-primary flex items-center gap-1 active:scale-95">
+                  <Share2 size={13} /> Compartir
+                </button>
+              )}
             </div>
-          )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-5 items-start">
-
-            {/* ── Panel de control (sticky en desktop) ── */}
-            <div className="nodo-card p-4 flex flex-col gap-4 xl:sticky xl:top-4">
-
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-nodo-dim pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Buscar cliente o producto"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="nodo-input"
-                  style={{ paddingLeft: '2.75rem', paddingRight: '2.75rem' }}
-                />
-                {search && (
-                  <button
-                    onClick={() => setSearch('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-nodo-raised
-                               flex items-center justify-center active:scale-90 transition-transform"
-                  >
-                    <X className="w-3.5 h-3.5 text-nodo-sub" />
-                  </button>
-                )}
+            {liveItems.length === 0 ? (
+              <div className="nodo-empty-state py-12">
+                <Zap size={38} className="text-nodo-primary mb-3" />
+                <p className="text-sm font-bold text-nodo-ink">Publicá lo primero</p>
+                <p className="text-xs text-nodo-sub mt-1">Foto → precio → cantidad → listo</p>
               </div>
+            ) : (
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                {liveItems.map(it => (
+                  <LiveItemCard key={it.id} item={it}
+                    onDelete={async () => {
+                      if (!confirm(`¿Quitar "${it.title}" del drop?`)) return;
+                      await svc.remove(it.id); await load(); flash('ok', 'Quitado');
+                    }} />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          /* ══════════ TIENDA CERRADA ══════════ */
+          <>
+            {timedOut && (
+              <div className="nodo-card p-4 flex items-center gap-3 bg-nodo-warn-bg border-nodo-warn-bd">
+                <Clock size={20} className="text-nodo-warn-tx shrink-0" />
+                <p className="flex-1 text-sm font-bold text-nodo-warn-tx">Se acabó el tiempo del último drop.</p>
+                <button onClick={closeStore} disabled={busy}
+                  className="h-9 px-3 rounded-xl bg-nodo-warn-tx text-white text-xs font-black active:scale-95 disabled:opacity-40">
+                  Cerrar
+                </button>
+              </div>
+            )}
 
-              {/* Filter chips — scroll horizontal en mobile, wrap en desktop */}
-              <div className="overflow-x-auto scrollbar-none -mx-1 xl:mx-0 xl:overflow-visible">
-                <div className="flex gap-2 px-1 pb-1 w-max xl:w-auto xl:flex-wrap xl:px-0">
-                  <FilterChip
-                    label="Todos"
-                    count={orders.length}
-                    active={filterStatus === 'todos'}
-                    onClick={() => setFilterStatus('todos')}
-                  />
-                  {ALL_STATUSES.map(s => (
-                    <FilterChip
-                      key={s}
-                      label={STATUS_LABELS[s]}
-                      count={statusCounts[s] ?? 0}
-                      active={filterStatus === s}
-                      status={s}
-                      onClick={() => setFilterStatus(filterStatus === s ? 'todos' : s)}
-                    />
-                  ))}
+            {/* Hero: abrir tienda en vivo */}
+            <button onClick={() => { haptic.tap(); setShowOpen(true); }}
+              className="nodo-card-hero p-6 bg-nodo-primary text-nodo-on-primary text-left active:scale-[0.98] transition-transform"
+              style={{ boxShadow: 'var(--nodo-shadow-hero)' }}>
+              <div className="flex items-center gap-2 text-nodo-on-primary/90 mb-2">
+                <Radio size={18} />
+                <span className="text-[11px] font-black uppercase tracking-[0.14em]">Tienda en vivo</span>
+              </div>
+              <p className="text-[26px] font-black leading-tight">Abrir tienda 🔴</p>
+              <p className="text-sm font-semibold text-nodo-on-primary/80 mt-1">
+                Estás en la tienda ahora. Publicá rápido y dale a tus clientes un reloj para reservar.
+              </p>
+              <span className="inline-flex items-center gap-1.5 mt-4 h-11 px-5 rounded-full bg-nodo-on-primary text-nodo-primary font-black text-sm">
+                <Play size={16} /> Empezar el drop
+              </span>
+            </button>
+
+            {/* Cómo te fue — reporting honesto (endpoint /stats): realizado (plata de
+                verdad) arriba, pipeline en firme/potencial abajo. Todo neteado de cupón. */}
+            {hasStats && stats && (
+              <div className="nodo-card p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="nodo-section-label !mb-0">Cómo te fue</p>
+                  {assumedLines > 0 && (
+                    <span className="text-[10px] font-bold text-nodo-warn-tx">{assumedLines} sin costo real</span>
+                  )}
+                </div>
+
+                {/* Realizado — entregado, la única plata que cuenta */}
+                <div className="rounded-2xl bg-nodo-success-bg p-3.5 mb-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold text-nodo-success-tx/80 uppercase tracking-wide">Realizado · entregado</p>
+                    {stats.realized.orders > 0 && (
+                      <span className="text-[10px] font-bold text-nodo-success-tx/70 tabular-nums">
+                        {stats.realized.orders} pedido{stats.realized.orders === 1 ? '' : 's'}
+                      </span>
+                    )}
+                  </div>
+                  {stats.realized.lines > 0 ? (
+                    <>
+                      <div className="flex items-baseline gap-2 mt-0.5">
+                        <p className="text-[28px] font-black text-nodo-success-tx tabular-nums leading-none">{fmtGTQ(stats.realized.profit_gtq)}</p>
+                        <span className="text-[11px] font-bold text-nodo-success-tx/70">ganancia neta</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 text-[11px] font-bold text-nodo-success-tx/80 tabular-nums">
+                        <span>Vendido {fmtGTQ(stats.realized.net_revenue_gtq)}</span>
+                        {stats.realized.coupon_gtq > 0 && <span>· −{fmtGTQ(stats.realized.coupon_gtq)} cupón</span>}
+                        {stats.exchange_rate > 0 && <span>· {fmtUSD(stats.realized_profit_usd)}</span>}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-[13px] font-bold text-nodo-success-tx/80 mt-1">
+                      Se llena al marcar pedidos como entregados 🎉
+                    </p>
+                  )}
+                </div>
+
+                {/* Pipeline: en firme + potencial (neto de cupón) */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="rounded-2xl bg-nodo-inset p-3">
+                    <p className="text-[10px] font-bold text-nodo-sub uppercase tracking-wide">En firme</p>
+                    <p className="text-lg font-black text-nodo-ink tabular-nums leading-tight">{fmtGTQ(stats.committed.net_revenue_gtq)}</p>
+                    <p className="text-[10px] font-bold text-nodo-sub tabular-nums">{stats.committed.units} u · gana {fmtGTQ(stats.committed.profit_gtq)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-nodo-inset p-3">
+                    <p className="text-[10px] font-bold text-nodo-sub uppercase tracking-wide">Potencial</p>
+                    <p className="text-lg font-black text-nodo-ink tabular-nums leading-tight">{fmtGTQ(stats.potential.net_revenue_gtq)}</p>
+                    <p className="text-[10px] font-bold text-nodo-sub tabular-nums">{stats.potential.units} u · gana {fmtGTQ(stats.potential.profit_gtq)}</p>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Nuevo pedido — botón visible en desktop (el FAB es de mobile) */}
-              <button
-                onClick={() => setQuickSheet(true)}
-                className="hidden xl:flex w-full h-12 rounded-full font-bold text-sm items-center justify-center gap-2
-                           shadow-lg active:scale-[0.97] transition-transform"
-                style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
-              >
-                <Plus className="w-4 h-4" strokeWidth={2.5} />
-                Nuevo pedido
+            {/* Accesos */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <QuickCard icon={<Bell size={18} />} label="Reservas" value={reservations.filter(r => r.is_active && r.status !== 'cancelada').length} onClick={() => setShowReservas(true)} />
+              <QuickCard icon={<Users size={18} />} label="Clientes" value={new Set(reservations.map(r => r.client_phone)).size} onClick={() => setShowClients(true)} />
+              <QuickCard icon={<Package size={18} />} label="Catálogo" value={catalogItems.filter(i => i.is_published).length} onClick={() => { if (settings) share(); }} />
+              <QuickCard icon={<Ticket size={18} />} label="Cupones" value={activeCoupons} onClick={() => setShowCoupons(true)} />
+            </div>
+
+            {/* Catálogo Amazon (evergreen) */}
+            <div className="flex items-center justify-between">
+              <p className="nodo-section-label !mb-0">Catálogo Amazon</p>
+              <button onClick={() => { haptic.tap(); setCreateListing('catalog'); }}
+                className="text-xs font-black text-nodo-primary flex items-center gap-1 active:scale-95">
+                <Plus size={14} /> Agregar
               </button>
             </div>
-
-            {/* ── Lista de pedidos ── */}
-            <div className="flex flex-col gap-4 min-w-0">
-
-              {/* Error */}
-              {error && (
-                <div className="bg-nodo-danger-bg border border-nodo-danger-bd rounded-2xl px-4 py-3
-                                flex items-center gap-3 text-sm text-nodo-danger-tx">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span className="flex-1 font-semibold">{error}</span>
-                  <button
-                    onClick={() => setError(null)}
-                    className="w-7 h-7 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {loading ? (
-                <div className="nodo-spinner-container flex-col gap-3">
-                  <Loader2 className="w-8 h-8 animate-spin text-nodo-sub" />
-                  <p className="text-sm text-nodo-dim">Cargando pedidos…</p>
-                </div>
-              ) : filtered.length === 0 ? (
-                <EmptyState hasOrders={orders.length > 0} onCreate={() => setQuickSheet(true)} />
-              ) : (
-                <>
-                  <div className="flex items-baseline justify-between px-1">
-                    <p className="nodo-section-label !mb-0">
-                      {filterStatus === 'todos' ? 'Todos los pedidos' : STATUS_LABELS[filterStatus]}
-                    </p>
-                    <span className="text-xs font-bold text-nodo-dim tabular-nums">
-                      {filtered.length} {filtered.length === 1 ? 'pedido' : 'pedidos'}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-2.5">
-                    {filtered.map(order => (
-                      <OrderCard
-                        key={order.id}
-                        order={order}
-                        onStatusClick={() => setStatusSheet(order)}
-                        onCardClick={() => openEdit(order)}
-                        onTrackingClick={() => setTrackingSheet(order)}
-                        onNextStatus={() => handleNextStatus(order)}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+            {catalogItems.length === 0 ? (
+              <div className="nodo-empty-state py-10">
+                <Link2 size={34} className="text-nodo-dim mb-2" />
+                <p className="text-sm font-bold text-nodo-ink">Catálogo vacío</p>
+                <p className="text-xs text-nodo-sub mt-1">Pegá un link de Amazon y publicalo por unos días</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                {catalogItems.map(it => (
+                  <CatalogItemCard key={it.id} item={it} now={now}
+                    onDelete={async () => {
+                      if (!confirm(`¿Quitar "${it.title}"?`)) return;
+                      await svc.remove(it.id); await load(); flash('ok', 'Quitado');
+                    }}
+                    onTogglePublish={async () => {
+                      await svc.update(it.id, { is_published: !it.is_published }); await load();
+                    }} />
+                ))}
+              </div>
+            )}
           </>
-        )}
-
-        {/* ─────────── TAB: CLIENTES ─────────── */}
-        {tab === 'clientes' && (
-          <ClientesPanel
-            orders={orders}
-            onNewOrder={(clientName) => {
-              setQuickClient(clientName);
-              setQuickSheet(true);
-            }}
-            onOpenOrder={openEdit}
-          />
-        )}
-
-        {/* ─────────── FAB ─────────── */}
-        {tab === 'pedidos' && (
-          <button
-            onClick={() => setQuickSheet(true)}
-            className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full xl:hidden
-                       flex items-center justify-center active:scale-90 transition-transform"
-            style={{ background: 'var(--nodo-iris)', boxShadow: 'var(--nodo-shadow-fab)' }}
-            aria-label="Nuevo pedido"
-          >
-            <Plus className="w-7 h-7" style={{ color: 'var(--nodo-on-iris)' }} strokeWidth={2.5} />
-          </button>
         )}
       </div>
 
-      {/* ═══════════ BOTTOM SHEET: SELECCIÓN DE ESTADO ═══════════ */}
-      <BottomSheet open={!!statusSheet} onClose={() => setStatusSheet(null)} title="Cambiar estado">
-        {statusSheet && (
-          <>
-            <div className="bg-nodo-inset rounded-2xl p-4 mb-4 flex items-center gap-3">
-              <Avatar name={statusSheet.client_name} />
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-nodo-ink truncate">{statusSheet.client_name}</p>
-                <p className="text-sm text-nodo-sub truncate">{statusSheet.product_description}</p>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              {ALL_STATUSES.map(s => {
-                const t = STATUS_THEME[s];
-                const Icon = STATUS_ICONS[s];
-                const isCurrent = statusSheet.status === s;
-                return (
-                  <button
-                    key={s}
-                    onClick={() => handleQuickStatus(statusSheet.id, s)}
-                    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl
-                                transition-all active:scale-[0.98]
-                                ${isCurrent
-                                  ? `${t.bg} ${t.darkBg} ring-2 ${t.ring} ${t.darkRing}`
-                                  : 'bg-nodo-inset hover:bg-nodo-raised'}`}
-                  >
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center
-                                     ${t.bg} ${t.darkBg}`}>
-                      <Icon className={`w-5 h-5 ${t.text} ${t.darkText}`} />
-                    </div>
-                    <span className={`flex-1 text-left font-semibold
-                                      ${isCurrent ? `${t.text} ${t.darkText}` : 'text-nodo-ink'}`}>
-                      {STATUS_LABELS[s]}
-                    </span>
-                    {isCurrent && (
-                      <div className={`w-6 h-6 rounded-full ${t.dot} flex items-center justify-center`}>
-                        <Check className="w-4 h-4 text-white" strokeWidth={3} />
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </BottomSheet>
+      {/* FAB contextual: publicar en vivo cuando la tienda está abierta */}
+      {storeLive && (
+        <button onClick={() => { haptic.tap(); setCreateListing('live'); }}
+          className="fixed bottom-24 right-5 z-40 h-16 pl-5 pr-6 rounded-full bg-nodo-primary text-nodo-on-primary flex items-center gap-2 font-black active:scale-90 transition-transform"
+          style={{ boxShadow: 'var(--nodo-shadow-fab)' }}>
+          <Plus size={26} strokeWidth={2.6} /> Publicar
+        </button>
+      )}
 
-      {/* ═══════════ BOTTOM SHEET: NUEVO PEDIDO RÁPIDO ═══════════ */}
-      <BottomSheet
-        open={quickSheet}
-        onClose={() => setQuickSheet(false)}
-        title="Nuevo pedido"
-        footer={
-          <IrisButton
-            onClick={handleQuickCreate}
-            disabled={saving || !quickClient.trim() || !quickProduct.trim()}
-          >
-            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-            Crear pedido
-          </IrisButton>
-        }
-      >
-        <SheetInput
-          label="Nombre del cliente"
-          required
-          value={quickClient}
-          onChange={setQuickClient}
-          placeholder="Ej. María García"
-          autoFocus
-          onEnter={handleQuickCreate}
+      {/* Sheets */}
+      {calc && createListing && settings && (
+        <CreateSheet
+          listing={createListing}
+          open={!!createListing}
+          onClose={() => setCreateListing(null)}
+          config={toConfig(calc)}
+          onCreated={async () => { setCreateListing(null); await load(); haptic.done(); flash('ok', '¡Publicado! 🎉'); }}
+          onError={(m) => flash('err', m)}
         />
-        <SheetInput
-          label="¿Qué necesita?"
-          required
-          value={quickProduct}
-          onChange={setQuickProduct}
-          placeholder="Ej. Pastel de chocolate"
-          onEnter={handleQuickCreate}
-        />
-        <SheetInput
-          label="Precio cotizado (opcional)"
-          value={quickPrice}
-          onChange={setQuickPrice}
-          type="number"
-          placeholder="Q 0.00"
-          onEnter={handleQuickCreate}
-        />
-        <p className="text-xs text-nodo-dim px-1">
-          Los detalles adicionales (teléfono, fecha, notas) se completan editando el pedido.
-        </p>
-      </BottomSheet>
-
-      {/* ═══════════ BOTTOM SHEET: EDITAR PEDIDO ═══════════ */}
-      <BottomSheet
-        open={!!editSheet}
-        onClose={() => setEditSheet(null)}
-        title="Editar pedido"
-        footer={editSheet ? (
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleDelete(editSheet.id)}
-              className="w-[52px] h-[52px] shrink-0 rounded-full bg-nodo-danger-bg border border-nodo-danger-bd
-                         text-nodo-danger-tx flex items-center justify-center
-                         active:scale-[0.95] transition-transform"
-              aria-label="Eliminar pedido"
-            >
-              <Trash2 className="w-5 h-5" />
-            </button>
-            <IrisButton
-              onClick={handleSaveEdit}
-              disabled={saving || !form.client_name.trim() || !form.product_description.trim()}
-            >
-              {saving && <Loader2 className="w-5 h-5 animate-spin" />}
-              Guardar cambios
-            </IrisButton>
-          </div>
-        ) : undefined}
-      >
-        {editSheet && (
-          <>
-            <div className="bg-nodo-inset rounded-2xl p-4 flex items-center gap-3">
-              <Avatar name={form.client_name || editSheet.client_name} />
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-nodo-ink truncate">
-                  {form.client_name || 'Sin nombre'}
-                </p>
-                <StatusPill status={form.status} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <SheetInput
-                label="Cliente"
-                required
-                value={form.client_name}
-                onChange={v => setForm(f => ({ ...f, client_name: v }))}
-              />
-              <SheetInput
-                label="Teléfono"
-                value={form.client_phone}
-                onChange={v => setForm(f => ({ ...f, client_phone: v }))}
-                placeholder="5555-1234"
-              />
-            </div>
-
-            <SheetTextarea
-              label="Descripción del pedido"
-              required
-              value={form.product_description}
-              onChange={v => setForm(f => ({ ...f, product_description: v }))}
-            />
-
-            <div className="grid grid-cols-2 gap-3">
-              <SheetInput
-                label="Cantidad"
-                type="number"
-                value={form.quantity}
-                onChange={v => setForm(f => ({ ...f, quantity: v }))}
-              />
-              <SheetInput
-                label="Unidad"
-                value={form.unit}
-                onChange={v => setForm(f => ({ ...f, unit: v }))}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <SheetInput
-                label="Fecha entrega"
-                type="date"
-                value={form.delivery_date}
-                onChange={v => setForm(f => ({ ...f, delivery_date: v }))}
-              />
-              <SheetInput
-                label="Precio (Q)"
-                type="number"
-                value={form.quoted_price}
-                onChange={v => setForm(f => ({ ...f, quoted_price: v }))}
-                placeholder="0.00"
-              />
-            </div>
-
-            <div>
-              <label className="nodo-label">Estado</label>
-              <div className="grid grid-cols-2 gap-2">
-                {ALL_STATUSES.map(s => {
-                  const t = STATUS_THEME[s];
-                  const isActive = form.status === s;
-                  return (
-                    <button
-                      key={s}
-                      onClick={() => setForm(f => ({ ...f, status: s }))}
-                      className={`px-3 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.97]
-                                  ${isActive
-                                    ? `${t.bg} ${t.text} ${t.darkBg} ${t.darkText} ring-2 ${t.ring} ${t.darkRing}`
-                                    : 'bg-nodo-inset text-nodo-sub hover:bg-nodo-raised'}`}
-                    >
-                      {STATUS_LABELS[s]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <SheetTextarea
-              label="Notas"
-              value={form.notes}
-              onChange={v => setForm(f => ({ ...f, notes: v }))}
-              placeholder="Alergias, preferencias…"
-            />
-          </>
-        )}
-      </BottomSheet>
-
-      {/* ═══════════ BOTTOM SHEET: TRACKING ═══════════ */}
-      <BottomSheet
-        open={!!trackingSheet}
-        onClose={() => setTrackingSheet(null)}
-        title={trackingSheet ? `Rastreo — ${trackingSheet.client_name}` : 'Rastreo'}
-      >
-        {trackingSheet && (
-          <>
-            <div className="bg-nodo-inset rounded-2xl px-4 py-3 flex items-center gap-3">
-              <Avatar name={trackingSheet.client_name} size={40} />
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-nodo-ink text-sm truncate">
-                  {trackingSheet.product_description}
-                </p>
-                {trackingSheet.quoted_price != null && (
-                  <p className="text-xs text-nodo-sub mt-0.5">
-                    {fmt(trackingSheet.quoted_price)}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <TrackingTimeline
-              order={trackingSheet}
-              onUpdate={handleTrackingUpdate}
-            />
-          </>
-        )}
-      </BottomSheet>
-
-      {/* ═══════════ BOTTOM SHEET: CLIENTE PARA COTIZACIÓN ═══════════ */}
-      <BottomSheet
-        open={!!clientSheet}
-        onClose={() => setClientSheet(null)}
-        title="Guardar cotización"
-        footer={
-          <IrisButton
-            onClick={confirmSaveQuote}
-            disabled={saving || !clientName.trim() || !productNameInput.trim()}
-          >
-            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-            Guardar cotización
-          </IrisButton>
-        }
-      >
-        {clientSheet && (
-          <>
-            <div className="rounded-2xl p-4 space-y-2 border border-nodo-line"
-              style={{ background: 'var(--nodo-iris-soft)' }}>
-              <div className="flex items-baseline gap-1.5">
-                <TrendingUp className="w-4 h-4 text-nodo-sub" />
-                <span className="text-sm text-nodo-sub">Precio cotizado:</span>
-                <span className="text-lg font-black text-nodo-ink tabular-nums">
-                  {fmt(clientSheet.result.sale_price_gtq)}
-                </span>
-              </div>
-              <div className="text-xs text-nodo-sub">
-                Margen: <strong>{clientSheet.result.margin_pct.toFixed(1)}%</strong> ·
-                Ganancia: <strong className="text-nodo-success-tx">
-                  {fmt(clientSheet.result.profit_gtq)}
-                </strong>
-              </div>
-            </div>
-            <SheetInput
-              label="Producto"
-              required
-              value={productNameInput}
-              onChange={setProductNameInput}
-              placeholder="Ej. Air Jordan 1 Retro"
-              autoFocus
-              onEnter={confirmSaveQuote}
-            />
-            <SheetInput
-              label="Nombre del cliente"
-              required
-              value={clientName}
-              onChange={setClientName}
-              placeholder="Ej. María García"
-              onEnter={confirmSaveQuote}
-            />
-            <SheetInput
-              label="Teléfono (opcional)"
-              value={clientPhone}
-              onChange={setClientPhone}
-              placeholder="5555-1234"
-              onEnter={confirmSaveQuote}
-            />
-          </>
-        )}
-      </BottomSheet>
+      )}
+      <OpenStoreSheet open={showOpen} onClose={() => setShowOpen(false)} busy={busy} onOpen={openStore} />
+      <ReservasSheet open={showReservas} onClose={() => setShowReservas(false)}
+        reservations={reservations} items={items} whatsapp={settings?.whatsapp_number}
+        onChanged={load} onError={(m) => flash('err', m)} />
+      {settings && calc && (
+        <SettingsSheet open={showSettings} onClose={() => setShowSettings(false)}
+          settings={settings} calc={calc}
+          onSaved={async () => { await load(); flash('ok', 'Guardado'); }}
+          onError={(m) => flash('err', m)} />
+      )}
+      <ClientsSheet open={showClients} onClose={() => setShowClients(false)}
+        reservations={reservations} flash={flash} />
+      <CouponsSheet open={showCoupons} onClose={() => setShowCoupons(false)}
+        coupons={coupons} markupPct={calc?.default_markup_pct ?? 30}
+        publicUrl={publicUrl} totalRedeemed={couponRedeemed}
+        onChanged={load} flash={flash} />
+      {dropResult && (
+        <DropResultModal data={dropResult}
+          onClose={() => setDropResult(null)}
+          onNewDrop={() => { setDropResult(null); setShowOpen(true); }} />
+      )}
     </>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUBCOMPONENTES
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function FilterChip({
-  label, count, active, onClick, status,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  onClick: () => void;
-  status?: OrderStatus;
+// ── Hero en vivo: reloj gigante ─────────────────────────────────────────────────
+function LiveHero({ storeName, closesMs, now, items, reserving, onClose, onShare, busy }: {
+  storeName?: string | null; closesMs: number | null; now: number;
+  items: number; reserving: number; onClose: () => void; onShare: () => void; busy: boolean;
 }) {
-  const t = status ? STATUS_THEME[status] : null;
-
-  const activeClass = t
-    ? `${t.bg} ${t.text} ${t.darkBg} ${t.darkText} ring-2 ${t.ring} ${t.darkRing}`
-    : 'bg-nodo-ink text-nodo-canvas';
-  const inactiveClass = 'bg-nodo-inset text-nodo-sub hover:bg-nodo-raised';
-
+  const clock = closesMs != null ? fmtClock(closesMs - now) : null;
+  const urgent = clock?.urgent ?? false;
   return (
-    <button
-      onClick={onClick}
-      className={`shrink-0 px-4 py-2 rounded-full text-sm font-semibold
-                  transition-all active:scale-[0.96] flex items-center gap-1.5
-                  ${active ? activeClass : inactiveClass}`}
-    >
-      {label}
-      {count > 0 && (
-        <span className={`text-xs px-1.5 py-0.5 rounded-full tabular-nums
-                          ${active ? 'bg-white/30 dark:bg-black/20' : 'bg-nodo-inset'}`}>
-          {count}
-        </span>
+    <div className="nodo-card-hero p-5 bg-nodo-primary text-nodo-on-primary" style={{ boxShadow: 'var(--nodo-shadow-hero)' }}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-3 w-3">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 motion-safe:animate-ping" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+          </span>
+          <span className="text-[12px] font-black uppercase tracking-[0.14em]">En vivo{storeName ? ` · ${storeName}` : ''}</span>
+        </div>
+        <button onClick={onShare} className="h-9 w-9 rounded-xl bg-nodo-on-primary/15 flex items-center justify-center active:scale-90 transition-transform">
+          <Share2 size={16} />
+        </button>
+      </div>
+
+      {clock ? (
+        <div className="mt-3 flex items-end gap-3">
+          <span className={`font-black tabular-nums tracking-tighter leading-none ${urgent ? 'text-red-200 motion-safe:animate-pulse' : ''} text-[56px] lg:text-[68px]`}>
+            {clock.big}
+          </span>
+          <span className="text-sm font-bold text-nodo-on-primary/70 mb-2">{clock.small}</span>
+        </div>
+      ) : (
+        <p className="mt-3 text-[40px] font-black leading-none flex items-center gap-2"><Radio size={30} /> Sin límite</p>
       )}
+
+      <div className="mt-4 flex items-center gap-4">
+        <StatMini icon={<Package size={14} />} label="productos" value={items} />
+        <StatMini icon={<Flame size={14} />} label="reservando" value={reserving} />
+        <div className="flex-1" />
+        <button onClick={onClose} disabled={busy}
+          className="h-11 px-5 rounded-full bg-nodo-on-primary text-nodo-primary font-black text-sm active:scale-95 transition-transform disabled:opacity-40 flex items-center gap-1.5">
+          {busy ? <Loader2 size={16} className="animate-spin" /> : '🏁'} Cerrar tienda
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StatMini({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-nodo-on-primary/80">{icon}</span>
+      <span className="text-lg font-black tabular-nums">{value}</span>
+      <span className="text-[11px] font-semibold text-nodo-on-primary/70">{label}</span>
+    </div>
+  );
+}
+
+function QuickCard({ icon, label, value, onClick }: { icon: React.ReactNode; label: string; value: number; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="nodo-card p-3 flex flex-col gap-1 items-start active:scale-[0.97] transition-transform">
+      <span className="text-nodo-primary">{icon}</span>
+      <span className="text-2xl font-black text-nodo-ink tabular-nums leading-none">{value}</span>
+      <span className="text-[10px] font-semibold text-nodo-sub uppercase tracking-wide">{label}</span>
     </button>
   );
 }
 
-function OrderCard({
-  order, onStatusClick, onCardClick, onTrackingClick, onNextStatus,
-}: {
-  order: ShopperOrder;
-  onStatusClick: () => void;
-  onCardClick: () => void;
-  onTrackingClick: () => void;
-  onNextStatus: () => void;
+// ── Tarjetas de ítem ─────────────────────────────────────────────────────────────
+function LiveItemCard({ item, onDelete }: { item: ShopperCatalogItem; onDelete: () => void }) {
+  const reserved = Math.max(0, item.stock_total - item.stock_available);
+  const soldOut = !item.is_made_to_order && item.stock_available <= 0;
+  return (
+    <div className="nodo-card overflow-hidden flex flex-col">
+      <div className="relative aspect-square bg-nodo-inset">
+        {item.image_url
+          ? <img src={item.image_url} alt={item.title} loading="lazy" className="w-full h-full object-cover" />
+          : <div className="w-full h-full flex items-center justify-center text-nodo-dim"><Package size={28} /></div>}
+        <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-black ${soldOut ? 'bg-nodo-ink text-nodo-canvas' : 'bg-nodo-primary text-nodo-on-primary'}`}>
+          {soldOut ? 'AGOTADO' : item.is_made_to_order ? 'Por encargo' : `quedan ${item.stock_available}`}
+        </span>
+        <button onClick={onDelete}
+          className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center active:scale-90">
+          <Trash2 size={13} />
+        </button>
+      </div>
+      <div className="p-2.5 flex flex-col gap-1 flex-1">
+        <p className="text-[13px] font-bold text-nodo-ink leading-tight line-clamp-2">{item.title}</p>
+        {item.price_gtq != null && <p className="text-sm font-black text-nodo-ink tabular-nums">{fmtGTQ(item.price_gtq)}</p>}
+        {reserved > 0 && (
+          <p className="mt-auto text-[11px] font-black text-nodo-primary flex items-center gap-1">
+            <Flame size={12} /> {reserved} apartado{reserved !== 1 ? 's' : ''}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CatalogItemCard({ item, now, onDelete, onTogglePublish }: {
+  item: ShopperCatalogItem; now: number; onDelete: () => void; onTogglePublish: () => void;
 }) {
-  const hasTracking = order.tracking_status !== null;
-  const [showShare, setShowShare] = useState(false);
-  const trackingUrl = `${window.location.origin}/tracking/${order.tracking_token}`;
-  const nextStatus = NEXT_STATUS[order.status];
-  const delivery = deliveryBadge(order.delivery_date);
+  const expMs = toMs(item.expires_at);
+  const daysLeft = expMs != null ? Math.ceil((expMs - now) / 86400000) : null;
+  const expired = daysLeft != null && daysLeft <= 0;
+  return (
+    <div className="nodo-card overflow-hidden flex flex-col">
+      <div className="relative aspect-square bg-nodo-inset">
+        {item.image_url
+          ? <img src={item.image_url} alt={item.title} loading="lazy" className="w-full h-full object-cover" />
+          : <div className="w-full h-full flex items-center justify-center text-nodo-dim"><Package size={28} /></div>}
+        {item.is_offer && (
+          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-nodo-danger-tx text-white text-[10px] font-black">🔥 Oferta</span>
+        )}
+        <button onClick={onDelete}
+          className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center active:scale-90">
+          <Trash2 size={13} />
+        </button>
+      </div>
+      <div className="p-2.5 flex flex-col gap-1 flex-1">
+        <p className="text-[13px] font-bold text-nodo-ink leading-tight line-clamp-2">{item.title}</p>
+        {item.price_gtq != null && <p className="text-sm font-black text-nodo-ink tabular-nums">{fmtGTQ(item.price_gtq)}</p>}
+        {daysLeft != null && (
+          <p className={`text-[10px] font-bold ${expired ? 'text-nodo-danger-tx' : 'text-nodo-sub'}`}>
+            {expired ? 'Vencido' : `vence en ${daysLeft}d`}
+          </p>
+        )}
+        <button onClick={onTogglePublish}
+          className={`mt-auto text-[11px] font-bold px-2 py-1 rounded-lg ${item.is_published
+            ? 'bg-nodo-success-bg text-nodo-success-tx' : 'bg-nodo-inset text-nodo-sub'}`}>
+          {item.is_published ? 'Publicado' : 'Oculto'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Abrir tienda ─────────────────────────────────────────────────────────────────
+function OpenStoreSheet({ open, onClose, busy, onOpen }: {
+  open: boolean; onClose: () => void; busy: boolean;
+  onOpen: (storeName: string, minutes: number | null) => void;
+}) {
+  const [name, setName] = useState('');
+  const [minutes, setMinutes] = useState<number | null>(120);
+  const DURATIONS: { m: number | null; label: string }[] = [
+    { m: 60, label: '1 hora' }, { m: 120, label: '2 horas' },
+    { m: 180, label: '3 horas' }, { m: null, label: 'A mano' },
+  ];
+  useEffect(() => { if (open) { setName(''); setMinutes(120); } }, [open]);
 
   return (
-    <>
-    <div
-      onClick={onCardClick}
-      className="nodo-card p-4 cursor-pointer transition-all active:scale-[0.99]
-                 hover:border-nodo-line-s hover:bg-nodo-raised/40"
-    >
-      <div className="flex items-start gap-3">
-        <Avatar name={order.client_name} size={48} />
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="font-semibold text-nodo-ink truncate">{order.client_name}</p>
-              <p className="text-sm text-nodo-sub truncate mt-0.5">{order.product_description}</p>
-            </div>
-            {order.quoted_price != null && (
-              <div className="text-right shrink-0">
-                <p className="text-lg font-black text-nodo-ink leading-tight tracking-tight tabular-nums">
-                  {fmt(order.quoted_price)}
-                </p>
-                <p className="text-xs text-nodo-dim">
-                  {order.quantity} {order.unit}
-                </p>
-              </div>
-            )}
+    <BottomSheet open={open} onClose={onClose} title="Abrir tienda en vivo"
+      footer={
+        <button onClick={() => onOpen(name, minutes)} disabled={busy}
+          className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2">
+          {busy ? <Loader2 size={18} className="animate-spin" /> : <Radio size={18} />} ABRIR 🔴 EN VIVO
+        </button>
+      }>
+      <div className="flex flex-col gap-4">
+        <div>
+          <label className="nodo-label">¿En qué tienda estás?</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="ej. Costco, Amazon, Ross…" className="nodo-input" />
+        </div>
+        <div>
+          <label className="nodo-label">¿Cuánto dura el drop?</label>
+          <div className="grid grid-cols-4 gap-2">
+            {DURATIONS.map(d => (
+              <button key={d.label} onClick={() => { haptic.tap(); setMinutes(d.m); }}
+                className={`h-12 rounded-2xl text-xs font-black active:scale-95 transition-transform ${minutes === d.m ? 'bg-nodo-primary text-nodo-on-primary' : 'bg-nodo-inset text-nodo-sub border border-nodo-line'}`}>
+                {d.label}
+              </button>
+            ))}
           </div>
-
-          <div className="flex items-center gap-2 mt-3 flex-wrap">
-            <div onClick={e => { e.stopPropagation(); onStatusClick(); }}>
-              <StatusPill status={order.status} onClick={onStatusClick} />
-            </div>
-            {order.client_phone && (
-              <span className="inline-flex items-center gap-1 text-xs text-nodo-dim">
-                <Phone className="w-3 h-3" />
-                {order.client_phone}
-              </span>
-            )}
-            {delivery && (
-              <span className={`inline-flex items-center gap-1 text-xs ${delivery.className}`}>
-                <Calendar className="w-3 h-3 shrink-0" />
-                {delivery.label}
-              </span>
-            )}
-            {/* Acciones rápidas */}
-            <div className="ml-auto flex items-center gap-1.5">
-              {order.tracking_token && (
-                <button
-                  onClick={e => { e.stopPropagation(); setShowShare(true); }}
-                  title="Compartir link de tracking"
-                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full
-                             bg-nodo-inset text-nodo-dim hover:text-nodo-ink hover:bg-nodo-raised
-                             active:scale-95 transition-all"
-                >
-                  <Share2 className="w-3 h-3" />
-                  Compartir
-                </button>
-              )}
-              <div onClick={e => { e.stopPropagation(); onTrackingClick(); }}>
-                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full cursor-pointer
-                                  ${hasTracking
-                                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                                    : 'bg-nodo-inset text-nodo-dim'}`}>
-                  ✈️ Rastrear
-                </span>
-              </div>
-              {/* Botón de avance de estado — un toque, sin modal */}
-              {nextStatus && (
-                <button
-                  onClick={e => { e.stopPropagation(); onNextStatus(); }}
-                  title={`Avanzar a ${STATUS_LABELS[nextStatus]}`}
-                  className="inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-1 rounded-full
-                             bg-nodo-ink text-nodo-canvas active:scale-90 transition-transform"
-                >
-                  {STATUS_LABELS[nextStatus]}
-                  <ChevronRight className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Mini tracking bar */}
-          <TrackingMiniBar status={order.tracking_status} />
+          <p className="text-[11px] text-nodo-sub mt-2">
+            {minutes ? `El reloj corre ${minutes / 60}h y al llegar a cero se cierra sola.` : 'Sin reloj: la cerrás vos a mano cuando termines.'}
+          </p>
         </div>
       </div>
-    </div>
-
-    {order.tracking_token && (
-      <ShareSheet
-        open={showShare}
-        onClose={() => setShowShare(false)}
-        url={trackingUrl}
-        productName={order.product_description}
-        clienteName={order.client_name}
-        clientePhone={order.client_phone}
-      />
-    )}
-    </>
+    </BottomSheet>
   );
 }
 
-function EmptyState({ hasOrders, onCreate }: { hasOrders: boolean; onCreate: () => void }) {
+// ── Alta de producto (foto → precio → cantidad → publicar) ──────────────────────
+type CreateMode = 'amazon' | 'foto' | 'manual';
+
+function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
+  listing: ShopperListing; open: boolean; onClose: () => void; config: CalcConfig;
+  onCreated: () => void; onError: (m: string) => void;
+}) {
+  const isLive = listing === 'live';
+  const [mode, setMode] = useState<CreateMode>(isLive ? 'foto' : 'amazon');
+  const [amazonUrl, setAmazonUrl] = useState('');
+  const [scraping, setScraping] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [amazonMeta, setAmazonMeta] = useState<{ url?: string; asin?: string }>({});
+
+  const [priceUsd, setPriceUsd] = useState('');
+  const [weight, setWeight] = useState('1');
+  const [dimL, setDimL] = useState(''); const [dimW, setDimW] = useState(''); const [dimH, setDimH] = useState('');
+  const [priceGtq, setPriceGtq] = useState('');
+  const [priceTouched, setPriceTouched] = useState(false);
+  const [costGtq, setCostGtq] = useState('');        // costo manual (modo manual)
+  const [qty, setQty] = useState(1);
+  const [inHand, setInHand] = useState(isLive);      // en vivo siempre es en mano
+  const [days, setDays] = useState(3);               // catálogo: días disponible
+  const [isOffer, setIsOffer] = useState(false);
+  const [compareAt, setCompareAt] = useState('');
+
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => {
+    setMode(isLive ? 'foto' : 'amazon'); setAmazonUrl(''); setTitle(''); setDescription(''); setCategory('');
+    setImageUrl(null); setAmazonMeta({}); setPriceUsd(''); setWeight('1');
+    setDimL(''); setDimW(''); setDimH(''); setPriceGtq(''); setPriceTouched(false); setCostGtq('');
+    setQty(1); setInHand(isLive); setDays(3); setIsOffer(false); setCompareAt('');
+  };
+  useEffect(() => { if (open) reset(); /* eslint-disable-next-line */ }, [open, listing]);
+
+  const result = useMemo(() => calculate(config, {
+    priceUsd: num(priceUsd), weightLbs: num(weight),
+    dims: { l: num(dimL), w: num(dimW), h: num(dimH) },
+    profitMode: 'markup', markupPct: config.defaultMarkupPct, fixedSaleGtq: 0,
+  }), [config, priceUsd, weight, dimL, dimW, dimH]);
+  const suggestions = useMemo(() => suggestPrices(result.totalCostGtq), [result.totalCostGtq]);
+
+  useEffect(() => {
+    if (!priceTouched && suggestions.length > 0) setPriceGtq(String(suggestions[0]));
+  }, [suggestions, priceTouched]);
+
+  const doScrape = useCallback(async (url: string) => {
+    if (!/amazon|amzn|\/dp\/|\/gp\//i.test(url)) return;
+    setScraping(true);
+    try {
+      const p = await shopperAmazonService.scrape(url);
+      if (p.name) setTitle(p.name);
+      if (p.description) setDescription(p.description);
+      if (p.image_url) setImageUrl(p.image_url);
+      if (p.price_usd != null) { setPriceUsd(String(p.price_usd)); setPriceTouched(false); }
+      setAmazonMeta({ url: p.url, asin: p.asin });
+    } catch {
+      onError('No se pudo leer ese enlace de Amazon.');
+    } finally {
+      setScraping(false);
+    }
+  }, [onError]);
+
+  const onPhoto = async (f: File | null) => {
+    if (!f) return;
+    try {
+      const dataUrl = await fileToResizedDataUrl(f, { maxSize: 720, quality: 0.7 });
+      setImageUrl(dataUrl);
+    } catch {
+      onError('No se pudo procesar la foto.');
+    }
+  };
+
+  const canSave = title.trim().length > 0 && num(priceGtq) > 0;
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      const usesCalc = mode !== 'manual' && num(priceUsd) > 0;
+      const madeToOrder = isLive ? false : !inHand;
+      await svc.create({
+        title: title.trim(),
+        description: description || null,
+        category: category.trim() || null,
+        price_gtq: num(priceGtq),
+        price_usd: num(priceUsd) || null,
+        is_made_to_order: madeToOrder,
+        stock_total: madeToOrder ? 1 : Math.max(1, qty),
+        is_published: true,
+        is_offer: isOffer,
+        compare_at_price_gtq: isOffer && num(compareAt) > 0 ? num(compareAt) : null,
+        listing,
+        expires_at: !isLive ? new Date(Date.now() + days * 86400000).toISOString() : null,
+        amazon_url: amazonMeta.url || null,
+        amazon_asin: amazonMeta.asin || null,
+        image_url: imageUrl,
+        source: mode,
+        cost_gtq: mode === 'manual' && num(costGtq) > 0 ? num(costGtq) : null,
+        calc: usesCalc ? toSnapshot(config, result) : null,
+      });
+      reset();
+      onCreated();
+    } catch {
+      onError('No se pudo publicar el producto.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isCaja = config.freightMode === 'caja';
+  const showQty = isLive || inHand;
+
   return (
-    <div className="nodo-card p-10 text-center">
-      <div className="w-20 h-20 mx-auto mb-4 rounded-3xl flex items-center justify-center"
-        style={{ background: 'var(--nodo-iris-soft)' }}>
-        <ShoppingBag className="w-10 h-10 text-nodo-sub" />
-      </div>
-      <p className="text-lg font-bold text-nodo-ink mb-1">
-        {hasOrders ? 'Sin resultados' : 'Aún no hay pedidos'}
-      </p>
-      <p className="text-sm text-nodo-sub mb-5">
-        {hasOrders
-          ? 'Prueba con otro filtro o búsqueda'
-          : 'Crea tu primer pedido personalizado'}
-      </p>
-      {!hasOrders && (
-        <button
-          onClick={onCreate}
-          className="inline-flex items-center gap-2 px-5 h-12 rounded-full font-bold text-sm
-                     shadow-lg active:scale-[0.97] transition-transform"
-          style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
-        >
-          <Plus className="w-4 h-4" />
-          Crear primer pedido
+    <BottomSheet open={open} onClose={onClose} title={isLive ? 'Publicar en vivo ⚡' : 'Agregar al catálogo'}
+      footer={
+        <button onClick={save} disabled={!canSave || saving}
+          className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2">
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+          {isLive ? 'PUBLICAR AL DROP' : 'PUBLICAR EN CATÁLOGO'}
         </button>
+      }>
+      <div className="flex flex-col gap-4">
+        <SegmentedControl<CreateMode>
+          options={[
+            { value: 'foto',   label: 'Foto',   icon: <Camera size={14} /> },
+            { value: 'amazon', label: 'Amazon', icon: <Link2 size={14} /> },
+            { value: 'manual', label: 'Manual', icon: <PencilLine size={14} /> },
+          ]}
+          value={mode} onChange={setMode} />
+
+        {mode === 'amazon' && (
+          <div className="flex gap-2">
+            <input value={amazonUrl}
+              onChange={e => setAmazonUrl(e.target.value)}
+              onBlur={() => amazonUrl && doScrape(amazonUrl)}
+              placeholder="Pega el link de Amazon…" className="nodo-input flex-1" inputMode="url" />
+            <button onClick={() => doScrape(amazonUrl)} disabled={scraping || !amazonUrl}
+              className="h-12 px-4 rounded-2xl bg-nodo-ink text-nodo-canvas font-bold active:scale-95 transition-transform disabled:opacity-40 flex items-center gap-1.5">
+              {scraping ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+            </button>
+          </div>
+        )}
+
+        {mode === 'foto' && (
+          <button onClick={() => fileRef.current?.click()}
+            className="h-44 rounded-2xl border-2 border-dashed border-nodo-line bg-nodo-inset flex flex-col items-center justify-center gap-2 text-nodo-sub active:scale-[0.98] transition-transform overflow-hidden">
+            {imageUrl ? <img src={imageUrl} className="w-full h-full object-cover" alt="" />
+              : <><Camera size={30} /><span className="text-sm font-bold">Tomar o subir foto</span><span className="text-[11px] text-nodo-dim">Cámara o galería del teléfono</span></>}
+          </button>
+        )}
+        {/* Sin `capture`: el teléfono ofrece cámara O galería (subir una foto existente). */}
+        <input ref={fileRef} type="file" accept="image/*" hidden
+          onChange={e => onPhoto(e.target.files?.[0] || null)} />
+
+        {(mode !== 'amazon' || title) && (
+          <>
+            {mode === 'amazon' && imageUrl && (
+              <img src={imageUrl} className="w-24 h-24 rounded-xl object-cover mx-auto" alt="" />
+            )}
+            <div>
+              <label className="nodo-label">Nombre</label>
+              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Nombre del producto" className="nodo-input" />
+            </div>
+            <div>
+              <label className="nodo-label">Categoría (opcional)</label>
+              <input value={category} onChange={e => setCategory(e.target.value)} placeholder="ej. Belleza, Tecnología" className="nodo-input" />
+            </div>
+
+            {mode !== 'manual' && (
+              <div className="nodo-card p-4 bg-nodo-inset flex flex-col gap-3">
+                <p className="nodo-section-label !mb-0 flex items-center gap-1.5">
+                  <Sparkles size={12} /> Calculadora ({isCaja ? 'caja' : 'maleta'})
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="nodo-label">Precio USA ($)</label>
+                    <input value={priceUsd} onChange={e => { setPriceUsd(e.target.value); setPriceTouched(false); }}
+                      inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
+                  </div>
+                  {!isCaja ? (
+                    <div>
+                      <label className="nodo-label">Peso (lb)</label>
+                      <input value={weight} onChange={e => setWeight(e.target.value)} inputMode="decimal" className="nodo-input-number" />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="nodo-label">Medidas ({config.dimUnit})</label>
+                      <div className="flex gap-1">
+                        <input value={dimL} onChange={e => setDimL(e.target.value)} placeholder="L" inputMode="decimal" className="nodo-input-number !px-2" />
+                        <input value={dimW} onChange={e => setDimW(e.target.value)} placeholder="A" inputMode="decimal" className="nodo-input-number !px-2" />
+                        <input value={dimH} onChange={e => setDimH(e.target.value)} placeholder="H" inputMode="decimal" className="nodo-input-number !px-2" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {num(priceUsd) > 0 && (
+                  <div className="flex items-center justify-between text-xs font-semibold text-nodo-sub">
+                    <span>Flete {fmtUSD(result.shippingUsd)} + tax {fmtUSD(result.taxUsd)}</span>
+                    <span className="text-nodo-ink font-black">Costo {fmtGTQ(result.totalCostGtq)}</span>
+                  </div>
+                )}
+                {suggestions.length > 0 && (
+                  <div className="flex gap-2 flex-wrap">
+                    {suggestions.map(s => (
+                      <button key={s} onClick={() => { setPriceGtq(String(s)); setPriceTouched(true); }}
+                        className={`px-3 py-1.5 rounded-xl text-sm font-black tabular-nums active:scale-95 transition-transform ${num(priceGtq) === s ? 'bg-nodo-primary text-nodo-on-primary' : 'bg-nodo-card border border-nodo-line text-nodo-ink'}`}>
+                        {fmtGTQ(s)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Costo manual: sin calculadora, capturarlo para margen y ganancias */}
+            {mode === 'manual' && (
+              <div>
+                <label className="nodo-label">Costo (lo que te costó) (Q)</label>
+                <input value={costGtq} onChange={e => setCostGtq(e.target.value)}
+                  inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
+                <p className="text-[11px] text-nodo-sub mt-1">Para calcular tu ganancia. Queda privado.</p>
+              </div>
+            )}
+
+            <div>
+              <label className="nodo-label">Precio de venta (Q)</label>
+              <input value={priceGtq} onChange={e => { setPriceGtq(e.target.value); setPriceTouched(true); }}
+                inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
+              {(() => {
+                const cost = mode === 'manual' ? num(costGtq) : result.totalCostGtq;
+                if (!(num(priceGtq) > 0 && cost > 0)) return null;
+                const profit = num(priceGtq) - cost;
+                return (
+                  <p className={`text-[11px] font-semibold mt-1 tabular-nums ${profit >= 0 ? 'text-nodo-success-tx' : 'text-nodo-danger-tx'}`}>
+                    {profit >= 0 ? 'Ganancia' : 'Pérdida'} {fmtGTQ(Math.abs(profit))}
+                    {config.exchangeRate > 0 ? ` · ${fmtUSD(Math.abs(profit) / config.exchangeRate)}` : ''}
+                  </p>
+                );
+              })()}
+            </div>
+
+            {/* Cantidad / disponibilidad */}
+            {!isLive && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <TogglePill active={inHand} onClick={() => setInHand(v => !v)} label={inHand ? '📦 Tengo en mano' : '🛒 Por encargo'} />
+                <TogglePill active={isOffer} onClick={() => setIsOffer(v => !v)} label="🔥 Oferta" />
+              </div>
+            )}
+            {isLive && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <TogglePill active={isOffer} onClick={() => setIsOffer(v => !v)} label="🔥 Oferta" />
+              </div>
+            )}
+
+            {showQty && (
+              <div className="flex items-center justify-between nodo-card p-3 bg-nodo-inset">
+                <div>
+                  <p className="text-sm font-black text-nodo-ink">¿Cuántas tenés?</p>
+                  <p className="text-[11px] text-nodo-sub">Se acaban cuando se reservan todas</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setQty(q => Math.max(1, q - 1))}
+                    className="w-10 h-10 rounded-xl bg-nodo-card border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 transition-transform">
+                    <Minus size={16} />
+                  </button>
+                  <span className="w-10 text-center text-lg font-black text-nodo-ink tabular-nums">{qty}</span>
+                  <button onClick={() => setQty(q => q + 1)}
+                    className="w-10 h-10 rounded-xl bg-nodo-primary flex items-center justify-center text-nodo-on-primary active:scale-90 transition-transform">
+                    <Plus size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!isLive && (
+              <div>
+                <label className="nodo-label">Disponible por</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[1, 3, 7, 14].map(d => (
+                    <button key={d} onClick={() => { haptic.tap(); setDays(d); }}
+                      className={`h-11 rounded-2xl text-xs font-black active:scale-95 transition-transform ${days === d ? 'bg-nodo-primary text-nodo-on-primary' : 'bg-nodo-inset text-nodo-sub border border-nodo-line'}`}>
+                      {d}d
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {isOffer && (
+              <div>
+                <label className="nodo-label">Precio normal (tachado)</label>
+                <input value={compareAt} onChange={e => setCompareAt(e.target.value)} inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </BottomSheet>
+  );
+}
+
+function TogglePill({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button onClick={onClick}
+      className={`px-3 py-2 rounded-xl text-xs font-bold active:scale-95 transition-transform ${active ? 'bg-nodo-primary text-nodo-on-primary' : 'bg-nodo-inset text-nodo-sub border border-nodo-line'}`}>
+      {label}
+    </button>
+  );
+}
+
+// Mensaje de WhatsApp para confirmar un apartado con el cliente (detalle corto + link).
+function waConfirmLink(phone: string | null | undefined, r: ShopperReservation): string {
+  const digits = (phone || '').replace(/\D/g, '');
+  const total = r.item_price_gtq ? ` — ${fmtGTQ(r.item_price_gtq * r.quantity)}` : '';
+  const link = orderLink(r.order_token);
+  const lines = [
+    `Hola ${r.client_name} 👋`,
+    'Te confirmo tu apartado:',
+    `• ${r.quantity}× ${r.item_title ?? 'tu producto'}${total}`,
+  ];
+  if (link) lines.push('', `Mirá y confirmá tu pedido acá:`, link);
+  return `https://wa.me/${digits}?text=${encodeURIComponent(lines.join('\n'))}`;
+}
+
+// ── Reservas (máquina de estados) ──────────────────────────────────────────────
+function ReservasSheet({ open, onClose, reservations, items, whatsapp, onChanged, onError }: {
+  open: boolean; onClose: () => void; reservations: ShopperReservation[];
+  items: ShopperCatalogItem[]; whatsapp?: string | null;
+  onChanged: () => Promise<void>; onError: (m: string) => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<{ src: string; title?: string | null } | null>(null);
+  const active = reservations.filter(r => r.is_active);
+  const costById = useMemo(
+    () => new Map(items.map(i => [i.id, i.calc_total_cost_gtq ?? null])),
+    [items],
+  );
+
+  const move = async (r: ShopperReservation, status: string) => {
+    setBusy(r.id);
+    try { await svc.updateReservation(r.id, { status }); await onChanged(); }
+    catch { onError('No se pudo actualizar la reserva.'); }
+    finally { setBusy(null); }
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Reservas">
+      {zoom && <ImageLightbox src={zoom.src} title={zoom.title} onClose={() => setZoom(null)} />}
+      <div className="flex flex-col gap-3">
+        {active.length === 0 && (
+          <div className="nodo-empty-state py-10"><Bell size={30} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-dim">Aún no hay reservas</p></div>
+        )}
+        {active.map(r => {
+          const meta = RES_META[r.status];
+          const idx = FLOW.indexOf(r.status);
+          const next = idx >= 0 && idx < FLOW.length - 1 ? FLOW[idx + 1] : null;
+          const unitCost = costById.get(r.catalog_item_id) ?? null;
+          const sale = r.item_price_gtq != null ? r.item_price_gtq * r.quantity : null;
+          const cost = unitCost != null ? unitCost * r.quantity : null;
+          return (
+            <div key={r.id} className="nodo-card p-3 flex flex-col gap-2.5">
+              <div className="flex items-center gap-3">
+                {r.item_image_url
+                  ? <button onClick={() => setZoom({ src: r.item_image_url!, title: r.item_title })}
+                      className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 active:scale-95 transition-transform group">
+                      <img src={r.item_image_url} className="w-full h-full object-cover" alt="" />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-active:bg-black/25 transition-colors">
+                        <Maximize2 size={13} className="text-white opacity-0 group-active:opacity-100" />
+                      </span>
+                    </button>
+                  : <div className="w-12 h-12 rounded-xl bg-nodo-inset flex items-center justify-center text-nodo-dim shrink-0"><Package size={18} /></div>}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-nodo-ink truncate">{r.item_title}</p>
+                  <p className="text-xs text-nodo-sub truncate">{r.client_name} · {r.quantity}u</p>
+                  {sale != null && (
+                    <p className="text-[11px] font-bold tabular-nums mt-0.5">
+                      <span className="text-nodo-ink">Venta {fmtGTQ(sale)}</span>
+                      {cost != null
+                        ? <span className="text-nodo-sub"> · Costo {fmtGTQ(cost)}</span>
+                        : <span className="text-nodo-warn-tx"> · sin costo</span>}
+                    </p>
+                  )}
+                </div>
+                <span className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-black ${meta.cls}`}>{meta.emoji} {meta.label}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {r.item_amazon_url && (
+                  <a href={r.item_amazon_url} target="_blank" rel="noopener"
+                    className="h-9 px-3 rounded-xl bg-nodo-pastel-yellow text-amber-700 dark:text-amber-300 text-xs font-black flex items-center gap-1 active:scale-95">
+                    <Tag size={13} /> Comprar
+                  </a>
+                )}
+                {whatsapp && (
+                  <a href={waConfirmLink(r.client_phone, r)} target="_blank" rel="noopener"
+                    className="h-9 px-3 rounded-xl bg-nodo-success-bg text-nodo-success-tx text-xs font-black flex items-center gap-1 active:scale-95">
+                    <MessageCircle size={15} /> Confirmar
+                  </a>
+                )}
+                <div className="flex-1" />
+                {!['entregada', 'cancelada', 'no_disponible'].includes(r.status) && (
+                  <button onClick={() => move(r, 'cancelada')} disabled={busy === r.id}
+                    className="h-9 px-3 rounded-xl bg-nodo-inset text-nodo-sub text-xs font-bold active:scale-95 disabled:opacity-40">
+                    <X size={14} />
+                  </button>
+                )}
+                {next && (
+                  <button onClick={() => move(r, next)} disabled={busy === r.id}
+                    className="h-9 px-3 rounded-xl bg-nodo-primary text-nodo-on-primary text-xs font-black flex items-center gap-1 active:scale-95 disabled:opacity-40">
+                    {busy === r.id ? <Loader2 size={14} className="animate-spin" /> : <>{RES_META[next].emoji} {RES_META[next].label} <ArrowRight size={13} /></>}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </BottomSheet>
+  );
+}
+
+// ── Ajustes (calculadora + catálogo) ───────────────────────────────────────────
+function SettingsSheet({ open, onClose, settings, calc, onSaved, onError }: {
+  open: boolean; onClose: () => void; settings: ShopperCatalogSettings; calc: ShopperCalcSettings;
+  onSaved: () => Promise<void>; onError: (m: string) => void;
+}) {
+  const [tab, setTab] = useState<'calc' | 'negocio'>('calc');
+  const [saving, setSaving] = useState(false);
+
+  const [freight, setFreight] = useState<FreightMode>(calc.freight_mode);
+  const [exchange, setExchange] = useState(String(calc.exchange_rate));
+  const [tax, setTax] = useState(String(calc.tax_rate));
+  const [markup, setMarkup] = useState(String(calc.default_markup_pct));
+  const [scCost, setScCost] = useState(calc.suitcase_cost_usd != null ? String(calc.suitcase_cost_usd) : '');
+  const [scCap, setScCap] = useState(calc.suitcase_capacity_lbs != null ? String(calc.suitcase_capacity_lbs) : '');
+  const [boxCost, setBoxCost] = useState(calc.box_cost_usd != null ? String(calc.box_cost_usd) : '');
+  const [boxL, setBoxL] = useState(calc.box_length_in != null ? String(calc.box_length_in) : '');
+  const [boxW, setBoxW] = useState(calc.box_width_in != null ? String(calc.box_width_in) : '');
+  const [boxH, setBoxH] = useState(calc.box_height_in != null ? String(calc.box_height_in) : '');
+
+  const [biz, setBiz] = useState(settings.business_name || '');
+  const [wa, setWa] = useState(settings.whatsapp_number || '');
+  const [dmin, setDmin] = useState(String(settings.delivery_days_min));
+  const [dmax, setDmax] = useState(String(settings.delivery_days_max));
+  const [bankName, setBankName] = useState(settings.bank_name || '');
+  const [bankNum, setBankNum] = useState(settings.bank_account_number || '');
+  const [bankHolder, setBankHolder] = useState(settings.bank_account_holder || '');
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await svc.updateCalcSettings({
+        freight_mode: freight, exchange_rate: num(exchange), tax_rate: num(tax), default_markup_pct: num(markup),
+        suitcase_cost_usd: num(scCost) || null, suitcase_capacity_lbs: num(scCap) || null,
+        box_cost_usd: num(boxCost) || null, box_length_in: num(boxL) || null,
+        box_width_in: num(boxW) || null, box_height_in: num(boxH) || null,
+      });
+      await svc.updateSettings({
+        business_name: biz || null, whatsapp_number: wa || null,
+        delivery_days_min: parseInt(dmin) || 0, delivery_days_max: parseInt(dmax) || 0,
+        bank_name: bankName || null, bank_account_number: bankNum || null, bank_account_holder: bankHolder || null,
+      });
+      await onSaved(); onClose();
+    } catch {
+      onError('No se pudo guardar.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Ajustes"
+      footer={
+        <button onClick={save} disabled={saving}
+          className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2">
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} GUARDAR
+        </button>
+      }>
+      <div className="flex flex-col gap-4">
+        <SegmentedControl<'calc' | 'negocio'>
+          options={[
+            { value: 'calc', label: 'Calculadora', icon: <Sparkles size={14} /> },
+            { value: 'negocio', label: 'Negocio', icon: <Store size={14} /> },
+          ]}
+          value={tab} onChange={setTab} />
+
+        {tab === 'calc' ? (
+          <>
+            <SegmentedControl<FreightMode>
+              options={[
+                { value: 'maleta', label: 'Maleta (peso)', icon: <Package size={14} /> },
+                { value: 'caja', label: 'Caja (volumen)', icon: <Box size={14} /> },
+              ]}
+              value={freight} onChange={setFreight} />
+            {freight === 'maleta' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Precio maleta ($)" value={scCost} onChange={setScCost} />
+                <Field label="Libras disponibles" value={scCap} onChange={setScCap} />
+              </div>
+            ) : (
+              <>
+                <Field label="Precio caja ($)" value={boxCost} onChange={setBoxCost} />
+                <div className="grid grid-cols-3 gap-2">
+                  <Field label="Largo (in)" value={boxL} onChange={setBoxL} />
+                  <Field label="Ancho (in)" value={boxW} onChange={setBoxW} />
+                  <Field label="Alto (in)" value={boxH} onChange={setBoxH} />
+                </div>
+              </>
+            )}
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Tipo cambio" value={exchange} onChange={setExchange} />
+              <Field label="Tax (%)" value={tax} onChange={setTax} />
+              <Field label="Ganancia (%)" value={markup} onChange={setMarkup} />
+            </div>
+          </>
+        ) : (
+          <>
+            <div><label className="nodo-label">Nombre del negocio</label><input value={biz} onChange={e => setBiz(e.target.value)} className="nodo-input" /></div>
+            <div><label className="nodo-label">WhatsApp</label><input value={wa} onChange={e => setWa(e.target.value)} className="nodo-input" inputMode="tel" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Entrega mín. (días)" value={dmin} onChange={setDmin} />
+              <Field label="Entrega máx. (días)" value={dmax} onChange={setDmax} />
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              <div><label className="nodo-label">Banco</label><input value={bankName} onChange={e => setBankName(e.target.value)} className="nodo-input" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="nodo-label">Cuenta</label><input value={bankNum} onChange={e => setBankNum(e.target.value)} className="nodo-input" /></div>
+                <div><label className="nodo-label">A nombre de</label><input value={bankHolder} onChange={e => setBankHolder(e.target.value)} className="nodo-input" /></div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </BottomSheet>
+  );
+}
+
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className="nodo-label">{label}</label>
+      <input value={value} onChange={e => onChange(e.target.value)} inputMode="decimal" className="nodo-input-number" />
+    </div>
+  );
+}
+
+// ── Clientes (derivados de reservas) ───────────────────────────────────────────
+interface ClientGroup {
+  key: string; name: string; phone: string; total: number;
+  orderToken: string | null; reservations: ShopperReservation[];
+}
+
+function ClientsSheet({ open, onClose, reservations, flash }: {
+  open: boolean; onClose: () => void; reservations: ShopperReservation[];
+  flash: (k: 'ok' | 'err', m: string) => void;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<{ src: string; title?: string | null } | null>(null);
+
+  const clients = useMemo<ClientGroup[]>(() => {
+    const map = new Map<string, ClientGroup>();
+    for (const r of reservations) {
+      if (!r.is_active) continue;
+      const key = (r.client_phone || '').replace(/\D/g, '') || r.client_name;
+      const c = map.get(key) || { key, name: r.client_name, phone: r.client_phone, total: 0, orderToken: null, reservations: [] };
+      c.reservations.push(r);
+      c.total += (r.item_price_gtq || 0) * r.quantity;
+      if (!c.orderToken && r.order_token) c.orderToken = r.order_token;
+      map.set(key, c);
+    }
+    return [...map.values()].sort((a, b) => b.total - a.total);
+  }, [reservations]);
+
+  const shareOrder = async (c: ClientGroup) => {
+    const link = orderLink(c.orderToken);
+    if (!link) { flash('err', 'Este cliente todavía no tiene un pedido para compartir.'); return; }
+    haptic.tap();
+    const ok = await navigator.share?.({ title: 'Tu pedido', text: `Hola ${c.name}, consultá tu pedido acá:`, url: link }).then(() => true).catch(() => false);
+    if (!ok) { await navigator.clipboard?.writeText(link); flash('ok', 'Enlace del pedido copiado'); }
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Clientes">
+      {zoom && <ImageLightbox src={zoom.src} title={zoom.title} onClose={() => setZoom(null)} />}
+      <div className="flex flex-col gap-2">
+        {clients.length === 0 && (
+          <div className="nodo-empty-state py-10"><Users size={30} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-dim">Aún sin clientes</p></div>
+        )}
+        {clients.map(c => {
+          const isOpen = expanded === c.key;
+          return (
+            <div key={c.key} className="nodo-card p-3 flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-nodo-primary-soft flex items-center justify-center text-nodo-primary font-black shrink-0">
+                  {c.name.slice(0, 1).toUpperCase()}
+                </div>
+                <button onClick={() => setExpanded(isOpen ? null : c.key)}
+                  className="min-w-0 flex-1 flex items-center gap-2 text-left active:scale-[0.99] transition-transform">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-nodo-ink truncate">{c.name}</p>
+                    <p className="text-xs text-nodo-sub tabular-nums">{c.reservations.length} reserva(s) · {fmtGTQ(c.total)}</p>
+                  </div>
+                  <ChevronDown size={16} className={`text-nodo-sub shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                </button>
+                <button onClick={() => shareOrder(c)} title="Compartir su link de pedido"
+                  className="w-9 h-9 rounded-xl bg-nodo-inset text-nodo-ink flex items-center justify-center active:scale-90 transition-transform shrink-0">
+                  <Link2 size={16} />
+                </button>
+                {c.phone && (
+                  <a href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener"
+                    className="w-9 h-9 rounded-xl bg-nodo-success-bg text-nodo-success-tx flex items-center justify-center active:scale-90 shrink-0">
+                    <MessageCircle size={16} />
+                  </a>
+                )}
+              </div>
+
+              {isOpen && (
+                <div className="flex flex-col gap-2 pt-2 border-t border-nodo-line">
+                  {c.reservations.map(r => {
+                    const meta = RES_META[r.status];
+                    return (
+                      <div key={r.id} className="flex items-center gap-2.5">
+                        {r.item_image_url
+                          ? <button onClick={() => setZoom({ src: r.item_image_url!, title: r.item_title })}
+                              className="w-10 h-10 rounded-lg overflow-hidden shrink-0 active:scale-95 transition-transform">
+                              <img src={r.item_image_url} className="w-full h-full object-cover" alt="" />
+                            </button>
+                          : <div className="w-10 h-10 rounded-lg bg-nodo-inset flex items-center justify-center text-nodo-dim shrink-0"><Package size={15} /></div>}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-bold text-nodo-ink truncate">{r.item_title}</p>
+                          <p className="text-[11px] text-nodo-sub tabular-nums">{r.quantity}u{r.item_price_gtq ? ` · ${fmtGTQ(r.item_price_gtq * r.quantity)}` : ''}</p>
+                        </div>
+                        <span className={`shrink-0 px-2 py-0.5 rounded-md text-[9px] font-black ${meta.cls}`}>{meta.emoji} {meta.label}</span>
+                      </div>
+                    );
+                  })}
+                  {orderLink(c.orderToken) && (
+                    <button onClick={() => shareOrder(c)}
+                      className="mt-1 h-9 rounded-xl bg-nodo-primary-soft text-nodo-primary text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+                      <Share2 size={13} /> Compartir su link de pedido
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </BottomSheet>
+  );
+}
+
+// ── Cupones de descuento ───────────────────────────────────────────────────────
+const _CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';   // base32 Crockford, sin I/L/O/U
+
+function genCode(n = 8): string {
+  const buf = new Uint32Array(n);
+  crypto.getRandomValues(buf);
+  let s = '';
+  for (let i = 0; i < n; i++) s += _CODE_ALPHABET[buf[i] % _CODE_ALPHABET.length];
+  return s;
+}
+
+function fmtCode(code: string): string {
+  const c = (code || '').toUpperCase();
+  if (c.length <= 4) return c;
+  const mid = Math.ceil(c.length / 2);
+  return `${c.slice(0, mid)}-${c.slice(mid)}`;
+}
+
+function couponValueLabel(c: ShopperCoupon): string {
+  return c.discount_type === 'percent' ? `−${c.percent_off ?? 0}%` : `−${fmtGTQ(c.amount_off_gtq ?? 0)}`;
+}
+
+function fmtDay(iso?: string | null): string | null {
+  const ms = toMs(iso);
+  if (ms == null) return null;
+  return new Date(ms).toLocaleDateString('es-GT', { day: 'numeric', month: 'short' });
+}
+
+// Impacto de margen de un cupón % sobre una venta típica (ganancia = markup sobre costo).
+function couponMargin(type: CouponDiscountType, percent: number, markupPct: number) {
+  const m = Math.max(0, markupPct) / 100;
+  const costRatio = m > 0 ? 1 / (1 + m) : 1;        // costo como fracción del precio
+  const origMargin = 1 - costRatio;                  // ganancia por Q1 de venta, sin cupón
+  if (type !== 'percent') return null;
+  const p = Math.min(100, Math.max(0, percent)) / 100;
+  const remain = (1 - p) - costRatio;                // ganancia por Q1 tras el cupón
+  const ratio = origMargin > 0 ? remain / origMargin : (p > 0 ? -1 : 1);
+  return { give: p * 100, keep: remain * 100, ratio, belowCost: remain < -1e-9 };
+}
+
+const USE_OPTS: { v: number | null; label: string }[] = [
+  { v: 1, label: '1 uso' }, { v: 10, label: '10 usos' }, { v: null, label: 'Ilimitado' },
+];
+const EXP_OPTS: { d: number | null; label: string }[] = [
+  { d: 7, label: '7 días' }, { d: 15, label: '15 días' }, { d: 30, label: '30 días' }, { d: null, label: 'Sin límite' },
+];
+
+function CouponsSheet({ open, onClose, coupons, markupPct, publicUrl, totalRedeemed, onChanged, flash }: {
+  open: boolean; onClose: () => void; coupons: ShopperCoupon[];
+  markupPct: number; publicUrl: string; totalRedeemed: number;
+  onChanged: () => Promise<void>; flash: (k: 'ok' | 'err', m: string) => void;
+}) {
+  const [view, setView] = useState<'list' | 'create'>('list');
+  const [type, setType] = useState<CouponDiscountType>('percent');
+  const [percent, setPercent] = useState(15);
+  const [fixed, setFixed] = useState('');
+  const [uses, setUses] = useState<number | null>(1);
+  const [adv, setAdv] = useState(false);
+  const [minSub, setMinSub] = useState('');
+  const [maxDisc, setMaxDisc] = useState('');
+  const [perClient, setPerClient] = useState(1);
+  const [expDays, setExpDays] = useState<number | null>(15);
+  const [code, setCode] = useState(() => genCode());
+  const [saving, setSaving] = useState(false);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+
+  const resetCreate = () => {
+    setType('percent'); setPercent(15); setFixed(''); setUses(1); setAdv(false);
+    setMinSub(''); setMaxDisc(''); setPerClient(1); setExpDays(15); setCode(genCode());
+  };
+  useEffect(() => {
+    if (open) { setView(coupons.length ? 'list' : 'create'); resetCreate(); }
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [open]);
+
+  const impact = useMemo(() => couponMargin(type, percent, markupPct), [type, percent, markupPct]);
+  const activeN = coupons.filter(c => c.is_active).length;
+
+  const submit = async () => {
+    if (type === 'percent' && !(percent > 0 && percent <= 100)) { flash('err', 'El porcentaje debe estar entre 1 y 100.'); return; }
+    if (type === 'fixed' && !(num(fixed) > 0)) { flash('err', 'Poné un monto de descuento mayor a 0.'); return; }
+    const norm = code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    if (norm.length < 3) { flash('err', 'El código debe tener al menos 3 caracteres.'); return; }
+    if (impact?.belowCost && !confirm('Con este descuento casi no te queda ganancia (el sistema igual nunca vende bajo tu costo). ¿Crear el cupón de todos modos?')) return;
+
+    setSaving(true);
+    try {
+      const input: ShopperCouponInput = {
+        code: norm,
+        discount_type: type,
+        percent_off: type === 'percent' ? percent : null,
+        amount_off_gtq: type === 'fixed' ? num(fixed) : null,
+        max_discount_gtq: type === 'percent' && num(maxDisc) > 0 ? num(maxDisc) : null,
+        min_subtotal_gtq: num(minSub) > 0 ? num(minSub) : null,
+        max_redemptions: uses,
+        per_customer_limit: Math.max(1, perClient),
+        expires_at: expDays ? new Date(Date.now() + expDays * 86400000).toISOString() : null,
+      };
+      await svc.createCoupon(input);
+      haptic.done();
+      flash('ok', '¡Cupón creado! 🎟️');
+      await onChanged();
+      resetCreate();
+      setView('list');
+    } catch (e) {
+      flash('err', errMsg(e) || 'No se pudo crear el cupón.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggle = async (c: ShopperCoupon) => {
+    setRowBusy(c.id);
+    try { await svc.updateCoupon(c.id, { is_active: !c.is_active }); haptic.tap(); await onChanged(); }
+    catch { flash('err', 'No se pudo actualizar.'); }
+    finally { setRowBusy(null); }
+  };
+  const shareCoupon = async (c: ShopperCoupon) => {
+    haptic.tap();
+    const url = `${publicUrl}?cupon=${encodeURIComponent(c.code)}`;
+    const ok = await navigator.share?.({ title: 'Tu cupón', text: `🎟️ Usá el código ${fmtCode(c.code)} para tu descuento`, url }).then(() => true).catch(() => false);
+    if (!ok) { await navigator.clipboard?.writeText(url); flash('ok', 'Enlace del cupón copiado'); }
+  };
+  const del = async (c: ShopperCoupon) => {
+    if (!confirm(`¿Eliminar el cupón ${fmtCode(c.code)}?`)) return;
+    setRowBusy(c.id);
+    try { await svc.deleteCoupon(c.id); haptic.confirm(); await onChanged(); }
+    catch (e) { flash('err', errMsg(e) || 'No se pudo eliminar.'); }
+    finally { setRowBusy(null); }
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title={view === 'create' ? 'Nuevo cupón 🎟️' : 'Cupones'}
+      footer={view === 'create' ? (
+        <button onClick={submit} disabled={saving}
+          className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2">
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <Ticket size={18} />} CREAR CUPÓN
+        </button>
+      ) : (
+        <button onClick={() => { haptic.tap(); resetCreate(); setView('create'); }}
+          className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black text-base active:scale-[0.97] transition-transform flex items-center justify-center gap-2">
+          <Plus size={18} /> NUEVO CUPÓN
+        </button>
+      )}>
+      {view === 'list' ? (
+        <div className="flex flex-col gap-3">
+          {coupons.length > 0 && (
+            <div className="nodo-card p-4 bg-nodo-primary-soft border-none flex items-center gap-3">
+              <Ticket size={22} className="text-nodo-primary shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-black text-nodo-ink">{activeN} activo{activeN !== 1 ? 's' : ''} · {totalRedeemed} canjeado{totalRedeemed !== 1 ? 's' : ''}</p>
+                <p className="text-[11px] text-nodo-sub">Compartí el código y tus clientes lo canjean en su pedido.</p>
+              </div>
+            </div>
+          )}
+          {coupons.length === 0 ? (
+            <div className="nodo-empty-state py-10">
+              <Ticket size={34} className="text-nodo-dim mb-2" />
+              <p className="text-sm font-bold text-nodo-ink">Sin cupones todavía</p>
+              <p className="text-xs text-nodo-sub mt-1">Creá uno y empujá más reservas sin regalar tu margen.</p>
+            </div>
+          ) : coupons.map(c => (
+            <div key={c.id} className={`nodo-card p-3 flex flex-col gap-2 ${!c.is_active ? 'opacity-60' : ''}`}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-11 h-11 rounded-xl bg-nodo-primary-soft flex items-center justify-center shrink-0">
+                  <Ticket size={18} className="text-nodo-primary" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono font-black text-nodo-ink tracking-wider truncate">{fmtCode(c.code)}</p>
+                  <p className="text-[11px] text-nodo-sub tabular-nums">
+                    {couponValueLabel(c)} · usado {c.redeemed_count}{c.max_redemptions != null ? `/${c.max_redemptions}` : ''}
+                    {fmtDay(c.expires_at) ? ` · vence ${fmtDay(c.expires_at)}` : ''}
+                  </p>
+                </div>
+                {c.could_go_below_cost && (
+                  <span className="shrink-0 text-nodo-warn-tx" title="Descuento alto para tu margen"><AlertTriangle size={15} /></span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => toggle(c)} disabled={rowBusy === c.id}
+                  className={`h-9 px-3 rounded-xl text-xs font-black flex items-center gap-1.5 active:scale-95 transition-transform disabled:opacity-40 ${c.is_active ? 'bg-nodo-success-bg text-nodo-success-tx' : 'bg-nodo-inset text-nodo-sub'}`}>
+                  <Power size={13} /> {c.is_active ? 'Activo' : 'Pausado'}
+                </button>
+                <div className="flex-1" />
+                <button onClick={() => shareCoupon(c)}
+                  className="h-9 w-9 rounded-xl bg-nodo-inset text-nodo-ink flex items-center justify-center active:scale-90 transition-transform"><Share2 size={15} /></button>
+                <button onClick={() => del(c)} disabled={rowBusy === c.id}
+                  className="h-9 w-9 rounded-xl bg-nodo-inset text-nodo-danger-tx flex items-center justify-center active:scale-90 transition-transform disabled:opacity-40"><Trash2 size={15} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {coupons.length > 0 && (
+            <button onClick={() => setView('list')} className="self-start text-xs font-black text-nodo-sub flex items-center gap-1 active:scale-95">
+              <ArrowRight size={13} className="rotate-180" /> Volver a mis cupones
+            </button>
+          )}
+
+          <SegmentedControl<CouponDiscountType>
+            options={[
+              { value: 'percent', label: 'Porcentaje', icon: <span className="font-black">%</span> },
+              { value: 'fixed', label: 'Monto (Q)', icon: <Tag size={14} /> },
+            ]}
+            value={type} onChange={setType} />
+
+          {type === 'percent' ? (
+            <div>
+              <label className="nodo-label">¿Cuánto descuento?</label>
+              <div className="flex items-center gap-3">
+                <input type="range" min={1} max={90} value={percent}
+                  onChange={e => setPercent(parseInt(e.target.value))}
+                  className="flex-1 h-2" style={{ accentColor: 'var(--nodo-primary)' }} />
+                <div className="w-16 h-11 rounded-xl bg-nodo-card border border-nodo-line flex items-center justify-center text-lg font-black text-nodo-ink tabular-nums shrink-0">{percent}%</div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="nodo-label">Monto de descuento (Q)</label>
+              <input value={fixed} onChange={e => setFixed(e.target.value)} inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
+            </div>
+          )}
+
+          {/* Impacto de margen en vivo (máquina de recompensa honesta) */}
+          {type === 'percent' && impact && (
+            <div className={`rounded-2xl p-4 flex flex-col gap-3 border ${impact.belowCost ? 'bg-nodo-danger-bg border-nodo-danger-bd' : 'bg-nodo-inset border-nodo-line'}`}>
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold text-nodo-sub uppercase tracking-wider">De cada Q100</p>
+                  <p className="text-2xl font-black text-nodo-ink tabular-nums leading-none mt-0.5">regalás Q{impact.give.toFixed(0)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-nodo-sub uppercase tracking-wider">Te queda</p>
+                  <p className={`text-2xl font-black tabular-nums leading-none mt-0.5 ${impact.belowCost ? 'text-nodo-danger-tx' : 'text-nodo-success-tx'}`}>Q{impact.keep.toFixed(0)}</p>
+                </div>
+              </div>
+              <div className="h-2.5 rounded-full bg-nodo-line overflow-hidden">
+                <div className={`h-full rounded-full origin-left transition-transform duration-300 ${impact.ratio > 0.5 ? 'bg-nodo-success-tx' : impact.ratio > 0 ? 'bg-nodo-warn-tx' : 'bg-nodo-danger-tx'}`}
+                  style={{ transform: `scaleX(${Math.max(0.02, Math.min(1, impact.ratio))})` }} />
+              </div>
+              {impact.belowCost ? (
+                <p className="text-xs font-bold text-nodo-danger-tx flex items-start gap-1.5">
+                  <AlertTriangle size={14} className="shrink-0 mt-0.5" /> Bajo tu costo. El sistema recorta el descuento para que nunca pierdas, pero casi no queda ganancia.
+                </p>
+              ) : (
+                <p className="text-[11px] text-nodo-sub">Estimado con tu ganancia típica de {markupPct}%. En cada pedido el sistema nunca deja el total bajo tu costo.</p>
+              )}
+            </div>
+          )}
+          {type === 'fixed' && (
+            <p className="text-[11px] text-nodo-sub -mt-2">El sistema ajusta el descuento en cada pedido para no dejar nunca el total bajo tu costo ✓</p>
+          )}
+
+          {/* Usos */}
+          <div>
+            <label className="nodo-label">¿Cuántas veces se puede usar?</label>
+            <div className="grid grid-cols-3 gap-2">
+              {USE_OPTS.map(o => (
+                <button key={o.label} onClick={() => { haptic.tap(); setUses(o.v); }}
+                  className={`h-11 rounded-2xl text-xs font-black active:scale-95 transition-transform ${uses === o.v ? 'bg-nodo-primary text-nodo-on-primary' : 'bg-nodo-inset text-nodo-sub border border-nodo-line'}`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-nodo-sub mt-1.5">
+              {uses === 1 ? 'Un solo canje en total — ideal para un regalo único.' : uses == null ? 'Sin límite de canjes.' : `Hasta ${uses} canjes en total.`}
+            </p>
+          </div>
+
+          {/* Código */}
+          <div>
+            <label className="nodo-label">Código del cupón</label>
+            <div className="flex gap-2">
+              <input value={code} onChange={e => setCode(e.target.value.toUpperCase())} maxLength={24}
+                className="nodo-input flex-1 font-mono tracking-widest uppercase" />
+              <button onClick={() => { haptic.tap(); setCode(genCode()); }}
+                className="h-12 w-12 rounded-2xl bg-nodo-inset border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 transition-transform shrink-0">
+                <Dices size={18} />
+              </button>
+            </div>
+            <p className="text-[11px] text-nodo-sub mt-1.5">Tus clientes lo escriben o lo reciben en el link.</p>
+          </div>
+
+          {/* Avanzado */}
+          <button onClick={() => setAdv(v => !v)} className="flex items-center justify-between w-full text-left active:scale-[0.99] transition-transform">
+            <span className="nodo-section-label !mb-0">Opciones avanzadas</span>
+            <ChevronDown size={16} className={`text-nodo-sub transition-transform ${adv ? 'rotate-180' : ''}`} />
+          </button>
+          {adv && (
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="nodo-label">Compra mínima (Q)</label>
+                  <input value={minSub} onChange={e => setMinSub(e.target.value)} inputMode="decimal" placeholder="Sin mínimo" className="nodo-input-number" />
+                </div>
+                {type === 'percent' && (
+                  <div>
+                    <label className="nodo-label">Tope de descuento (Q)</label>
+                    <input value={maxDisc} onChange={e => setMaxDisc(e.target.value)} inputMode="decimal" placeholder="Sin tope" className="nodo-input-number" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="nodo-label">Vence en</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {EXP_OPTS.map(o => (
+                    <button key={o.label} onClick={() => { haptic.tap(); setExpDays(o.d); }}
+                      className={`h-11 rounded-2xl text-xs font-black active:scale-95 transition-transform ${expDays === o.d ? 'bg-nodo-primary text-nodo-on-primary' : 'bg-nodo-inset text-nodo-sub border border-nodo-line'}`}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between nodo-card p-3 bg-nodo-inset">
+                <div>
+                  <p className="text-sm font-black text-nodo-ink">Usos por cliente</p>
+                  <p className="text-[11px] text-nodo-sub">Cuántas veces lo puede canjear una misma persona</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setPerClient(q => Math.max(1, q - 1))}
+                    className="w-9 h-9 rounded-xl bg-nodo-card border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 transition-transform"><Minus size={14} /></button>
+                  <span className="w-8 text-center text-sm font-black text-nodo-ink tabular-nums">{perClient}</span>
+                  <button onClick={() => setPerClient(q => q + 1)}
+                    className="w-9 h-9 rounded-xl bg-nodo-ink flex items-center justify-center text-nodo-canvas active:scale-90 transition-transform"><Plus size={14} /></button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
-    </div>
+    </BottomSheet>
   );
 }
 
-function SheetInput({
-  label, value, onChange, required, placeholder, type = 'text', autoFocus, onEnter,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  required?: boolean;
-  placeholder?: string;
-  type?: string;
-  autoFocus?: boolean;
-  onEnter?: () => void;
-}) {
-  return (
-    <div>
-      <label className="nodo-label">
-        {label} {required && <span className="text-nodo-danger-tx">*</span>}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        onKeyDown={e => onEnter && e.key === 'Enter' && onEnter()}
-        className={type === 'number' ? 'nodo-input-number' : 'nodo-input'}
-      />
-    </div>
-  );
-}
-
-function SheetTextarea({
-  label, value, onChange, required, placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  required?: boolean;
-  placeholder?: string;
-}) {
-  return (
-    <div>
-      <label className="nodo-label">
-        {label} {required && <span className="text-nodo-danger-tx">*</span>}
-      </label>
-      <textarea
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={2}
-        className="nodo-textarea"
-      />
-    </div>
-  );
+// Extrae el detail de un error de axios (mensajes de negocio del backend).
+function errMsg(e: unknown): string | null {
+  const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  return typeof detail === 'string' ? detail : null;
 }

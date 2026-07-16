@@ -98,7 +98,7 @@ export function InvitePage({ token, onAccepted }: InvitePageProps) {
             <h2 className="text-xl font-black text-nodo-ink">Invitación no válida</h2>
             <p className="text-sm text-nodo-sub">{errorMsg}</p>
             <button
-              onClick={() => window.location.href = '/'}
+              onClick={() => window.location.href = '/portal'}
               className="mt-2 h-12 px-6 rounded-2xl bg-nodo-ink text-nodo-canvas font-bold text-sm active:scale-[0.97] transition-transform"
             >
               Ir al inicio

@@ -9,6 +9,7 @@ import { mostradorService, type Sale } from '@/services/mostrador.service';
 import type { Recipe } from '@/services/recetas.service';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { DualClock } from '@/components/ui/DualClock';
 
 type Freshness = 'fresco' | 'ayer';
 
@@ -375,6 +376,7 @@ export function MostradorApp(_props: AppProps) {
             <p className="text-sm text-nodo-sub font-medium mt-0.5">
               {products.length} productos disponibles
             </p>
+            <DualClock className="mt-2" />
           </div>
 
           {/* Mobile: resumen carrito + botón historial */}

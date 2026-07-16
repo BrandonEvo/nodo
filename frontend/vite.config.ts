@@ -10,15 +10,15 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['icon.svg', 'apple-touch-icon.png', 'bg-nodo.png'],
       manifest: {
-        name: 'Nodo — Gestión de Panadería',
+        name: 'Nodo — Gestión de tu Negocio',
         short_name: 'Nodo',
-        description: 'Sistema de gestión para panaderías',
+        description: 'Sistema de gestión modular para tu negocio',
         theme_color: '#111111',
         background_color: '#f8fafc',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
-        start_url: '/',
+        start_url: '/portal',
         lang: 'es',
         icons: [
           {
@@ -80,7 +80,13 @@ export default defineConfig({
           },
         ],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/tracking/, /^\/tienda/, /^\/pedido/],
+        // Rutas públicas (links que se comparten): el SW NO debe servir el shell
+        // cacheado — siempre van a la red para cargar el bundle más reciente.
+        navigateFallbackDenylist: [
+          /^\/api/, /^\/tracking/, /^\/import-tracking/, /^\/tienda/, /^\/pedido/,
+          /^\/agenda/, /^\/cita/, /^\/catalogo/, /^\/mis-pedidos/,
+          /^\/importa/, /^\/mi-reserva/, /^\/invite/,
+        ],
       },
       devOptions: {
         enabled: false,

@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 from sqlmodel import Field, Relationship
-from sqlalchemy import Column, Text
+from sqlalchemy import Column, JSON, Text
 from .mixins import AuditBase
 
 class Tenant(AuditBase, table=True):
@@ -59,3 +59,17 @@ class SubscriptionPlan(AuditBase, table=True):
     name: str = Field(max_length=255, index=True)
     price: float = Field(default=0.0)
     currency: str = Field(default="GTQ", max_length=10)
+
+    # Copy de marketing — lo consume la landing pública vía /api/public/plans.
+    # Vive en la BD para que el superadmin edite la página de precios sin deploy.
+    tagline: Optional[str] = Field(default=None, max_length=120)
+    description: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    features: List[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"))
+    badge_label: Optional[str] = Field(default=None, max_length=40)
+    cta_label: Optional[str] = Field(default=None, max_length=40)
+    is_featured: bool = Field(default=False)
+    billing_period: str = Field(default="month", max_length=20)
+    sort_order: int = Field(default=0)
+    # Un plan puede existir para cobrar y no anunciarse. Default False a propósito:
+    # la migración no debe publicar planes internos que ya existan en producción.
+    is_public: bool = Field(default=False)

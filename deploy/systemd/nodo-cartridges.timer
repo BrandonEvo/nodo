@@ -1,0 +1,13 @@
+[Unit]
+Description=Nodo — agenda diaria de los cartuchos por empresa (03:45)
+
+[Timer]
+# 03:45: después de la Bóveda (03:30) para no competir por I/O ni por el pool de
+# conexiones. Si cambias la hora, actualiza SCHEDULED_HOUR_UTC/MINUTE en
+# backend/api/services/backup/scheduler.py — de ahí sale el "próxima corrida" del panel.
+OnCalendar=*-*-* 03:45:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

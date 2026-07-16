@@ -9,8 +9,10 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.SQL_ECHO,
     future=True,
-    pool_size=10,        # Conexiones persistentes mantenidas en memoria
-    max_overflow=20      # Conexiones extra permitidas bajo picos de tráfico
+    pool_size=10,          # por worker: conexiones persistentes en memoria
+    max_overflow=15,       # por worker -> 2 workers = 50 conex. máx (< max_connections 100)
+    pool_timeout=10,       # falla rápido si el pool se agota, no cuelga el request
+    pool_pre_ping=True,    # descarta conexiones muertas tras un restart/blip de Postgres
 )
 
 # 2. Fábrica de Sesiones

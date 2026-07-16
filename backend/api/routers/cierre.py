@@ -5,13 +5,14 @@ MÓDULO 5: CIERRE — Transición de Turno
 - GET  /api/cierre/           → Historial de cierres del tenant
 """
 import uuid
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from db.session import get_session
 from api.deps import get_current_tenant_id
+from core.time import gt_day_start_utc
 from models.bakery import Sale, ShiftRegister
 from models.schemas import ShiftSummary, ShiftClose, ShiftRegisterRead
 
@@ -19,7 +20,9 @@ router = APIRouter(tags=["Cierre (Transición de Turno)"])
 
 
 async def _today_summary(tenant_id: uuid.UUID, session: AsyncSession) -> ShiftSummary:
-    today_start = datetime.combine(date.today(), datetime.min.time())
+    # "Hoy" = día de Guatemala (UTC-6), no día UTC del servidor. Las ventas de la
+    # noche (que en UTC ya son del día siguiente) cuentan para el día correcto.
+    today_start = gt_day_start_utc()
 
     result = await session.execute(
         select(Sale).where(

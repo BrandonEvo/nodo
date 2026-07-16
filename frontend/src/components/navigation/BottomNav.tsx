@@ -71,7 +71,7 @@ export function BottomNav({
 
   const isManagementActive = [
     'admin_tenants', 'admin_users', 'admin_roles',
-    'admin_modules', 'admin_subscriptions', 'admin_platform_config',
+    'admin_modules', 'admin_subscriptions', 'admin_presence', 'admin_backups', 'admin_platform_config',
     'mgmt_employees', 'mgmt_team', 'mgmt_config',
   ].includes(activeTab) && !isHomeActive;
   const isProfileActive = activeTab === 'profile';

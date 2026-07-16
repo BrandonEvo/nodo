@@ -21,12 +21,13 @@ from api.routers.auth import _set_auth_cookies, _new_refresh_token, _REFRESH_DAY
 
 router = APIRouter()
 
-# --- Configuración proporcionada por el usuario ---
-GOOGLE_CLIENT_ID = "833836638249-q9p0ahfn0l4h938ui8acd8psksb08no5.apps.googleusercontent.com"
-# Nota: Por seguridad, el CLIENT_SECRET debería venir de variables de entorno.
-# En la solicitud original el usuario no lo dio, usaré una variable vacía para que el admin lo llene
 from core.config import settings
-GOOGLE_CLIENT_SECRET = getattr(settings, "GOOGLE_CLIENT_SECRET", "")
+
+# El CLIENT_ID no es secreto —viaja en la URL del navegador en cada login— pero
+# vive en `settings` para tener una sola fuente de verdad al rotar el cliente
+# OAuth. El CLIENT_SECRET sí lo es: llega por variable de entorno desde .env.
+GOOGLE_CLIENT_ID = settings.GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET = settings.GOOGLE_CLIENT_SECRET
 FRONTEND_URL = settings.FRONTEND_URL
 BACKEND_URL  = settings.BACKEND_URL
 REDIRECT_URI = f"{BACKEND_URL}/api/auth/google/callback"
@@ -128,7 +129,12 @@ async def google_callback(request: Request, code: str = None, state: str = None,
     email = user_info.get("email")
     if not email:
         raise HTTPException(status_code=400, detail="No email provided by Google")
-        
+
+    # Misma normalización que register-workspace: sin esto, un correo con
+    # mayúsculas crearía un usuario duplicado en vez de reconocer al existente.
+    email = email.strip().lower()
+
+
     full_name = user_info.get("name")
     picture = user_info.get("picture")
     google_id = user_info.get("sub")
@@ -229,7 +235,7 @@ async def google_callback(request: Request, code: str = None, state: str = None,
     ))
     await db.commit()
 
-    response_redirect = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
+    response_redirect = RedirectResponse(url=f"{FRONTEND_URL}/portal")
     response_redirect.delete_cookie("oauth_state")
     _set_auth_cookies(response_redirect, jwt_token, refresh_raw)
     return response_redirect

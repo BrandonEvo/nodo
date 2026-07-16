@@ -15,9 +15,35 @@ current_superuser = fastapi_users.current_user(active=True, superuser=True)
 
 router = APIRouter(tags=["SaaS Subscription Plans"])
 
+# Campos NOT NULL: solo se sobrescriben si vienen con valor.
+_REQUIRED_FIELDS = ("name", "price", "currency", "is_active", "is_featured", "billing_period", "sort_order", "is_public")
+# Campos nullables de copy: se aceptan explícitamente en null para poder vaciarlos.
+_NULLABLE_FIELDS = ("tagline", "description", "features", "badge_label", "cta_label")
+
+
+def _to_read(plan: SubscriptionPlan, module_ids: List[uuid.UUID]) -> SubscriptionPlanRead:
+    return SubscriptionPlanRead(
+        id=plan.id,
+        name=plan.name,
+        price=plan.price,
+        currency=plan.currency,
+        is_active=plan.is_active,
+        module_ids=module_ids,
+        tagline=plan.tagline,
+        description=plan.description,
+        features=plan.features or [],
+        badge_label=plan.badge_label,
+        cta_label=plan.cta_label,
+        is_featured=plan.is_featured,
+        billing_period=plan.billing_period,
+        sort_order=plan.sort_order,
+        is_public=plan.is_public,
+    )
+
+
 @router.get("/", response_model=List[SubscriptionPlanRead])
 async def list_plans(session: AsyncSession = Depends(get_session), _user=Depends(current_superuser)):
-    query = select(SubscriptionPlan)
+    query = select(SubscriptionPlan).order_by(SubscriptionPlan.sort_order, SubscriptionPlan.price)
     result = await session.execute(query)
     plans = result.scalars().all()
 
@@ -26,14 +52,7 @@ async def list_plans(session: AsyncSession = Depends(get_session), _user=Depends
         mod_query = select(PlanModule).where(PlanModule.plan_id == plan.id)
         mod_result = await session.execute(mod_query)
         modules = mod_result.scalars().all()
-        response.append(SubscriptionPlanRead(
-            id=plan.id,
-            name=plan.name,
-            price=plan.price,
-            currency=plan.currency,
-            is_active=plan.is_active,
-            module_ids=[m.module_id for m in modules]
-        ))
+        response.append(_to_read(plan, [m.module_id for m in modules]))
     return response
 
 @router.post("/", response_model=SubscriptionPlanRead, status_code=status.HTTP_201_CREATED)
@@ -42,7 +61,16 @@ async def create_plan(plan_in: SubscriptionPlanCreate, session: AsyncSession = D
         name=plan_in.name,
         price=plan_in.price,
         currency=plan_in.currency,
-        is_active=True
+        is_active=True,
+        tagline=plan_in.tagline,
+        description=plan_in.description,
+        features=plan_in.features,
+        badge_label=plan_in.badge_label,
+        cta_label=plan_in.cta_label,
+        is_featured=plan_in.is_featured,
+        billing_period=plan_in.billing_period,
+        sort_order=plan_in.sort_order,
+        is_public=plan_in.is_public,
     )
     session.add(new_plan)
     await session.commit()
@@ -53,14 +81,7 @@ async def create_plan(plan_in: SubscriptionPlanCreate, session: AsyncSession = D
         session.add(pm)
     await session.commit()
 
-    return SubscriptionPlanRead(
-        id=new_plan.id,
-        name=new_plan.name,
-        price=new_plan.price,
-        currency=new_plan.currency,
-        is_active=new_plan.is_active,
-        module_ids=plan_in.module_ids
-    )
+    return _to_read(new_plan, plan_in.module_ids)
 
 @router.put("/{plan_id}", response_model=SubscriptionPlanRead)
 async def update_plan(plan_id: uuid.UUID, plan_in: SubscriptionPlanUpdate, session: AsyncSession = Depends(get_session), _user=Depends(current_superuser)):
@@ -68,14 +89,16 @@ async def update_plan(plan_id: uuid.UUID, plan_in: SubscriptionPlanUpdate, sessi
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    if plan_in.name is not None:
-        plan.name = plan_in.name
-    if plan_in.price is not None:
-        plan.price = plan_in.price
-    if plan_in.currency is not None:
-        plan.currency = plan_in.currency
-    if plan_in.is_active is not None:
-        plan.is_active = plan_in.is_active
+    provided = plan_in.model_dump(exclude_unset=True)
+
+    for field in _REQUIRED_FIELDS:
+        value = getattr(plan_in, field)
+        if value is not None:
+            setattr(plan, field, value)
+
+    for field in _NULLABLE_FIELDS:
+        if field in provided:
+            setattr(plan, field, provided[field])
 
     session.add(plan)
 
@@ -113,14 +136,7 @@ async def update_plan(plan_id: uuid.UUID, plan_in: SubscriptionPlanUpdate, sessi
     mod_result = await session.execute(select(PlanModule).where(PlanModule.plan_id == plan.id))
     current_modules = [m.module_id for m in mod_result.scalars().all()]
 
-    return SubscriptionPlanRead(
-        id=plan.id,
-        name=plan.name,
-        price=plan.price,
-        currency=plan.currency,
-        is_active=plan.is_active,
-        module_ids=current_modules
-    )
+    return _to_read(plan, current_modules)
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_plan(plan_id: uuid.UUID, session: AsyncSession = Depends(get_session), _user=Depends(current_superuser)):

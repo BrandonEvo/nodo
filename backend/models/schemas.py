@@ -197,12 +197,31 @@ class SubscriptionPlanRead(BaseModel):
     currency: str
     is_active: bool
     module_ids: List[uuid.UUID] = []
+    # Copy de marketing (lo consume la landing vía /api/public/plans)
+    tagline: Optional[str] = None
+    description: Optional[str] = None
+    features: List[str] = []
+    badge_label: Optional[str] = None
+    cta_label: Optional[str] = None
+    is_featured: bool = False
+    billing_period: str = "month"
+    sort_order: int = 0
+    is_public: bool = False
 
 class SubscriptionPlanCreate(BaseModel):
     name: str
     price: float = 0.0
     currency: str = "GTQ"
     module_ids: List[uuid.UUID] = []
+    tagline: Optional[str] = None
+    description: Optional[str] = None
+    features: List[str] = []
+    badge_label: Optional[str] = None
+    cta_label: Optional[str] = None
+    is_featured: bool = False
+    billing_period: str = "month"
+    sort_order: int = 0
+    is_public: bool = False
 
 class SubscriptionPlanUpdate(BaseModel):
     name: Optional[str] = None
@@ -210,6 +229,15 @@ class SubscriptionPlanUpdate(BaseModel):
     currency: Optional[str] = None
     is_active: Optional[bool] = None
     module_ids: Optional[List[uuid.UUID]] = None
+    tagline: Optional[str] = None
+    description: Optional[str] = None
+    features: Optional[List[str]] = None
+    badge_label: Optional[str] = None
+    cta_label: Optional[str] = None
+    is_featured: Optional[bool] = None
+    billing_period: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_public: Optional[bool] = None
 
 # ==========================================
 # PLATFORM CONFIG (Configuración Global)
@@ -854,45 +882,154 @@ class ShopperTripItemRead(BaseModel):
 
 
 # ==========================================
-# SHOPPER CATALOG (Catálogo público shopper)
+# SHOPPER CATALOG — "La Maleta" (catálogo-juego del personal shopper)
+# Paridad con ImportCatalog*, pero con calculadora maleta/caja propia.
 # ==========================================
 
 class ShopperCatalogSettingsRead(BaseModel):
     public_token: uuid.UUID
     business_name: Optional[str] = None
     whatsapp_number: Optional[str] = None
+    delivery_days_min: int = 5
+    delivery_days_max: int = 7
+    trip_name: Optional[str] = None
+    trip_close_at: Optional[datetime] = None
+    trip_label: Optional[str] = None
+    origin_label: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account_holder: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_account_type: Optional[str] = None
+    ai_copy_enabled: bool = False
+    # Tienda en vivo (drop) — visible sólo al dueño.
+    store_status: str = "closed"          # closed | live
+    store_name: Optional[str] = None
+    store_opened_at: Optional[datetime] = None
+    store_closes_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
 
 
+class ShopperStoreOpen(BaseModel):
+    """Abre la tienda en vivo. Duración por minutos o fecha exacta; sin ninguna
+    de las dos = tienda a mano (sin countdown, se cierra manualmente)."""
+    store_name: Optional[str] = None
+    minutes: Optional[int] = None
+    closes_at: Optional[datetime] = None
+
+
 class ShopperCatalogSettingsUpdate(BaseModel):
     business_name: Optional[str] = None
     whatsapp_number: Optional[str] = None
+    delivery_days_min: Optional[int] = None
+    delivery_days_max: Optional[int] = None
+    trip_name: Optional[str] = None
+    trip_close_at: Optional[datetime] = None
+    trip_label: Optional[str] = None
+    origin_label: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account_holder: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_account_type: Optional[str] = None
+    ai_copy_enabled: Optional[bool] = None
+
+
+# ── Config PRIVADA de la calculadora (nunca pública) ──────────────────────────
+
+class ShopperCalcSettingsRead(BaseModel):
+    freight_mode: str = "maleta"          # maleta | caja
+    exchange_rate: float = 7.75
+    tax_rate: float = 7.0
+    default_markup_pct: float = 30.0
+    suitcase_cost_usd: Optional[float] = None
+    suitcase_capacity_lbs: Optional[float] = None
+    box_cost_usd: Optional[float] = None
+    box_length_in: Optional[float] = None
+    box_width_in: Optional[float] = None
+    box_height_in: Optional[float] = None
+    dim_unit: str = "in"                  # in | cm
+
+    class Config:
+        from_attributes = True
+
+
+class ShopperCalcSettingsUpdate(BaseModel):
+    freight_mode: Optional[str] = None
+    exchange_rate: Optional[float] = None
+    tax_rate: Optional[float] = None
+    default_markup_pct: Optional[float] = None
+    suitcase_cost_usd: Optional[float] = None
+    suitcase_capacity_lbs: Optional[float] = None
+    box_cost_usd: Optional[float] = None
+    box_length_in: Optional[float] = None
+    box_width_in: Optional[float] = None
+    box_height_in: Optional[float] = None
+    dim_unit: Optional[str] = None
+
+
+# ── Snapshot de cálculo congelado al publicar un ítem ─────────────────────────
+
+class ShopperItemCalcSnapshot(BaseModel):
+    calc_mode: Optional[str] = None       # maleta | caja
+    weight_lbs: Optional[float] = None
+    volume_in3: Optional[float] = None
+    cost_per_lb: Optional[float] = None
+    cost_per_in3: Optional[float] = None
+    tax_rate: Optional[float] = None
+    exchange_rate: Optional[float] = None
+    shipping_usd: Optional[float] = None
+    tax_usd: Optional[float] = None
+    total_cost_gtq: Optional[float] = None
 
 
 class ShopperCatalogItemCreate(BaseModel):
     title: str
+    hook: Optional[str] = None
     description: Optional[str] = None
+    category: Optional[str] = None
     price_gtq: Optional[float] = None
+    price_usd: Optional[float] = None
+    is_made_to_order: bool = True
     stock_total: int = 1
     is_published: bool = False
+    is_offer: bool = False
+    compare_at_price_gtq: Optional[float] = None
+    offer_ends_at: Optional[datetime] = None
     amazon_url: Optional[str] = None
+    amazon_asin: Optional[str] = None
     image_url: Optional[str] = None
     notes: Optional[str] = None
-    source: str = "manual"
+    source: str = "manual"                # manual | trip | amazon | foto
+    # Canal: 'live' (exige tienda abierta, se publica ya y se sella a la sesión) o
+    # 'catalog' (Amazon/evergreen, disponible hasta expires_at).
+    listing: str = "catalog"              # live | catalog
+    expires_at: Optional[datetime] = None
+    cost_gtq: Optional[float] = None      # costo manual (lo que te costó) → calc_total_cost_gtq
+    calc: Optional[ShopperItemCalcSnapshot] = None
 
 
 class ShopperCatalogItemUpdate(BaseModel):
     title: Optional[str] = None
+    hook: Optional[str] = None
     description: Optional[str] = None
+    category: Optional[str] = None
     price_gtq: Optional[float] = None
+    price_usd: Optional[float] = None
+    is_made_to_order: Optional[bool] = None
     stock_total: Optional[int] = None
     stock_sold: Optional[int] = None
     is_published: Optional[bool] = None
+    is_offer: Optional[bool] = None
+    compare_at_price_gtq: Optional[float] = None
+    offer_ends_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
     amazon_url: Optional[str] = None
+    amazon_asin: Optional[str] = None
     image_url: Optional[str] = None
     notes: Optional[str] = None
+    cost_gtq: Optional[float] = None      # costo manual → calc_total_cost_gtq
+    calc: Optional[ShopperItemCalcSnapshot] = None
 
 
 class ShopperCatalogItemRead(BaseModel):
@@ -901,16 +1038,32 @@ class ShopperCatalogItemRead(BaseModel):
     source: str
     trip_item_id: Optional[uuid.UUID] = None
     title: str
+    hook: Optional[str] = None
     description: Optional[str] = None
+    category: Optional[str] = None
     price_gtq: Optional[float] = None
+    price_usd: Optional[float] = None
+    is_made_to_order: bool = True
     stock_total: int
     stock_sold: int
     stock_available: int
+    listing: str = "catalog"              # live | catalog
+    expires_at: Optional[datetime] = None
     is_published: bool
+    is_offer: bool = False
+    compare_at_price_gtq: Optional[float] = None
+    offer_ends_at: Optional[datetime] = None
     published_at: Optional[datetime] = None
+    last_reserved_at: Optional[datetime] = None
     amazon_url: Optional[str] = None
+    amazon_asin: Optional[str] = None
     image_url: Optional[str] = None
     notes: Optional[str] = None
+    # Snapshot de cálculo (visible sólo al dueño; la lectura va por tenant).
+    calc_mode: Optional[str] = None
+    calc_weight_lbs: Optional[float] = None
+    calc_volume_in3: Optional[float] = None
+    calc_total_cost_gtq: Optional[float] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -919,21 +1072,71 @@ class ShopperCatalogItemRead(BaseModel):
         from_attributes = True
 
 
+class ShopperPayInfo(BaseModel):
+    """Datos de pago que ve el cliente (nunca datos internos del tenant)."""
+    bank_name: Optional[str] = None
+    bank_account_holder: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_account_type: Optional[str] = None
+
+
 class PublicShopperCatalogItem(BaseModel):
     id: uuid.UUID
     title: str
+    hook: Optional[str] = None
     description: Optional[str] = None
+    category: Optional[str] = None
     price_gtq: Optional[float] = None
+    is_offer: bool = False
+    compare_at_price_gtq: Optional[float] = None
+    offer_ends_at: Optional[datetime] = None
+    is_made_to_order: bool = True
     stock_available: int
-    stock_total: int
-    amazon_url: Optional[str] = None
+    reserved_count: int = 0
+    # Escasez honesta: 'remaining' = unidades reales que quedan cuando el shopper
+    # las trae en mano (null si es por encargo, no hay número honesto). 'closed' =
+    # el ítem ya no se puede apartar (tienda cerrada / vencido / agotado).
+    remaining: Optional[int] = None
+    closed: bool = False
+    listing: str = "catalog"              # live | catalog
+    expires_at: Optional[datetime] = None
+    # price_usd / costos / calc_* / capacidad NUNCA se exponen al cliente.
     image_url: Optional[str] = None
+    last_reserved_at: Optional[datetime] = None
+    bought_with: list[uuid.UUID] = []
 
 
 class PublicShopperCatalog(BaseModel):
     business_name: Optional[str] = None
     whatsapp_number: Optional[str] = None
+    logo_url: Optional[str] = None
+    theme_color: Optional[str] = None
+    delivery_days_min: int = 5
+    delivery_days_max: int = 7
+    trip_name: Optional[str] = None
+    trip_close_at: Optional[datetime] = None
+    trip_label: Optional[str] = None
+    origin_label: Optional[str] = None
+    # Tienda en vivo: status EFECTIVO (ya considera el reloj), nombre y cierre.
+    store_status: str = "closed"          # closed | live
+    store_name: Optional[str] = None
+    store_closes_at: Optional[datetime] = None
+    categories: list[str] = []
+    reserved_people: int = 0
+    reserved_units: int = 0
+    pay_info: Optional[ShopperPayInfo] = None
     items: list[PublicShopperCatalogItem]
+    # Stamp de versión del catálogo — el cliente lo compara contra el pulso para
+    # saber si hay que refrescar. No es sensible (mismo dato que reserved_*).
+    v: str = ""
+
+
+class PublicShopperPulse(BaseModel):
+    """Latido barato del catálogo público: el cliente lo pollea seguido y solo
+    refetchea el catálogo completo cuando `v` cambia. Nunca expone costos ni PII."""
+    v: str
+    live: bool = False
+    closes_at: Optional[datetime] = None
 
 
 # ── Reservas ──────────────────────────────
@@ -947,15 +1150,21 @@ class ShopperReservationCreate(BaseModel):
 
 
 class ShopperReservationUpdate(BaseModel):
-    status: Optional[str] = None          # confirmada | completada | cancelada
+    # status: cualquiera de SHOPPER_STATUS_FLOW / SHOPPER_OFF_RAMP.
+    # La validez de la transición la impone SHOPPER_VALID_TRANSITIONS en el router.
+    status: Optional[str] = None
     payment_reference: Optional[str] = None
     notes: Optional[str] = None
+    resolution: Optional[str] = None
+    resolution_note: Optional[str] = None
+    suggested_item_id: Optional[uuid.UUID] = None
 
 
 class ShopperReservationRead(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     catalog_item_id: uuid.UUID
+    order_token: Optional[uuid.UUID] = None
     client_name: str
     client_phone: str
     client_token: uuid.UUID
@@ -966,21 +1175,35 @@ class ShopperReservationRead(BaseModel):
     notes: Optional[str] = None
     expires_at: datetime
     confirmed_at: Optional[datetime] = None
+    comprada_at: Optional[datetime] = None
+    en_camino_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    no_disponible_at: Optional[datetime] = None
+    cancelada_at: Optional[datetime] = None
+    resolution: Optional[str] = None
+    resolution_note: Optional[str] = None
+    suggested_item_id: Optional[uuid.UUID] = None
+    replaces_reservation_id: Optional[uuid.UUID] = None
+    client_notified_at: Optional[datetime] = None
+    resolved_by_substitute: bool = False
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    # Desnormalizado para el vendor
+    # Desnormalizado para el dueño (esta lectura va por get_current_tenant_id).
     item_title: Optional[str] = None
+    item_image_url: Optional[str] = None
     item_price_gtq: Optional[float] = None
+    item_amazon_url: Optional[str] = None
 
     class Config:
         from_attributes = True
 
 
-class PublicReservationRead(BaseModel):
+class PublicShopperReservationRead(BaseModel):
     id: uuid.UUID
     client_token: uuid.UUID
+    order_token: Optional[uuid.UUID] = None
+    order_pin: Optional[str] = None
     client_name: str
     quantity: int
     status: str
@@ -990,6 +1213,199 @@ class PublicReservationRead(BaseModel):
     item_price_gtq: Optional[float] = None
     whatsapp_number: Optional[str] = None
     created_at: datetime
+
+
+class PublicShopperOrderLine(BaseModel):
+    """Una reserva dentro del pedido acumulado ('En mi maleta') del cliente."""
+    id: uuid.UUID
+    item_id: uuid.UUID
+    item_title: str
+    item_image_url: Optional[str] = None
+    item_price_gtq: Optional[float] = None
+    quantity: int
+    status: str
+    editable: bool = False
+    stock_available: int = 0
+    expires_at: datetime
+    created_at: datetime
+    resolution: Optional[str] = None
+    resolution_note: Optional[str] = None
+    suggested_items: list[PublicShopperCatalogItem] = []
+    resolved_by_substitute: bool = False
+
+
+class PublicShopperOrderLineUpdate(BaseModel):
+    """Cliente edita la cantidad de una línea pendiente de su pedido."""
+    quantity: int
+
+
+class ShopperOrderLookupBody(BaseModel):
+    """Cliente recupera su pedido con su WhatsApp + PIN de 4 dígitos."""
+    phone: str
+    pin: str
+    catalog_token: uuid.UUID
+
+
+class PublicShopperOrder(BaseModel):
+    """Pedido acumulado: todas las reservas de un mismo cliente, sin login."""
+    order_token: uuid.UUID
+    order_pin: Optional[str] = None
+    catalog_token: Optional[uuid.UUID] = None
+    client_name: str
+    business_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    logo_url: Optional[str] = None
+    theme_color: Optional[str] = None
+    trip_name: Optional[str] = None
+    trip_close_at: Optional[datetime] = None
+    trip_label: Optional[str] = None
+    origin_label: Optional[str] = None
+    delivery_days_min: int = 5
+    delivery_days_max: int = 7
+    pay_info: Optional[ShopperPayInfo] = None
+    lines: list[PublicShopperOrderLine]
+    subtotal_gtq: float = 0            # antes del cupón (= Σ precio·qty de líneas activas)
+    total_gtq: float = 0              # subtotal − descuento del cupón
+    total_items: int = 0
+    # Cupón aplicado al pedido (público — nunca costo/margen/redeemed_count).
+    coupon_code: Optional[str] = None
+    coupon_discount_gtq: float = 0
+    coupon_note: Optional[str] = None      # p.ej. "Aplica desde Q200" cuando no llega al mínimo
+    coupon_expires_at: Optional[datetime] = None
+
+
+# ==========================================
+# SHOPPER — Cupones de descuento
+# ==========================================
+class ShopperCouponInput(BaseModel):
+    """Dueño crea/edita un cupón. `code` opcional en create → autogenerado."""
+    code: Optional[str] = None
+    discount_type: Literal["percent", "fixed"] = "percent"
+    percent_off: Optional[float] = None
+    amount_off_gtq: Optional[float] = None
+    max_discount_gtq: Optional[float] = None
+    min_subtotal_gtq: Optional[float] = None
+    min_margin_pct: float = 0
+    # Default "un solo canje total"; el dueño lo sube a N o lo pone null (ilimitado).
+    max_redemptions: Optional[int] = 1
+    per_customer_limit: int = 1
+    starts_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    label: Optional[str] = None
+    is_active: Optional[bool] = None       # solo en update (toggle on/off)
+
+
+class ShopperCouponRead(BaseModel):
+    id: uuid.UUID
+    code: str
+    discount_type: str
+    percent_off: Optional[float] = None
+    amount_off_gtq: Optional[float] = None
+    max_discount_gtq: Optional[float] = None
+    min_subtotal_gtq: Optional[float] = None
+    min_margin_pct: float = 0
+    max_redemptions: Optional[int] = None
+    per_customer_limit: int = 1
+    redeemed_count: int = 0
+    starts_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    label: Optional[str] = None
+    is_active: bool = True
+    created_at: datetime
+    # Alerta de margen para el dueño (calculada en el router, solo endpoints de dueño).
+    could_go_below_cost: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class CouponRedemptionRead(BaseModel):
+    """Auditoría de un canje (endpoint de dueño). Incluye margen — nunca público."""
+    id: uuid.UUID
+    order_token: uuid.UUID
+    client_phone: str
+    status: str
+    discount_gtq: float = 0
+    subtotal_gtq: float = 0
+    margin_gtq: Optional[float] = None
+    margin_pct: Optional[float] = None
+    below_cost: bool = False
+    created_at: datetime
+    released_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CouponApplyBody(BaseModel):
+    code: str
+
+
+class CouponPreview(BaseModel):
+    """Preview público: valida sin consumir. Nunca revela costo/margen/usos."""
+    valid: bool
+    discount_gtq: float = 0
+    subtotal_gtq: float = 0
+    new_total_gtq: float = 0
+    coupon_code: Optional[str] = None
+    coupon_expires_at: Optional[datetime] = None
+    reason: Optional[str] = None           # genérico; o "Aplica desde QX" (mínimo)
+
+
+class ShopperStatsBucket(BaseModel):
+    """Un balde del reporte honesto. `revenue_gtq` es bruto (precio de lista × cantidad);
+    `net_revenue_gtq` = bruto − cupón atribuido; `profit_gtq` = neto − costo. `cost_gtq`
+    usa el costo real de la calculadora cuando existe, o precio×ratio asumido si no —
+    `assumed_cost_lines` cuenta cuántas líneas caen en ese supuesto (transparencia)."""
+    revenue_gtq: float = 0
+    coupon_gtq: float = 0
+    net_revenue_gtq: float = 0
+    cost_gtq: float = 0
+    profit_gtq: float = 0
+    units: int = 0
+    lines: int = 0
+    orders: int = 0
+    assumed_cost_lines: int = 0
+
+
+class ShopperStatsProduct(BaseModel):
+    catalog_item_id: uuid.UUID
+    title: str
+    image_url: Optional[str] = None
+    units: int = 0
+    net_revenue_gtq: float = 0
+    profit_gtq: float = 0
+
+
+class ShopperStatsRead(BaseModel):
+    """Reporting HONESTO del Personal Shopper — reemplaza el `summary` mentiroso del
+    front (mezclaba pendiente con realizado y no restaba cupones). Tres baldes por
+    avance real del pedido: `potential` (pendiente, aún puede evaporarse) · `committed`
+    (confirmada/comprada/en_camino, en firme) · `realized` (entregada, plata de verdad).
+    Todo neteado de cupones. USD con el tipo de cambio de la calculadora."""
+    period_days: int = 0                  # 0 = histórico completo
+    generated_at: datetime
+    exchange_rate: float
+
+    potential: ShopperStatsBucket
+    committed: ShopperStatsBucket
+    realized: ShopperStatsBucket
+
+    # Derivados del balde realizado (lo que cuenta de verdad)
+    realized_profit_usd: float = 0
+    avg_ticket_gtq: float = 0             # net_revenue realizado / pedidos realizados
+    fulfillment_rate: float = 0          # entregadas / (entregadas + canceladas + no_disponible)
+
+    # Fugas visibles (no escondidas)
+    cancelled_lines: int = 0
+    unavailable_lines: int = 0
+    expired_lines: int = 0
+
+    # Extras
+    total_coupon_gtq: float = 0          # todos los cupones 'held' vivos
+    unique_customers: int = 0
+    recurring_customers: int = 0         # teléfonos con >1 pedido
+    top_products: list[ShopperStatsProduct] = []
 
 
 # ==========================================

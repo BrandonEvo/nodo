@@ -5,4 +5,5 @@ export const haptic = {
   confirm: () => vib([60, 30, 60]),
   done:    () => vib([80, 40, 80, 40, 80]),
   error:   () => vib([150]),
+  reject:  () => vib([30, 40, 30]),
 };

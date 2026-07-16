@@ -201,7 +201,7 @@ export function OnboardingModal({ userEmail: _userEmail, tenantName, onComplete 
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej. Panadería La Luna"
+                  placeholder="Ej. Tienda La Luna"
                   value={companyName}
                   onChange={e => setCompanyName(e.target.value)}
                   autoFocus

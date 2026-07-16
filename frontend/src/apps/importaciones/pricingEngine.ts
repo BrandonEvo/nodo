@@ -190,6 +190,26 @@ export function calculatePricing(
   };
 }
 
+/**
+ * Precios "psicológicos" sugeridos a partir del precio mínimo que da el margen
+ * (ej. costo Q126.87 → precio ~Q195 → sugiere Q199.99, Q200, Q250).
+ * Devuelve hasta 3 opciones redondas/atractivas, todas ≥ minPrice.
+ */
+export function suggestPrices(minPrice: number): number[] {
+  if (!isFinite(minPrice) || minPrice <= 0) return [];
+  const step = minPrice < 100 ? 10 : minPrice < 500 ? 50 : 100;
+  const roundUp = (p: number, s: number) => Math.ceil(p / s) * s;
+  const opts = [
+    roundUp(minPrice, step) - 0.01,      // terminación .99 (199.99)
+    roundUp(minPrice, step),             // múltiplo redondo (200)
+    roundUp(minPrice * 1.12, step),      // opción premium (~12% arriba)
+  ];
+  return [...new Set(opts)]
+    .filter(p => p >= minPrice)
+    .sort((a, b) => a - b)
+    .slice(0, 3);
+}
+
 export const fmtGTQ = (n: number) =>
   `Q${(isFinite(n) ? n : 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 

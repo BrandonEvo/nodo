@@ -72,6 +72,7 @@ export interface Cotizacion {
   share_token: string;
   tenant_id: string;
   cliente_id: string | null;
+  paquete_id: string | null;
   cliente: ClienteMini | null;
   product_name: string;
   amazon_asin: string | null;
@@ -115,6 +116,39 @@ export interface RenovarPayload {
   result_snapshot: Record<string, unknown>;
 }
 
+export interface Paquete {
+  id: string;
+  tenant_id: string;
+  cliente_id: string | null;
+  cliente: ClienteMini | null;
+  name: string;
+  status: CotizacionStatus;
+  tracking_number: string | null;
+  estimated_delivery: string | null;
+  notes: string | null;
+  confirmado_at: string | null;
+  comprado_at: string | null;
+  en_transito_at: string | null;
+  entregado_at: string | null;
+  pagado_at: string | null;
+  created_at: string;
+  updated_at: string;
+  cotizaciones: Cotizacion[];
+}
+
+export interface PaqueteCreate {
+  name?: string | null;
+  cliente_id?: string | null;
+  cotizacion_ids?: string[];
+}
+
+export interface PaqueteUpdate {
+  name?: string | null;
+  tracking_number?: string | null;
+  estimated_delivery?: string | null;
+  notes?: string | null;
+}
+
 export const importacionesService = {
   list: (status?: CotizacionStatus) =>
     api.get<Cotizacion[]>('/api/importaciones/cotizaciones', {
@@ -138,4 +172,24 @@ export const importacionesService = {
 
   getPublicTracking: (shareToken: string) =>
     api.get<PublicCotizacion>(`/api/importaciones/public/${shareToken}`),
+
+  // ── Paquetes (agrupación de pedidos) ──────────────────────────────────────
+  listPaquetes: () =>
+    api.get<Paquete[]>('/api/importaciones/paquetes'),
+
+  createPaquete: (data: PaqueteCreate) =>
+    api.post<Paquete>('/api/importaciones/paquetes', data),
+
+  updatePaquete: (id: string, data: PaqueteUpdate) =>
+    api.patch<Paquete>(`/api/importaciones/paquetes/${id}`, data),
+
+  advancePaqueteStatus: (id: string, status: CotizacionStatus) =>
+    api.patch<Paquete>(`/api/importaciones/paquetes/${id}/status`, { status }),
+
+  deletePaquete: (id: string) =>
+    api.delete(`/api/importaciones/paquetes/${id}`),
+
+  /** Mueve una cotización a un paquete (paqueteId null = sacarla). */
+  assignPaquete: (cotizacionId: string, paqueteId: string | null) =>
+    api.patch<Cotizacion>(`/api/importaciones/cotizaciones/${cotizacionId}/paquete`, { paquete_id: paqueteId }),
 };

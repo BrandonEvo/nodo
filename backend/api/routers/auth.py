@@ -1,6 +1,5 @@
 import hashlib
 import hmac
-import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -20,32 +19,15 @@ from passlib.context import CryptContext
 from core.limiter import limiter
 from core.auth import get_jwt_strategy
 from core.config import settings
+from core.session import (
+    JWT_LIFETIME as _JWT_LIFETIME,
+    REFRESH_DAYS as _REFRESH_DAYS,
+    new_refresh_token as _new_refresh_token,
+    set_auth_cookies as _set_auth_cookies,
+)
 from api.manager import get_user_manager
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-_JWT_LIFETIME = 3600 * 2   # 2 horas
-_REFRESH_DAYS = 7          # 7 días
-
-
-def _new_refresh_token() -> tuple[str, str]:
-    """Devuelve (token_raw, token_hash). Guardar solo el hash en BD."""
-    raw = os.urandom(32).hex()
-    h   = hashlib.sha256(raw.encode()).hexdigest()
-    return raw, h
-
-
-def _set_auth_cookies(response: Response, jwt: str, refresh_raw: str) -> None:
-    secure = settings.COOKIE_SECURE
-    response.set_cookie(
-        key="access_token", value=jwt,
-        httponly=True, max_age=_JWT_LIFETIME, samesite="lax", secure=secure,
-    )
-    response.set_cookie(
-        key="refresh_token", value=refresh_raw,
-        httponly=True, max_age=_REFRESH_DAYS * 86400, samesite="lax", secure=secure,
-        path="/api/auth/refresh",
-    )
 
 router = APIRouter(tags=["Auth: Custom SaaS Flows"])
 
@@ -81,6 +63,41 @@ def _validate_password(password: str) -> None:
         )
 
 
+# ── Política de registro ──────────────────────────────────────────────────────
+
+# Dominios de correo temporal. Un negocio real nunca registra su empresa desde
+# uno de estos; sí lo hace quien quiere un trial tras otro. Sin SMTP no podemos
+# verificar el correo, así que esta lista es la defensa disponible hoy.
+_DISPOSABLE_EMAIL_DOMAINS = {
+    "10minutemail.com", "20minutemail.com", "33mail.com", "dispostable.com",
+    "fakeinbox.com", "getairmail.com", "getnada.com", "guerrillamail.com",
+    "guerrillamail.info", "guerrillamail.net", "inboxbear.com", "mail-temp.com",
+    "mailcatch.com", "maildrop.cc", "mailinator.com", "mailnesia.com",
+    "mintemail.com", "mohmal.com", "moakt.com", "sharklasers.com",
+    "spam4.me", "temp-mail.org", "tempinbox.com", "tempmail.net",
+    "tempmailo.com", "throwawaymail.com", "trashmail.com", "trbvm.com",
+    "yopmail.com", "yopmail.fr", "yopmail.net",
+}
+
+
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _reject_disposable(email: str) -> None:
+    """
+    Mensaje deliberadamente genérico e idéntico al de "el correo ya existe":
+    revelar que bloqueamos desechables solo enseña a evadir el filtro, y
+    distinguir los casos permitiría enumerar usuarios.
+    """
+    domain = email.rpartition("@")[2]
+    if domain in _DISPOSABLE_EMAIL_DOMAINS:
+        raise HTTPException(
+            status_code=400,
+            detail="No se pudo crear la cuenta. Verifica los datos e intenta de nuevo.",
+        )
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class WorkspaceRegisterRequest(BaseModel):
@@ -108,7 +125,10 @@ async def register_workspace(
 ):
     _validate_password(payload.password)
 
-    existing_user = (await session.execute(select(User).where(User.email == payload.email))).scalar_one_or_none()
+    email = _normalize_email(payload.email)
+    _reject_disposable(email)
+
+    existing_user = (await session.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if existing_user:
         raise HTTPException(status_code=400, detail="No se pudo crear la cuenta. Verifica los datos e intenta de nuevo.")
 
@@ -117,7 +137,7 @@ async def register_workspace(
     await session.flush()
 
     new_user = User(
-        email=payload.email,
+        email=email,
         hashed_password=pwd_context.hash(payload.password),
         is_active=True,
         is_superuser=False,

@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Search, UserPlus, User, Phone, Mail, Loader2, AlertTriangle, X, Check,
-  Plus, ChevronRight, Package2, MessageCircle, Trash2, Pencil,
+  Plus, ChevronRight, Package2, MessageCircle, Trash2, Pencil, ShoppingBag,
 } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import { ImportFab } from './ImportFab';
 import { buildWhatsAppUrl } from '@/lib/utils';
 import {
   importClientesService,
-  type Cliente, type ClienteDetail, type ClienteCreate,
+  type Cliente, type ClienteDetail, type ClienteCreate, type ClienteReserva,
 } from '@/services/import_clientes.service';
 import { STATUS_LABEL, type Cotizacion } from '@/services/importaciones.service';
 import { fmtGTQ } from './pricingEngine';
@@ -15,6 +16,23 @@ import { fmtGTQ } from './pricingEngine';
 interface ClientesTabProps {
   onNewCotizacion?: (cliente: Cliente) => void;
 }
+
+// Origen de la ficha: manual no lleva badge; catálogo/QR sí (vinieron del link público).
+const SOURCE_BADGE: Record<string, { label: string; cls: string }> = {
+  catalogo: { label: 'Pedido en línea', cls: 'bg-nodo-primary-soft text-nodo-ink' },
+  qr:       { label: 'QR', cls: 'bg-violet-500/15 text-violet-600 dark:text-violet-300' },
+};
+
+// Estado de una reserva del catálogo → etiqueta corta y color para el perfil.
+const RESERVA_STATUS: Record<string, { label: string; cls: string }> = {
+  pendiente:     { label: 'Reservado',     cls: 'bg-nodo-primary-soft text-nodo-ink' },
+  confirmada:    { label: 'Confirmado',    cls: 'bg-nodo-primary-soft text-nodo-ink' },
+  comprada:      { label: 'Comprado',      cls: 'bg-nodo-primary-soft text-nodo-ink' },
+  en_camino:     { label: 'En camino',     cls: 'bg-nodo-primary-soft text-nodo-ink' },
+  entregada:     { label: 'Entregado',     cls: 'bg-nodo-success-bg text-nodo-success-tx' },
+  no_disponible: { label: 'No disponible', cls: 'bg-nodo-warn-bg text-nodo-warn-tx' },
+  cancelada:     { label: 'Cancelado',     cls: 'bg-nodo-danger-bg text-nodo-danger-tx' },
+};
 
 function fmtMoney(value: string | null): string {
   return fmtGTQ(Number(value ?? 0));
@@ -138,6 +156,28 @@ function MiniCotizacion({ c }: { c: Cotizacion }) {
   );
 }
 
+function MiniReserva({ r }: { r: ClienteReserva }) {
+  const meta = RESERVA_STATUS[r.status] ?? { label: r.status, cls: 'bg-nodo-inset text-nodo-sub' };
+  return (
+    <div className="flex items-center gap-3 py-2.5">
+      <span className="w-8 h-8 rounded-xl bg-nodo-inset flex items-center justify-center shrink-0 overflow-hidden">
+        {r.item_image_url
+          ? <img src={r.item_image_url} alt="" className="w-full h-full object-cover" />
+          : <ShoppingBag size={14} className="text-nodo-sub" />}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] font-bold text-nodo-ink truncate">
+          {r.quantity > 1 && <span className="text-nodo-sub">{r.quantity}× </span>}{r.item_title}
+        </p>
+        <span className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded-full mt-0.5 ${meta.cls}`}>
+          {meta.label}
+        </span>
+      </div>
+      <p className="text-sm font-black tabular-nums text-nodo-ink shrink-0">{fmtMoney(r.line_total_gtq)}</p>
+    </div>
+  );
+}
+
 function ClienteProfile({
   clienteId, open, onClose, onChanged, onNewCotizacion,
 }: {
@@ -209,7 +249,7 @@ function ClienteProfile({
           {/* Stats */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-nodo-inset rounded-2xl p-3">
-              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Pedidos</p>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest mb-0.5">Cotizaciones</p>
               <p className="text-2xl font-black text-nodo-ink tabular-nums">{detail.cotizaciones_count}</p>
             </div>
             <div className="bg-nodo-inset rounded-2xl p-3">
@@ -217,6 +257,38 @@ function ClienteProfile({
               <p className="text-2xl font-black text-nodo-ink tabular-nums">{fmtMoney(detail.total_pagado_gtq)}</p>
             </div>
           </div>
+
+          {/* Pedido en línea — acumulado de reservas del catálogo por estado */}
+          {(detail.reservas.length > 0
+            || Number(detail.reservado_gtq) > 0
+            || Number(detail.pedido_actual_gtq) > 0
+            || Number(detail.entregado_gtq) > 0) && (
+            <div className="bg-nodo-primary-soft rounded-2xl p-4">
+              <div className="flex items-center gap-1.5 mb-3">
+                <ShoppingBag size={13} className="text-nodo-ink" />
+                <p className="text-[10px] font-bold text-nodo-ink uppercase tracking-wider">Pedido en línea</p>
+                {detail.reservas_activas > 0 && (
+                  <span className="ml-auto text-[9px] font-black px-1.5 py-0.5 rounded-full bg-nodo-primary text-nodo-on-primary">
+                    {detail.reservas_activas} activa{detail.reservas_activas > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <p className="text-[9px] font-bold text-nodo-sub uppercase tracking-widest mb-0.5">Reservado</p>
+                  <p className="text-base font-black text-nodo-ink tabular-nums">{fmtMoney(detail.reservado_gtq)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-bold text-nodo-sub uppercase tracking-widest mb-0.5">En curso</p>
+                  <p className="text-base font-black text-nodo-ink tabular-nums">{fmtMoney(detail.pedido_actual_gtq)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-bold text-nodo-sub uppercase tracking-widest mb-0.5">Entregado</p>
+                  <p className="text-base font-black text-nodo-ink tabular-nums">{fmtMoney(detail.entregado_gtq)}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Acciones */}
           <div className="flex gap-2">
@@ -245,9 +317,19 @@ function ClienteProfile({
             </div>
           )}
 
-          {/* Historial */}
+          {/* Pedido en línea — líneas del catálogo */}
+          {detail.reservas.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1">Artículos del catálogo</p>
+              <div className="divide-y divide-nodo-line">
+                {detail.reservas.map(r => <MiniReserva key={r.id} r={r} />)}
+              </div>
+            </div>
+          )}
+
+          {/* Historial de cotizaciones */}
           <div>
-            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1">Historial de pedidos</p>
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1">Historial de cotizaciones</p>
             {detail.cotizaciones.length === 0 ? (
               <p className="text-xs text-nodo-dim font-medium py-3">Aún sin cotizaciones.</p>
             ) : (
@@ -323,26 +405,19 @@ export function ClientesTab({ onNewCotizacion }: ClientesTabProps) {
   }, [search, load]);
 
   return (
-    <div className="flex flex-col gap-3 pb-6">
-      {/* Buscador + nuevo */}
-      <div className="flex gap-2">
-        <div className="flex-1 flex items-center gap-2 h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl focus-within:border-nodo-ink transition-colors">
-          <Search size={16} className="text-nodo-dim shrink-0" />
-          <input
-            type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar cliente…"
-            className="flex-1 bg-transparent text-sm font-semibold text-nodo-ink outline-none placeholder:text-nodo-dim"
-          />
-          {search && (
-            <button onClick={() => setSearch('')} className="text-nodo-dim hover:text-nodo-ink"><X size={14} /></button>
-          )}
-        </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="h-12 px-4 rounded-2xl bg-nodo-ink text-nodo-canvas font-bold text-sm flex items-center gap-1.5 active:scale-[0.97] transition-transform shrink-0"
-        >
-          <UserPlus size={16} /> Nuevo
-        </button>
+    <>
+    <div className="flex flex-col gap-4">
+      {/* Buscador */}
+      <div className="flex items-center gap-2 h-12 px-4 bg-nodo-inset border-2 border-nodo-line rounded-2xl focus-within:border-nodo-ink transition-colors">
+        <Search size={16} className="text-nodo-dim shrink-0" />
+        <input
+          type="text" value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar cliente…"
+          className="flex-1 bg-transparent text-sm font-semibold text-nodo-ink outline-none placeholder:text-nodo-dim"
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="text-nodo-dim hover:text-nodo-ink"><X size={14} /></button>
+        )}
       </div>
 
       {loading ? (
@@ -369,24 +444,43 @@ export function ClientesTab({ onNewCotizacion }: ClientesTabProps) {
             <button
               key={c.id}
               onClick={() => setProfileId(c.id)}
-              className="flex items-center gap-3 p-3 bg-nodo-card border border-nodo-line rounded-2xl shadow-sm active:scale-[0.99] hover:bg-nodo-inset transition-all text-left"
+              className="flex items-center gap-3 p-3.5 nodo-card active:scale-[0.99] hover:bg-nodo-inset transition-all text-left"
             >
               <span className="w-11 h-11 rounded-2xl bg-nodo-primary-soft flex items-center justify-center shrink-0">
                 <User size={20} className="text-nodo-ink" />
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-black text-nodo-ink truncate">{c.name}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-black text-nodo-ink truncate">{c.name}</p>
+                  {SOURCE_BADGE[c.source] && (
+                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${SOURCE_BADGE[c.source].cls}`}>
+                      {SOURCE_BADGE[c.source].label}
+                    </span>
+                  )}
+                </div>
                 <p className="text-[11px] text-nodo-sub font-medium truncate">
                   {c.phone ? c.phone : 'Sin teléfono'}
-                  {c.cotizaciones_count > 0 && ` · ${c.cotizaciones_count} pedido${c.cotizaciones_count > 1 ? 's' : ''}`}
+                  {c.reservas_activas > 0
+                    ? ` · ${c.reservas_activas} en línea`
+                    : c.cotizaciones_count > 0 && ` · ${c.cotizaciones_count} pedido${c.cotizaciones_count > 1 ? 's' : ''}`}
                 </p>
               </div>
-              {Number(c.total_pagado_gtq) > 0 && (
-                <div className="text-right shrink-0">
-                  <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest">Pagado</p>
-                  <p className="text-sm font-black tabular-nums text-nodo-ink">{fmtMoney(c.total_pagado_gtq)}</p>
-                </div>
-              )}
+              {(() => {
+                const enLinea = Number(c.reservado_gtq) + Number(c.pedido_actual_gtq);
+                if (enLinea > 0) return (
+                  <div className="text-right shrink-0">
+                    <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest">En línea</p>
+                    <p className="text-sm font-black tabular-nums text-nodo-ink">{fmtGTQ(enLinea)}</p>
+                  </div>
+                );
+                if (Number(c.total_pagado_gtq) > 0) return (
+                  <div className="text-right shrink-0">
+                    <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest">Pagado</p>
+                    <p className="text-sm font-black tabular-nums text-nodo-ink">{fmtMoney(c.total_pagado_gtq)}</p>
+                  </div>
+                );
+                return null;
+              })()}
               <ChevronRight size={16} className="text-nodo-dim shrink-0" />
             </button>
           ))}
@@ -407,5 +501,8 @@ export function ClientesTab({ onNewCotizacion }: ClientesTabProps) {
         onNewCotizacion={onNewCotizacion}
       />
     </div>
+
+    <ImportFab icon={<UserPlus size={20} />} label="Cliente" onPress={() => setShowForm(true)} />
+    </>
   );
 }

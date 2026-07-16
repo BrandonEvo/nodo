@@ -5,6 +5,7 @@ import type { AppProps } from '../index';
 import { cierreService, type ShiftSummary } from '@/services/cierre.service';
 import { recetasService } from '@/services/recetas.service';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import { DualClock } from '@/components/ui/DualClock';
 
 const DESTINO_OPTIONS = [
   { id: 'ayer' as const,   label: 'Ayer −40%', icon: ShoppingBag, selected: 'bg-amber-500 text-white' },
@@ -75,6 +76,7 @@ export function CierreApp(_props: AppProps) {
 
   const dateStr = new Date().toLocaleDateString('es-GT', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    timeZone: 'America/Guatemala',
   });
 
   if (loading) {
@@ -146,10 +148,16 @@ export function CierreApp(_props: AppProps) {
         )}
 
         {/* Header */}
-        <div>
-          <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Cierre de Turno</h1>
-          <p className="text-nodo-sub text-sm font-medium mt-1 capitalize">{dateStr}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Cierre de Turno</h1>
+            <p className="text-nodo-sub text-sm font-medium mt-1 capitalize">{dateStr}</p>
+          </div>
+          <DualClock className="mt-1 shrink-0" />
         </div>
+        <p className="-mt-3 text-[11px] text-nodo-dim font-medium">
+          Las ventas se cuentan por el día de <span className="font-bold text-nodo-sub">Guatemala</span>.
+        </p>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 

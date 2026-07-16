@@ -5,6 +5,7 @@ Allow: /pedido/
 
 # Bloquear rutas de app autenticada y API
 Disallow: /api/
+Disallow: /portal
 Disallow: /settings
 Disallow: /admin
 

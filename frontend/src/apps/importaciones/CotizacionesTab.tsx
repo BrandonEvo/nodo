@@ -1,13 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Package2, Truck, CheckCircle2, DollarSign, Clock, AlertTriangle,
-  ChevronRight, RotateCcw, Pencil, X, Check, Loader2, MapPin,
-  Calendar, FileText, Calculator, Share2, Search, Plus, Undo2,
+  ChevronRight, RotateCcw, X, Check, Loader2, MapPin,
+  Calendar, Calculator, Share2, Search, Plus, Undo2, Globe,
+  MoreHorizontal, SlidersHorizontal,
 } from 'lucide-react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { ShareSheet } from '@/components/ui/ShareSheet';
-import { Avatar } from '@/components/ui/Avatar';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { MoneyKpi } from '@/components/ui/MoneyKpi';
+import { PaquetesBoard } from './PaquetesBoard';
+import { ImportFab } from './ImportFab';
+import { List, Boxes } from 'lucide-react';
 import {
   importacionesService,
   type Cotizacion,
@@ -24,6 +28,7 @@ import {
   type PricingInputs, type PricingConfig,
 } from './pricingEngine';
 import { usePricingEngine } from './usePricingEngine';
+import { importCatalogService } from '@/services/import_catalog.service';
 
 // ── Status badge config ───────────────────────────────────────────────────────
 
@@ -426,6 +431,30 @@ function EditSheet({
   );
 }
 
+// Fila de acción dentro del BottomSheet "Acciones" de una cotización.
+function ActionRow({
+  icon, label, onClick, danger, right, disabled,
+}: {
+  icon: React.ReactNode; label: string; onClick: () => void;
+  danger?: boolean; right?: React.ReactNode; disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full h-14 flex items-center gap-3 px-2 rounded-2xl active:bg-nodo-inset
+                  transition-colors disabled:opacity-40 ${danger ? 'text-nodo-danger-tx' : 'text-nodo-ink'}`}
+    >
+      <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0
+                        ${danger ? 'bg-nodo-danger-bg' : 'bg-nodo-inset'}`}>
+        {icon}
+      </span>
+      <span className="flex-1 text-left text-sm font-bold">{label}</span>
+      {right ?? <ChevronRight size={16} className="text-nodo-dim shrink-0" />}
+    </button>
+  );
+}
+
 function CotizacionCard({
   cotizacion,
   onUpdate,
@@ -438,6 +467,9 @@ function CotizacionCard({
   const [showLogistics, setShowLogistics] = useState(false);
   const [showEdit, setShowEdit]           = useState(false);
   const [showShare, setShowShare]         = useState(false);
+  const [showActions, setShowActions]     = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [pubState, setPubState]           = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
 
   const trackingUrl = `${window.location.origin}/import-tracking/${cotizacion.share_token}`;
 
@@ -492,6 +524,17 @@ function CotizacionCard({
     }
   }
 
+  async function handlePublishCatalog() {
+    if (pubState === 'loading' || pubState === 'done') return;
+    setPubState('loading');
+    try {
+      await importCatalogService.publishFromCotizacion(cotizacion.id);
+      setPubState('done');
+    } catch {
+      setPubState('error');
+    }
+  }
+
   async function handleRenovar() {
     setRenovating(true);
     try {
@@ -529,145 +572,181 @@ function CotizacionCard({
           </div>
         )}
 
-        <div className="p-4">
-          <div className="flex items-start gap-3">
-            <Avatar name={cotizacion.cliente?.name ?? cotizacion.product_name} size={48} />
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-nodo-ink truncate">{cotizacion.product_name}</p>
-                  <p className="text-sm text-nodo-sub truncate mt-0.5">
-                    {cotizacion.cliente?.name ?? 'Sin cliente'}
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className={`text-lg font-black leading-tight tracking-tight tabular-nums ${isViable ? 'text-nodo-ink' : 'text-nodo-danger-tx'}`}>
-                    {fmtGTQ(salePrice)}
-                  </p>
-                  <p className="text-xs text-nodo-dim tabular-nums">
-                    costo {fmtGTQ(landed)} · {fmtPct(margin)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 mt-3 flex-wrap">
-                <StatusBadge status={status} />
-                {status === 'cotizado' && !expired && (
-                  <span className="inline-flex items-center gap-1 text-xs text-nodo-dim tabular-nums">
-                    <Clock className="w-3 h-3" />
-                    {expiryLabel(cotizacion)}
-                  </span>
-                )}
-                {cotizacion.estimated_delivery && (
-                  <span className="inline-flex items-center gap-1 text-xs text-nodo-dim">
-                    <Calendar className="w-3 h-3" />
-                    {fmtDate(cotizacion.estimated_delivery)}
-                  </span>
-                )}
-                {cotizacion.tracking_number && (
-                  <span className="inline-flex items-center gap-1 text-xs text-nodo-dim max-w-[150px]">
-                    <MapPin className="w-3 h-3 shrink-0" />
-                    <span className="truncate">{cotizacion.tracking_number}</span>
-                  </span>
-                )}
-                {cotizacion.notes && (
-                  <span className="inline-flex items-center gap-1 text-xs text-nodo-dim max-w-[160px]">
-                    <FileText className="w-3 h-3 shrink-0" />
-                    <span className="truncate">{cotizacion.notes}</span>
-                  </span>
-                )}
-                <button
-                  onClick={() => setShowShare(true)}
-                  title="Compartir link de tracking"
-                  className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full
-                             bg-nodo-inset text-nodo-dim hover:text-nodo-ink hover:bg-nodo-raised
-                             active:scale-95 transition-all"
-                >
-                  <Share2 className="w-3 h-3" />
-                  Compartir
-                </button>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2 mt-3">
-                {/* Retroceder un paso (o reabrir si está pagada) */}
-                {prevStatus && (
-                  <button
-                    onClick={handleGoBack}
-                    disabled={advancing}
-                    title={`Volver a ${STATUS_LABEL[prevStatus]}`}
-                    className={`h-10 rounded-full border border-nodo-line text-nodo-sub font-bold text-xs
-                                flex items-center justify-center gap-1.5 hover:bg-nodo-inset hover:text-nodo-ink
-                                active:scale-[0.97] transition-all disabled:opacity-40
-                                ${isClosed ? 'flex-1 px-4' : 'px-3'}`}
-                  >
-                    {advancing ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
-                    {isClosed && <span>Reabrir</span>}
-                  </button>
-                )}
-
-                {!isClosed && (
-                  <>
-                    {nextStatus && (
-                      <button
-                        onClick={handleAdvance}
-                        disabled={advancing}
-                        className="flex-1 h-10 rounded-full font-bold text-xs flex items-center justify-center gap-1.5
-                                   shadow-sm active:scale-[0.97] transition-transform disabled:opacity-40"
-                        style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
-                      >
-                        {advancing
-                          ? <Loader2 size={13} className="animate-spin" />
-                          : <ChevronRight size={13} />
-                        }
-                        {NEXT_STATUS_ACTION[status] ?? STATUS_LABEL[nextStatus]}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setShowLogistics(true)}
-                      className="h-10 px-4 rounded-full border border-nodo-line text-nodo-sub font-bold text-xs flex items-center gap-1.5 hover:bg-nodo-inset active:scale-[0.97] transition-all"
-                    >
-                      <Pencil size={12} />
-                      <span className="hidden sm:inline">Logística</span>
-                    </button>
-                    <button
-                      onClick={() => setShowEdit(true)}
-                      className="h-10 px-4 rounded-full border border-nodo-line text-nodo-sub font-bold text-xs flex items-center gap-1.5 hover:bg-nodo-inset active:scale-[0.97] transition-all"
-                    >
-                      <Calculator size={12} />
-                      <span className="hidden sm:inline">Cálculo</span>
-                    </button>
-                    {status !== 'entregado' && (
-                      <button
-                        onClick={handleCancel}
-                        disabled={advancing}
-                        className="h-10 px-3 rounded-full border border-nodo-line text-nodo-dim hover:border-nodo-danger-bd hover:text-nodo-danger-tx hover:bg-nodo-danger-bg active:scale-[0.97] transition-all disabled:opacity-40"
-                      >
-                        <X size={13} />
-                      </button>
-                    )}
-                  </>
-                )}
-
-                {/* Cancelada → reactivar */}
-                {status === 'cancelado' && (
-                  <button
-                    onClick={handleReactivar}
-                    disabled={advancing}
-                    className="flex-1 h-10 px-4 rounded-full border border-nodo-line text-nodo-sub font-bold text-xs
-                               flex items-center justify-center gap-1.5 hover:bg-nodo-inset hover:text-nodo-ink
-                               active:scale-[0.97] transition-all disabled:opacity-40"
-                  >
-                    {advancing ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-                    Reactivar
-                  </button>
-                )}
-              </div>
+        {/* Cara — toca para ver todas las acciones */}
+        <button
+          onClick={() => setShowActions(true)}
+          className="block w-full text-left p-4 active:bg-nodo-inset transition-colors"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-nodo-ink truncate">{cotizacion.product_name}</p>
+              <p className="text-sm text-nodo-sub truncate mt-0.5">
+                {cotizacion.cliente?.name ?? 'Sin cliente'}
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className={`text-lg font-black leading-tight tracking-tight tabular-nums ${isViable ? 'text-nodo-ink' : 'text-nodo-danger-tx'}`}>
+                {fmtGTQ(salePrice)}
+              </p>
+              <p className="text-xs text-nodo-dim tabular-nums">
+                costo {fmtGTQ(landed)} · {fmtPct(margin)}
+              </p>
             </div>
           </div>
+
+          {/* Meta compacta: estado + UN chip contextual + badge catálogo */}
+          <div className="flex items-center gap-2 mt-3">
+            <StatusBadge status={status} />
+            {status === 'cotizado' && !expired ? (
+              <span className="inline-flex items-center gap-1 text-xs text-nodo-dim tabular-nums">
+                <Clock className="w-3 h-3" />
+                {expiryLabel(cotizacion)}
+              </span>
+            ) : cotizacion.tracking_number ? (
+              <span className="inline-flex items-center gap-1 text-xs text-nodo-dim max-w-[150px]">
+                <MapPin className="w-3 h-3 shrink-0" />
+                <span className="truncate">{cotizacion.tracking_number}</span>
+              </span>
+            ) : cotizacion.estimated_delivery ? (
+              <span className="inline-flex items-center gap-1 text-xs text-nodo-dim">
+                <Calendar className="w-3 h-3" />
+                {fmtDate(cotizacion.estimated_delivery)}
+              </span>
+            ) : null}
+            {pubState === 'done' && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-nodo-success-tx">
+                <Globe className="w-3 h-3" /> En catálogo
+              </span>
+            )}
+          </div>
+        </button>
+
+        {/* Acción primaria (avanzar / renovar) + kebab con el resto */}
+        <div className="flex items-center gap-2 px-4 pb-4">
+          {expired ? (
+            <button
+              onClick={handleRenovar}
+              disabled={renovating}
+              className="flex-1 h-12 rounded-full font-bold text-sm flex items-center justify-center gap-1.5
+                         shadow-sm active:scale-[0.97] transition-transform disabled:opacity-40"
+              style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
+            >
+              {renovating ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+              Renovar cotización
+            </button>
+          ) : !isClosed && nextStatus ? (
+            <button
+              onClick={handleAdvance}
+              disabled={advancing}
+              className="flex-1 h-12 rounded-full font-bold text-sm flex items-center justify-center gap-1.5
+                         shadow-sm active:scale-[0.97] transition-transform disabled:opacity-40"
+              style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
+            >
+              {advancing ? <Loader2 size={14} className="animate-spin" /> : <ChevronRight size={14} />}
+              {NEXT_STATUS_ACTION[status] ?? STATUS_LABEL[nextStatus]}
+            </button>
+          ) : (
+            <div className="flex-1" />
+          )}
+          <button
+            onClick={() => setShowActions(true)}
+            aria-label="Más acciones"
+            className="w-12 h-12 rounded-full border border-nodo-line text-nodo-sub
+                       flex items-center justify-center active:scale-95 hover:bg-nodo-inset transition-all shrink-0"
+          >
+            <MoreHorizontal size={18} />
+          </button>
         </div>
       </div>
+
+      {/* BottomSheet: todas las acciones secundarias, ordenadas por frecuencia */}
+      <BottomSheet
+        open={showActions}
+        onClose={() => { setShowActions(false); setConfirmCancel(false); }}
+        title="Acciones"
+      >
+        <p className="text-sm text-nodo-sub font-medium -mt-1 mb-3 truncate">{cotizacion.product_name}</p>
+        <div className="flex flex-col gap-0.5">
+          {!isClosed && (
+            <>
+              <ActionRow
+                icon={<Calculator size={17} className="text-nodo-sub" />}
+                label="Editar cálculo"
+                onClick={() => { setShowActions(false); setShowEdit(true); }}
+              />
+              <ActionRow
+                icon={<Truck size={17} className="text-nodo-sub" />}
+                label="Logística y tracking"
+                onClick={() => { setShowActions(false); setShowLogistics(true); }}
+              />
+            </>
+          )}
+          <ActionRow
+            icon={<Share2 size={17} className="text-nodo-sub" />}
+            label="Compartir seguimiento"
+            onClick={() => { setShowActions(false); setShowShare(true); }}
+          />
+          <ActionRow
+            icon={<Globe size={17} className="text-nodo-sub" />}
+            label={pubState === 'done' ? 'En catálogo' : pubState === 'error' ? 'Reintentar publicación' : 'Publicar en catálogo'}
+            disabled={pubState === 'loading' || pubState === 'done'}
+            onClick={handlePublishCatalog}
+            right={
+              pubState === 'loading' ? <Loader2 size={16} className="animate-spin text-nodo-dim shrink-0" />
+              : pubState === 'done' ? <Check size={16} className="text-nodo-success-tx shrink-0" />
+              : pubState === 'error' ? <AlertTriangle size={16} className="text-nodo-danger-tx shrink-0" />
+              : <span className="w-4 shrink-0" />
+            }
+          />
+
+          <div className="h-px bg-nodo-line my-1.5" />
+
+          {prevStatus && (
+            <ActionRow
+              icon={<Undo2 size={17} className="text-nodo-sub" />}
+              label={isClosed ? 'Reabrir' : `Volver a ${STATUS_LABEL[prevStatus]}`}
+              disabled={advancing}
+              onClick={() => { handleGoBack(); setShowActions(false); }}
+            />
+          )}
+          {status === 'cancelado' && (
+            <ActionRow
+              icon={<RotateCcw size={17} className="text-nodo-sub" />}
+              label="Reactivar cotización"
+              disabled={advancing}
+              onClick={() => { handleReactivar(); setShowActions(false); }}
+            />
+          )}
+          {!isClosed && status !== 'entregado' && (
+            confirmCancel ? (
+              <div className="flex items-center gap-2 px-2 py-2">
+                <span className="flex-1 text-xs font-bold text-nodo-danger-tx">¿Cancelar este pedido?</span>
+                <button
+                  onClick={() => setConfirmCancel(false)}
+                  className="h-9 px-3 rounded-xl bg-nodo-inset text-nodo-sub text-xs font-bold active:scale-95 transition-transform"
+                >
+                  Conservar
+                </button>
+                <button
+                  onClick={() => { handleCancel(); setShowActions(false); setConfirmCancel(false); }}
+                  disabled={advancing}
+                  className="h-9 px-3 rounded-xl bg-nodo-danger-tx text-white text-xs font-black flex items-center gap-1 active:scale-95 transition-transform disabled:opacity-40"
+                >
+                  {advancing ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />} Cancelar
+                </button>
+              </div>
+            ) : (
+              <ActionRow
+                icon={<X size={17} className="text-nodo-danger-tx" />}
+                label="Cancelar pedido"
+                danger
+                right={<span className="w-4 shrink-0" />}
+                onClick={() => setConfirmCancel(true)}
+              />
+            )
+          )}
+        </div>
+      </BottomSheet>
 
       <LogisticsSheet
         cotizacion={cotizacion}
@@ -769,6 +848,8 @@ export function CotizacionesTab({ onNew }: { onNew?: () => void }) {
   const [error, setError]               = useState<string | null>(null);
   const [search, setSearch]             = useState('');
   const [filterStatus, setFilterStatus] = useState<CotizacionStatus | 'todos'>('todos');
+  const [viewMode, setViewMode]         = useState<'lista' | 'paquetes'>('lista');
+  const [showFilters, setShowFilters]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -811,36 +892,119 @@ export function CotizacionesTab({ onNew }: { onNew?: () => void }) {
   const ganancia  = activas.reduce((s, c) => s + (resultField<number>(c, 'netProfitGTQ') ?? 0), 0);
   const margenAgregado = pendiente > 0 ? (ganancia / pendiente) * 100 : 0;
 
+  const filterActive = filterStatus !== 'todos' || search.trim() !== '';
+  const filterCount = (filterStatus !== 'todos' ? 1 : 0) + (search.trim() !== '' ? 1 : 0);
+
   return (
     <>
       {/* ── KPIs financieros (cotizaciones activas) ── */}
       {cotizaciones.length > 0 && (
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
-          <MoneyKpi
-            label="Invertido"
-            value={invertido}
-            sub={`${activas.length} ${activas.length === 1 ? 'cotización activa' : 'cotizaciones activas'}`}
-            chart="none"
-          />
-          <MoneyKpi
-            label="Pendiente"
-            value={pendiente}
-            sub="por cobrar"
-            chart="none"
-          />
-          <MoneyKpi
-            label="Ganancia"
-            value={ganancia}
-            sub={ganancia > 0 ? `margen ${margenAgregado.toFixed(0)}%` : 'proyectada'}
-            chart="none"
-          />
+        <>
+          {/* Mobile: hero de ganancia + 2 cifras secundarias */}
+          <div className="sm:hidden nodo-card p-4 flex flex-col gap-3">
+            <div>
+              <p className="nodo-section-label !mb-1">Ganancia proyectada</p>
+              <p className="text-[34px] font-black text-nodo-ink tabular-nums tracking-tighter leading-none">
+                Q{ganancia.toLocaleString('es-GT', { maximumFractionDigits: 0 })}
+              </p>
+              {ganancia > 0 && (
+                <p className="text-xs font-bold text-nodo-sub mt-1">margen {margenAgregado.toFixed(0)}%</p>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-nodo-line">
+              <div>
+                <p className="text-[10px] font-semibold text-nodo-dim uppercase tracking-wider">Invertido</p>
+                <p className="text-base font-black text-nodo-ink tabular-nums">
+                  Q{invertido.toLocaleString('es-GT', { maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-nodo-dim uppercase tracking-wider">Pendiente</p>
+                <p className="text-base font-black text-nodo-ink tabular-nums">
+                  Q{pendiente.toLocaleString('es-GT', { maximumFractionDigits: 0 })}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop: 3 tarjetas KPI */}
+          <div className="hidden sm:grid grid-cols-3 gap-4">
+            <MoneyKpi
+              label="Invertido"
+              value={invertido}
+              sub={`${activas.length} ${activas.length === 1 ? 'cotización activa' : 'cotizaciones activas'}`}
+              chart="none"
+            />
+            <MoneyKpi
+              label="Pendiente"
+              value={pendiente}
+              sub="por cobrar"
+              chart="none"
+            />
+            <MoneyKpi
+              label="Ganancia"
+              value={ganancia}
+              sub={ganancia > 0 ? `margen ${margenAgregado.toFixed(0)}%` : 'proyectada'}
+              chart="none"
+            />
+          </div>
+        </>
+      )}
+
+      {/* ── Toolbar: vista (Lista | Paquetes) + filtros (mobile) ── */}
+      <div className="flex items-center gap-2">
+        <SegmentedControl
+          options={[
+            { value: 'lista',    label: 'Lista',    icon: <List size={14} /> },
+            { value: 'paquetes', label: 'Paquetes', icon: <Boxes size={14} /> },
+          ]}
+          value={viewMode}
+          onChange={v => setViewMode(v as typeof viewMode)}
+          size="sm"
+          className="sm:w-[260px]"
+        />
+        {viewMode === 'lista' && (
+          <button
+            onClick={() => setShowFilters(true)}
+            className={`xl:hidden relative ml-auto h-10 px-3.5 rounded-2xl border-2 flex items-center gap-1.5
+                       active:scale-95 transition-transform shrink-0
+                       ${filterActive
+                         ? 'bg-nodo-ink text-nodo-canvas border-nodo-ink'
+                         : 'bg-nodo-card text-nodo-ink border-nodo-line'}`}
+          >
+            <SlidersHorizontal size={14} />
+            <span className="text-xs font-bold">Filtrar</span>
+            {filterCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-nodo-canvas text-nodo-ink text-[9px] font-black
+                               flex items-center justify-center tabular-nums">
+                {filterCount}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* ── Vista Paquetes ── */}
+      {viewMode === 'paquetes' && (
+        <div className="min-w-0">
+          {error && (
+            <div className="bg-nodo-danger-bg border border-nodo-danger-bd rounded-2xl px-4 py-3 mb-4
+                            flex items-center gap-3 text-sm text-nodo-danger-tx">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="flex-1 font-semibold">{error}</span>
+              <button onClick={load} className="text-xs font-bold underline shrink-0">Reintentar</button>
+            </div>
+          )}
+          <PaquetesBoard cotizaciones={cotizaciones} onChanged={load} />
         </div>
       )}
 
+      {/* ── Vista Lista ── */}
+      {viewMode === 'lista' && (
       <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-5 items-start">
 
-        {/* ── Panel de control (sticky en desktop) ── */}
-        <div className="nodo-card p-4 flex flex-col gap-4 xl:sticky xl:top-4">
+        {/* ── Panel de control (solo desktop, sticky) — en mobile va en el BottomSheet "Filtrar" ── */}
+        <div className="hidden xl:flex nodo-card p-4 flex-col gap-4 xl:sticky xl:top-4">
 
           {/* Search */}
           <div className="relative">
@@ -885,19 +1049,6 @@ export function CotizacionesTab({ onNew }: { onNew?: () => void }) {
               ))}
             </div>
           </div>
-
-          {/* Nueva cotización — visible en desktop */}
-          {onNew && (
-            <button
-              onClick={onNew}
-              className="hidden xl:flex w-full h-12 rounded-full font-bold text-sm items-center justify-center gap-2
-                         shadow-lg active:scale-[0.97] transition-transform"
-              style={{ background: 'var(--nodo-iris)', color: 'var(--nodo-on-iris)' }}
-            >
-              <Plus className="w-4 h-4" strokeWidth={2.5} />
-              Nueva cotización
-            </button>
-          )}
         </div>
 
         {/* ── Lista de cotizaciones ── */}
@@ -940,6 +1091,69 @@ export function CotizacionesTab({ onNew }: { onNew?: () => void }) {
           )}
         </div>
       </div>
+      )}
+
+      {onNew && (
+        <ImportFab icon={<Plus size={20} strokeWidth={2.5} />} label="Cotización" onPress={onNew} />
+      )}
+
+      {/* ── BottomSheet "Buscar y filtrar" (mobile/tablet) ── */}
+      <BottomSheet
+        open={showFilters}
+        onClose={() => setShowFilters(false)}
+        title="Buscar y filtrar"
+        footer={
+          <button
+            onClick={() => setShowFilters(false)}
+            className="nodo-btn-primary"
+          >
+            Ver {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}
+          </button>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-nodo-dim pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar producto o cliente"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="nodo-input"
+              style={{ paddingLeft: '2.75rem', paddingRight: '2.75rem' }}
+              autoFocus
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-nodo-raised
+                           flex items-center justify-center active:scale-90 transition-transform"
+              >
+                <X className="w-3.5 h-3.5 text-nodo-sub" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <FilterChip
+              label="Todas"
+              count={cotizaciones.length}
+              active={filterStatus === 'todos'}
+              onClick={() => setFilterStatus('todos')}
+            />
+            {ALL_COT_STATUSES.map(s => (
+              <FilterChip
+                key={s}
+                label={STATUS_LABEL[s] ?? s}
+                count={statusCounts[s] ?? 0}
+                active={filterStatus === s}
+                statusCls={STATUS_CONFIG[s].cls}
+                onClick={() => setFilterStatus(filterStatus === s ? 'todos' : s)}
+              />
+            ))}
+          </div>
+        </div>
+      </BottomSheet>
     </>
   );
 }

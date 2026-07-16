@@ -1,0 +1,13 @@
+[Unit]
+Description=Nodo — cartuchos GFS por empresa (Cartuchera) + poda de retención
+Documentation=file://__REPO_DIR__/backend/api/services/backup/scheduler.py
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# El export es application-level (filtra por tenant_id): corre dentro del backend,
+# que es quien tiene los modelos y la sesión. El host solo lo agenda.
+ExecStart=/usr/bin/docker exec nodo_backend python -m api.services.backup.scheduler
+Nice=10
+IOSchedulingClass=idle

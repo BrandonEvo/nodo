@@ -58,6 +58,10 @@ docker run --rm \
 
 echo ""
 echo "==> 4/4  Levantando el stack de producción..."
+# Versión del Docker del host → la lee el widget de infra del panel admin.
+# (El contenedor no puede obtenerla sin exponer el docker.sock.) Se interpola
+# en docker-compose.prod.yml al hacer 'up'.
+export DOCKER_VERSION="$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo unknown)"
 $COMPOSE up -d
 
 echo ""

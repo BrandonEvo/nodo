@@ -1,1 +1,1 @@
-export { SmartCalculator as ImportacionesApp } from './SmartCalculator';
+export { ImportacionesApp } from './ImportacionesApp';

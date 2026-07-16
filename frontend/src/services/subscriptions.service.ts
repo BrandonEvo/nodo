@@ -1,6 +1,19 @@
 import api from "@/lib/api";
 
-export interface SubscriptionPlan {
+/** Copy que la landing pública muestra en la tarjeta del plan. */
+export interface PlanMarketingCopy {
+  tagline: string | null;
+  description: string | null;
+  features: string[];
+  badge_label: string | null;
+  cta_label: string | null;
+  is_featured: boolean;
+  billing_period: string;
+  sort_order: number;
+  is_public: boolean;
+}
+
+export interface SubscriptionPlan extends PlanMarketingCopy {
   id: string;
   name: string;
   price: number;
@@ -9,14 +22,14 @@ export interface SubscriptionPlan {
   is_active: boolean;
 }
 
-export interface SubscriptionCreate {
+export interface SubscriptionCreate extends Partial<PlanMarketingCopy> {
   name: string;
   price: number;
   currency: string;
   module_ids: string[];
 }
 
-export interface SubscriptionUpdate {
+export interface SubscriptionUpdate extends Partial<PlanMarketingCopy> {
   name?: string;
   price?: number;
   currency?: string;

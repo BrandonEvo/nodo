@@ -5,6 +5,7 @@ import {
   Settings, Send, SlidersHorizontal, Shield,
   Warehouse, ChefHat, Store, Lock, BookOpen,
   Activity, RefreshCw, Clock, ArrowUpRight, CalendarDays, CreditCard,
+  HardDrive, MemoryStick, Container, Archive,
 } from 'lucide-react';
 import { useState, useEffect, Suspense } from 'react';
 import { AdminTenants } from '../admin/AdminTenants';
@@ -12,6 +13,8 @@ import { AdminModules } from '../admin/AdminModules';
 import { AdminUsers } from '../admin/AdminUsers';
 import { AdminRoles } from '../admin/AdminRoles';
 import { AdminSubscriptions } from '../admin/AdminSubscriptions';
+import { AdminPresence } from '../admin/AdminPresence';
+import { AdminBackups } from '../admin/AdminBackups';
 import { TeamManagement } from '../admin/TeamManagement';
 import { TenantConfigPanel } from '../admin/TenantConfigPanel';
 import { SubscriptionScreen } from '../SubscriptionScreen';
@@ -19,14 +22,16 @@ import { useToast } from '@/components/ui/Toaster';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { InstallPWACard } from '@/components/ui/InstallPWACard';
+import { PasskeyManager } from '@/components/security/PasskeyManager';
 import { tenantMeService } from '@/services/tenantMe.service';
+import { presenceService } from '@/services/presence.service';
+import { systemService, type SystemMetrics } from '@/services/system.service';
 import { resolveApp } from '@/apps/index';
 import api from '@/lib/api';
-import { IrisArea, IrisBars, IrisDonut } from '@/components/ui/IrisCharts';
+import { IrisArea, IrisDonut } from '@/components/ui/IrisCharts';
 
 // Tendencias decorativas de las tarjetas KPI (acento visual, no datos reales)
 const TREND_AREA = [4, 7, 5, 9, 8, 12, 10, 14];
-const TREND_BARS = [6, 9, 5, 11, 8, 13, 10];
 
 // "admin@nodo.com" → "Admin" · "Ana López" → "Ana"
 function displayFirstName(name: string): string {
@@ -47,6 +52,8 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
   const [counts, setCounts] = useState<{ tenants: number | null; modules: number | null; active: number | null }>({
     tenants: null, modules: null, active: null,
   });
+  const [onlineNow, setOnlineNow] = useState<number | null>(null);
+  const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
 
   type HealthStatus = { status: 'ok' | 'error' | null; database: string | null; environment: string | null; ms: number | null; checkedAt: Date | null };
   const [health, setHealth] = useState<HealthStatus>({ status: null, database: null, environment: null, ms: null, checkedAt: null });
@@ -83,7 +90,15 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
     });
     fetchHealth();
     const interval = setInterval(fetchHealth, 30_000);
-    return () => clearInterval(interval);
+    const fetchOnline = () => presenceService.getOnline()
+      .then(s => setOnlineNow(s.total_online)).catch(() => {});
+    fetchOnline();
+    const onlineInterval = setInterval(fetchOnline, 15_000);
+    const fetchMetrics = () => systemService.getMetrics()
+      .then(setMetrics).catch(() => {});
+    fetchMetrics();
+    const metricsInterval = setInterval(fetchMetrics, 30_000);
+    return () => { clearInterval(interval); clearInterval(onlineInterval); clearInterval(metricsInterval); };
   }, []);
 
   // Tick del reloj del servidor cada segundo, basado en el desfase medido.
@@ -104,12 +119,32 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
 
   const fmt = (n: number | null) => n === null ? '—' : String(n);
 
+  const fmtBytes = (n: number | null | undefined) => {
+    if (n === null || n === undefined) return '—';
+    if (n <= 0) return '0 B';
+    const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), u.length - 1);
+    return `${(n / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+  };
+  const relTime = (iso: string | null | undefined) => {
+    if (!iso) return 'Nunca';
+    const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return 'hace segundos';
+    if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
+    if (s < 86400) return `hace ${Math.floor(s / 3600)} h`;
+    return `hace ${Math.floor(s / 86400)} d`;
+  };
+  const usageBar = (pct: number | null | undefined) =>
+    pct == null ? 'bg-nodo-dim' : pct >= 90 ? 'bg-nodo-danger-tx' : pct >= 75 ? 'bg-nodo-warn-tx' : 'bg-emerald-400';
+
   const navItems = [
     { id: 'admin_tenants',         label: 'Empresas',  icon: Building2,         bg: 'var(--nodo-primary)' },
     { id: 'admin_users',           label: 'Usuarios',  icon: Users,             bg: '#60a5fa' },
     { id: 'admin_modules',         label: 'Módulos',   icon: Package,           bg: '#fb923c' },
     { id: 'admin_subscriptions',   label: 'Planes',    icon: ShoppingCart,      bg: '#a78bfa' },
     { id: 'admin_roles',           label: 'Roles',     icon: Shield,            bg: '#f87171' },
+    { id: 'admin_presence',        label: 'En línea',  icon: Activity,          bg: '#34d399' },
+    { id: 'admin_backups',         label: 'Cartuchera', icon: Archive,          bg: '#f59e0b' },
     { id: 'admin_platform_config', label: 'Config',    icon: SlidersHorizontal, bg: '#22d3ee' },
   ];
 
@@ -148,12 +183,18 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
           </button>
 
           <button
-            onClick={() => setActiveTab('admin_modules')}
-            className="nodo-card p-5 text-left active:scale-[0.985] transition-transform"
+            onClick={() => setActiveTab('admin_presence')}
+            className="nodo-card p-5 text-left active:scale-[0.985] transition-transform relative overflow-hidden"
           >
-            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.14em] mb-2">Módulos</p>
-            <p className="text-[40px] font-black text-nodo-ink tabular-nums leading-none tracking-tight">{fmt(counts.modules)}</p>
-            <IrisBars data={TREND_BARS} height={56} className="mt-4" />
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+              </span>
+              <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-[0.14em]">En línea ahora</p>
+            </div>
+            <p className="text-[40px] font-black text-nodo-ink tabular-nums leading-none tracking-tight">{fmt(onlineNow)}</p>
+            <p className="text-[11px] font-semibold text-nodo-sub mt-3">Toca para ver quién y en qué app</p>
           </button>
         </div>
 
@@ -201,6 +242,93 @@ function AdminHomeDashboard({ displayName, setActiveTab }: {
               })}
             </div>
           </div>
+        </div>
+
+        {/* Infra del servidor — disco, RAM, Docker, último backup */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Disco del host */}
+          <div className="nodo-card p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-[9px] flex items-center justify-center shrink-0" style={{ background: '#60a5fa1f' }}>
+                <HardDrive size={14} style={{ color: '#60a5fa' }} strokeWidth={2} />
+              </div>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest">Disco</p>
+            </div>
+            <div className="flex-1">
+              <p className="text-2xl font-black text-nodo-ink tabular-nums leading-none">
+                {metrics ? `${metrics.disk.percent_used}%` : '—'}
+              </p>
+              <p className="text-[10px] font-semibold text-nodo-sub mt-1.5">
+                {metrics ? `${fmtBytes(metrics.disk.free_bytes)} libres de ${fmtBytes(metrics.disk.total_bytes)}` : 'Cargando…'}
+              </p>
+            </div>
+            <div className="h-1.5 rounded-full bg-nodo-inset overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${usageBar(metrics?.disk.percent_used)}`}
+                style={{ width: `${metrics?.disk.percent_used ?? 0}%` }} />
+            </div>
+          </div>
+
+          {/* RAM del host */}
+          <div className="nodo-card p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-[9px] flex items-center justify-center shrink-0" style={{ background: '#a78bfa1f' }}>
+                <MemoryStick size={14} style={{ color: '#a78bfa' }} strokeWidth={2} />
+              </div>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest">Memoria</p>
+            </div>
+            <div className="flex-1">
+              <p className="text-2xl font-black text-nodo-ink tabular-nums leading-none">
+                {metrics?.ram.percent_used != null ? `${metrics.ram.percent_used}%` : '—'}
+              </p>
+              <p className="text-[10px] font-semibold text-nodo-sub mt-1.5">
+                {metrics?.ram.total_bytes != null
+                  ? `${fmtBytes(metrics.ram.available_bytes)} disponibles`
+                  : 'Sin datos del host'}
+              </p>
+            </div>
+            <div className="h-1.5 rounded-full bg-nodo-inset overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${usageBar(metrics?.ram.percent_used)}`}
+                style={{ width: `${metrics?.ram.percent_used ?? 0}%` }} />
+            </div>
+          </div>
+
+          {/* Versión de Docker */}
+          <div className="nodo-card p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-[9px] flex items-center justify-center shrink-0" style={{ background: '#22d3ee1f' }}>
+                <Container size={14} style={{ color: '#22d3ee' }} strokeWidth={2} />
+              </div>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest">Docker</p>
+            </div>
+            <div className="flex-1">
+              <p className="text-2xl font-black text-nodo-ink tabular-nums leading-none">
+                {metrics?.docker_version ?? '—'}
+              </p>
+              <p className="text-[10px] font-semibold text-nodo-sub mt-1.5">Motor del servidor</p>
+            </div>
+          </div>
+
+          {/* Último backup */}
+          <button
+            onClick={() => setActiveTab('admin_backups')}
+            className="nodo-card p-4 flex flex-col gap-3 text-left active:scale-[0.97] transition-transform">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-[9px] flex items-center justify-center shrink-0" style={{ background: '#34d3991f' }}>
+                <Archive size={14} style={{ color: '#34d399' }} strokeWidth={2} />
+              </div>
+              <p className="text-[9px] font-bold text-nodo-dim uppercase tracking-widest">Último backup</p>
+            </div>
+            <div className="flex-1">
+              <p className="text-2xl font-black text-nodo-ink leading-none">
+                {relTime(metrics?.backups.last_backup_at)}
+              </p>
+              <p className="text-[10px] font-semibold text-nodo-sub mt-1.5">
+                {metrics
+                  ? `${metrics.backups.daily_count + metrics.backups.weekly_count + metrics.backups.monthly_count} copias · ${fmtBytes(metrics.backups.total_bytes)}`
+                  : 'Cargando…'}
+              </p>
+            </div>
+          </button>
         </div>
 
       </div>
@@ -330,6 +458,8 @@ export function DashboardCanvas({
   if (activeTab === 'admin_subscriptions')  return <AdminSubscriptions />;
   if (activeTab === 'admin_users')          return <AdminUsers />;
   if (activeTab === 'admin_roles')          return <AdminRoles />;
+  if (activeTab === 'admin_presence')       return <AdminPresence />;
+  if (activeTab === 'admin_backups')        return <AdminBackups />;
   if (activeTab === 'admin_platform_config') return <PlatformConfigPanel />;
 
 
@@ -361,6 +491,7 @@ export function DashboardCanvas({
             <p className="text-sm text-nodo-sub font-medium">{tenantName}</p>
           </div>
         </div>
+        <PasskeyManager displayName={displayName} />
         <div className="bg-nodo-card rounded-3xl border border-nodo-line shadow-sm divide-y divide-nodo-line">
           <button className="w-full flex items-center justify-between p-5 hover:bg-nodo-inset transition-colors text-left group">
             <div className="flex items-center gap-3">

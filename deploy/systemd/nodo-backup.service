@@ -1,0 +1,12 @@
+[Unit]
+Description=Nodo — backup GFS (abuelo-padre-hijo) de PostgreSQL
+Documentation=file://__REPO_DIR__/scripts/backup_nodo.sh
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Corre como root: usa el docker.sock del host para hacer pg_dump dentro de nodo_db.
+ExecStart=__REPO_DIR__/scripts/backup_nodo.sh
+Nice=10
+IOSchedulingClass=idle

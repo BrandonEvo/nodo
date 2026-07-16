@@ -27,6 +27,19 @@ class Settings(BaseSettings):
     # Si AMAZON_RELAY_URL está vacío, el backend hace scraping directo (best-effort).
     AMAZON_RELAY_URL: str = ""
     AMAZON_RELAY_TOKEN: str = ""
+    # WebAuthn / Passkeys (Face ID, huella, Windows Hello, PIN del dispositivo).
+    # RP_ID = dominio registrable; ORIGIN = URL completa del frontend. En prod:
+    # WEBAUTHN_RP_ID=hellonodo.com, WEBAUTHN_ORIGIN=https://hellonodo.com
+    WEBAUTHN_RP_ID: str = "localhost"
+    WEBAUTHN_RP_NAME: str = "Nodo"
+    WEBAUTHN_ORIGIN: str = "http://localhost:5173"
+    # Directorio de backups (bind-mount al host en prod). El widget de disco mide
+    # este path con statvfs → cruza al filesystem real del host. RAM/versión de
+    # Docker las escribe un timer del host en {BACKUP_DIR}/status.json.
+    BACKUP_DIR: str = "/backups"
+    # Versión del Docker del host, inyectada en el deploy (el contenedor no puede
+    # leerla sin exponer el docker.sock). Fallback a status.json si está vacía.
+    DOCKER_VERSION: str = ""
 
     @property
     def cors_origins_list(self) -> List[str]:

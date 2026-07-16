@@ -25,8 +25,10 @@ from sqlmodel import select
 from db.session import get_session
 from api.deps import get_current_tenant_id, current_active_user
 from models.importaciones import (
-    ImportCotizacion, ImportCliente, VALID_TRANSITIONS, STATUS_TS_FIELD, STATUS_FLOW,
+    ImportCotizacion, ImportCliente, ImportPaquete,
+    VALID_TRANSITIONS, STATUS_TS_FIELD, STATUS_FLOW,
 )
+from models.import_catalog import ImportReservation, ImportCatalogItem
 from models.tenants import Tenant
 from models import User
 from api.services.push_service import send_push_to_tenant
@@ -99,6 +101,7 @@ class CotizacionRead(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     cliente_id: Optional[uuid.UUID]
+    paquete_id: Optional[uuid.UUID] = None
     cliente: Optional[ClienteMini] = None
     product_name: str
     amazon_asin: Optional[str]
@@ -144,18 +147,42 @@ class ClienteRead(BaseModel):
     phone: Optional[str]
     email: Optional[str]
     notes: Optional[str]
+    # Origen de la ficha: manual | catalogo | qr — y verificación del teléfono.
+    source: str = "manual"
+    attribution: Optional[str] = None
+    phone_verified: bool = False
     created_at: datetime
     updated_at: datetime
-    # Stats agregadas
+    # Stats agregadas de cotizaciones
     cotizaciones_count: int = 0
     total_pagado_gtq: Decimal = Decimal("0.00")
     last_cotizacion_at: Optional[datetime] = None
+    # Acumulado del pedido en línea (reservas del catálogo), en buckets por estado:
+    # reservado = solo apartado (pendiente); pedido_actual = en curso (confirmada..en_camino);
+    # entregado = ya recibido. Los desenlaces no_disponible/cancelada no suman.
+    reservado_gtq: Decimal = Decimal("0.00")
+    pedido_actual_gtq: Decimal = Decimal("0.00")
+    entregado_gtq: Decimal = Decimal("0.00")
+    reservas_activas: int = 0
 
     model_config = {"from_attributes": True}
 
 
+class ClienteReservaRead(BaseModel):
+    """Línea de reserva del catálogo mostrada en el perfil del cliente."""
+    id: uuid.UUID
+    item_title: str
+    item_image_url: Optional[str] = None
+    quantity: int
+    status: str
+    line_total_gtq: Decimal = Decimal("0.00")
+    created_at: datetime
+    order_token: Optional[uuid.UUID] = None
+
+
 class ClienteDetail(ClienteRead):
     cotizaciones: list[CotizacionRead] = []
+    reservas: list[ClienteReservaRead] = []
 
 
 class PublicCotizacionRead(BaseModel):
@@ -172,6 +199,47 @@ class PublicCotizacionRead(BaseModel):
     business_name: Optional[str] = None
     business_logo_url: Optional[str] = None
     business_color: Optional[str] = None
+
+
+# ── Paquetes (agrupación de pedidos) ───────────────────────────────────────────
+
+class PaqueteCreate(BaseModel):
+    name: Optional[str] = None
+    cliente_id: Optional[uuid.UUID] = None
+    cotizacion_ids: list[uuid.UUID] = []   # miembros iniciales (opcional)
+
+
+class PaqueteUpdate(BaseModel):
+    name: Optional[str] = None
+    tracking_number: Optional[str] = None
+    estimated_delivery: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class PaqueteRead(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    cliente_id: Optional[uuid.UUID]
+    cliente: Optional[ClienteMini] = None
+    name: str
+    status: str
+    tracking_number: Optional[str]
+    estimated_delivery: Optional[date]
+    notes: Optional[str]
+    confirmado_at: Optional[datetime]
+    comprado_at: Optional[datetime]
+    en_transito_at: Optional[datetime]
+    entregado_at: Optional[datetime]
+    pagado_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+    cotizaciones: list[CotizacionRead] = []
+
+    model_config = {"from_attributes": True}
+
+
+class AssignPaquetePayload(BaseModel):
+    paquete_id: Optional[uuid.UUID] = None   # None = sacar del paquete (suelta)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -471,6 +539,47 @@ async def _cliente_stats(
     return stats
 
 
+async def _cliente_reservation_stats(
+    cliente_ids: list[uuid.UUID],
+    tenant_id: uuid.UUID,
+    session: AsyncSession,
+) -> dict[uuid.UUID, dict]:
+    """Agrega el valor de las reservas del catálogo por cliente en buckets por estado.
+    line_total = precio del ítem × cantidad. Los desenlaces no_disponible/cancelada no suman."""
+    if not cliente_ids:
+        return {}
+    line_total = ImportCatalogItem.price_gtq * ImportReservation.quantity
+    en_curso = ["confirmada", "comprada", "en_camino"]
+    activas = ["pendiente", *en_curso]
+    rows = await session.execute(
+        select(
+            ImportReservation.cliente_id,
+            func.coalesce(func.sum(line_total).filter(ImportReservation.status == "pendiente"), 0),
+            func.coalesce(func.sum(line_total).filter(ImportReservation.status.in_(en_curso)), 0),
+            func.coalesce(func.sum(line_total).filter(ImportReservation.status == "entregada"), 0),
+            func.count(ImportReservation.id).filter(ImportReservation.status.in_(activas)),
+        )
+        .join(ImportCatalogItem, ImportCatalogItem.id == ImportReservation.catalog_item_id)
+        .where(
+            ImportReservation.tenant_id == tenant_id,
+            ImportReservation.is_active == True,
+            ImportReservation.cliente_id.in_(cliente_ids),
+        )
+        .group_by(ImportReservation.cliente_id)
+    )
+    stats: dict[uuid.UUID, dict] = {}
+    for cliente_id, reservado, curso, entregado, count_activas in rows.all():
+        if cliente_id is None:
+            continue
+        stats[cliente_id] = {
+            "reservado_gtq": _to_decimal(reservado) or Decimal("0.00"),
+            "pedido_actual_gtq": _to_decimal(curso) or Decimal("0.00"),
+            "entregado_gtq": _to_decimal(entregado) or Decimal("0.00"),
+            "reservas_activas": count_activas or 0,
+        }
+    return stats
+
+
 def _cliente_read(cliente: ImportCliente, stats: dict) -> ClienteRead:
     return ClienteRead(
         id=cliente.id,
@@ -478,11 +587,18 @@ def _cliente_read(cliente: ImportCliente, stats: dict) -> ClienteRead:
         phone=cliente.phone,
         email=cliente.email,
         notes=cliente.notes,
+        source=cliente.source,
+        attribution=cliente.attribution,
+        phone_verified=cliente.phone_verified,
         created_at=cliente.created_at,
         updated_at=cliente.updated_at,
         cotizaciones_count=stats.get("cotizaciones_count", 0),
         total_pagado_gtq=stats.get("total_pagado_gtq", Decimal("0.00")),
         last_cotizacion_at=stats.get("last_cotizacion_at"),
+        reservado_gtq=stats.get("reservado_gtq", Decimal("0.00")),
+        pedido_actual_gtq=stats.get("pedido_actual_gtq", Decimal("0.00")),
+        entregado_gtq=stats.get("entregado_gtq", Decimal("0.00")),
+        reservas_activas=stats.get("reservas_activas", 0),
     )
 
 
@@ -502,8 +618,13 @@ async def list_clientes(
         q = q.where(ImportCliente.name.ilike(like) | ImportCliente.phone.ilike(like))
     clientes = list((await session.execute(q)).scalars().all())
 
-    stats = await _cliente_stats([c.id for c in clientes], tenant_id, session)
-    return [_cliente_read(c, stats.get(c.id, {})) for c in clientes]
+    ids = [c.id for c in clientes]
+    stats = await _cliente_stats(ids, tenant_id, session)
+    rstats = await _cliente_reservation_stats(ids, tenant_id, session)
+    return [
+        _cliente_read(c, {**stats.get(c.id, {}), **rstats.get(c.id, {})})
+        for c in clientes
+    ]
 
 
 @router.post("/clientes", response_model=ClienteRead, status_code=201)
@@ -542,6 +663,7 @@ async def get_cliente(
 ):
     cliente = await _get_cliente(id, tenant_id, session)
     stats = await _cliente_stats([cliente.id], tenant_id, session)
+    rstats = await _cliente_reservation_stats([cliente.id], tenant_id, session)
 
     rows = await session.execute(
         select(ImportCotizacion)
@@ -554,8 +676,32 @@ async def get_cliente(
     )
     cotizaciones = await _serialize(list(rows.scalars().all()), tenant_id, session)
 
-    base = _cliente_read(cliente, stats.get(cliente.id, {}))
-    return ClienteDetail(**base.model_dump(), cotizaciones=cotizaciones)
+    rrows = await session.execute(
+        select(ImportReservation, ImportCatalogItem)
+        .join(ImportCatalogItem, ImportCatalogItem.id == ImportReservation.catalog_item_id)
+        .where(
+            ImportReservation.tenant_id == tenant_id,
+            ImportReservation.cliente_id == cliente.id,
+            ImportReservation.is_active == True,
+        )
+        .order_by(ImportReservation.created_at.desc())
+    )
+    reservas = [
+        ClienteReservaRead(
+            id=r.id,
+            item_title=it.title,
+            item_image_url=it.image_url,
+            quantity=r.quantity,
+            status=r.status,
+            line_total_gtq=(_to_decimal((it.price_gtq or Decimal("0")) * r.quantity) or Decimal("0.00")),
+            created_at=r.created_at,
+            order_token=r.order_token,
+        )
+        for r, it in rrows.all()
+    ]
+
+    base = _cliente_read(cliente, {**stats.get(cliente.id, {}), **rstats.get(cliente.id, {})})
+    return ClienteDetail(**base.model_dump(), cotizaciones=cotizaciones, reservas=reservas)
 
 
 @router.patch("/clientes/{id}", response_model=ClienteRead)
@@ -585,7 +731,8 @@ async def update_cliente(
     await session.refresh(cliente)
 
     stats = await _cliente_stats([cliente.id], tenant_id, session)
-    return _cliente_read(cliente, stats.get(cliente.id, {}))
+    rstats = await _cliente_reservation_stats([cliente.id], tenant_id, session)
+    return _cliente_read(cliente, {**stats.get(cliente.id, {}), **rstats.get(cliente.id, {})})
 
 
 @router.delete("/clientes/{id}", status_code=204)
@@ -621,6 +768,268 @@ async def renovar_cotizacion(
     _apply_metrics(cotizacion)
     cotizacion.expires_at = now + timedelta(hours=24)
     cotizacion.updated_at = now
+
+    session.add(cotizacion)
+    await session.commit()
+    await session.refresh(cotizacion)
+    return (await _serialize([cotizacion], tenant_id, session))[0]
+
+
+# ── Paquetes (agrupación de pedidos con tracking unificado) ────────────────────
+
+def _set_status(obj, new_status: str, now: datetime) -> None:
+    """Aplica estado + sello de tiempo y limpia los timestamps de estados futuros.
+    Sirve para ImportCotizacion e ImportPaquete (comparten los campos *_at)."""
+    obj.status = new_status
+    obj.updated_at = now
+    ts_field = STATUS_TS_FIELD.get(new_status)
+    if ts_field and getattr(obj, ts_field) is None:
+        setattr(obj, ts_field, now)
+    if new_status in STATUS_FLOW:
+        new_idx = STATUS_FLOW.index(new_status)
+        for st in STATUS_FLOW[new_idx + 1:]:
+            f = STATUS_TS_FIELD.get(st)
+            if f:
+                setattr(obj, f, None)
+
+
+async def _get_paquete(id: uuid.UUID, tenant_id: uuid.UUID, session: AsyncSession) -> ImportPaquete:
+    paquete = await session.get(ImportPaquete, id)
+    if not paquete or paquete.tenant_id != tenant_id or not paquete.is_active:
+        raise HTTPException(status_code=404, detail="Paquete no encontrado.")
+    return paquete
+
+
+async def _serialize_paquetes(
+    paquetes: list[ImportPaquete], tenant_id: uuid.UUID, session: AsyncSession,
+) -> list[PaqueteRead]:
+    """Arma PaqueteRead con el cliente embebido y las cotizaciones miembro."""
+    if not paquetes:
+        return []
+    paquete_ids = [p.id for p in paquetes]
+
+    members_rows = await session.execute(
+        select(ImportCotizacion).where(
+            ImportCotizacion.tenant_id == tenant_id,
+            ImportCotizacion.is_active == True,
+            ImportCotizacion.paquete_id.in_(paquete_ids),
+        ).order_by(ImportCotizacion.created_at.desc())
+    )
+    members = list(members_rows.scalars().all())
+    members_read = await _serialize(members, tenant_id, session)
+    by_paquete: dict[uuid.UUID, list[CotizacionRead]] = {}
+    for r in members_read:
+        by_paquete.setdefault(r.paquete_id, []).append(r)
+
+    cliente_ids = {p.cliente_id for p in paquetes if p.cliente_id}
+    clientes: dict[uuid.UUID, ImportCliente] = {}
+    if cliente_ids:
+        rows = await session.execute(select(ImportCliente).where(ImportCliente.id.in_(cliente_ids)))
+        clientes = {cl.id: cl for cl in rows.scalars().all()}
+
+    out: list[PaqueteRead] = []
+    for p in paquetes:
+        read = PaqueteRead.model_validate(p)
+        cl = clientes.get(p.cliente_id) if p.cliente_id else None
+        read.cliente = ClienteMini.model_validate(cl) if cl else None
+        read.cotizaciones = by_paquete.get(p.id, [])
+        out.append(read)
+    return out
+
+
+@router.get("/paquetes", response_model=list[PaqueteRead])
+async def list_paquetes(
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(
+        select(ImportPaquete)
+        .where(ImportPaquete.tenant_id == tenant_id, ImportPaquete.is_active == True)
+        .order_by(ImportPaquete.created_at.desc())
+    )
+    return await _serialize_paquetes(list(result.scalars().all()), tenant_id, session)
+
+
+@router.post("/paquetes", response_model=PaqueteRead, status_code=201)
+async def create_paquete(
+    body: PaqueteCreate,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    now = _utcnow()
+    cliente_id = body.cliente_id
+
+    members: list[ImportCotizacion] = []
+    if body.cotizacion_ids:
+        rows = await session.execute(
+            select(ImportCotizacion).where(
+                ImportCotizacion.id.in_(body.cotizacion_ids),
+                ImportCotizacion.tenant_id == tenant_id,
+                ImportCotizacion.is_active == True,
+            )
+        )
+        members = list(rows.scalars().all())
+        if cliente_id is None:
+            for m in members:
+                if m.cliente_id:
+                    cliente_id = m.cliente_id
+                    break
+
+    paquete = ImportPaquete(
+        tenant_id=tenant_id,
+        cliente_id=cliente_id,
+        name=(body.name or "").strip() or "Paquete",
+        status="cotizado",
+        created_at=now,
+        updated_at=now,
+        created_by=user.id,
+    )
+    session.add(paquete)
+    await session.flush()
+
+    for m in members:
+        m.paquete_id = paquete.id
+        _set_status(m, paquete.status, now)
+        session.add(m)
+
+    await session.commit()
+    await session.refresh(paquete)
+    return (await _serialize_paquetes([paquete], tenant_id, session))[0]
+
+
+@router.patch("/paquetes/{id}", response_model=PaqueteRead)
+async def update_paquete(
+    id: uuid.UUID,
+    body: PaqueteUpdate,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    paquete = await _get_paquete(id, tenant_id, session)
+    if body.name is not None:
+        paquete.name = body.name.strip() or paquete.name
+    if body.tracking_number is not None:
+        paquete.tracking_number = body.tracking_number or None
+    if body.estimated_delivery is not None:
+        paquete.estimated_delivery = body.estimated_delivery
+    if body.notes is not None:
+        paquete.notes = body.notes or None
+    paquete.updated_at = _utcnow()
+    session.add(paquete)
+    await session.commit()
+    await session.refresh(paquete)
+    return (await _serialize_paquetes([paquete], tenant_id, session))[0]
+
+
+@router.patch("/paquetes/{id}/status", response_model=PaqueteRead)
+async def advance_paquete_status(
+    id: uuid.UUID,
+    body: StatusUpdate,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """Avanza el estado del paquete y lo cascada a todas sus cotizaciones miembro."""
+    paquete = await _get_paquete(id, tenant_id, session)
+
+    allowed = VALID_TRANSITIONS.get(paquete.status, [])
+    if body.status not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Transición no válida: {paquete.status} → {body.status}.",
+        )
+
+    now = _utcnow()
+    old_status = paquete.status
+    _set_status(paquete, body.status, now)
+    session.add(paquete)
+
+    members_rows = await session.execute(
+        select(ImportCotizacion).where(
+            ImportCotizacion.paquete_id == paquete.id,
+            ImportCotizacion.tenant_id == tenant_id,
+            ImportCotizacion.is_active == True,
+        )
+    )
+    for m in members_rows.scalars().all():
+        _set_status(m, body.status, now)
+        session.add(m)
+
+    await session.commit()
+    await session.refresh(paquete)
+
+    moved_forward = (
+        old_status in STATUS_FLOW and body.status in STATUS_FLOW
+        and STATUS_FLOW.index(body.status) > STATUS_FLOW.index(old_status)
+    )
+    if moved_forward and body.status in _PUSH_ON_STATUS:
+        title, base_body = _PUSH_ON_STATUS[body.status]
+        cliente_name = None
+        if paquete.cliente_id:
+            cliente = await session.get(ImportCliente, paquete.cliente_id)
+            cliente_name = cliente.name if cliente else None
+        suffix = f" — {cliente_name}" if cliente_name else ""
+        await send_push_to_tenant(
+            session=session,
+            tenant_id=tenant_id,
+            title=title,
+            body=f"{base_body} ({paquete.name}){suffix}",
+            data={"module": "importaciones", "paquete_id": str(paquete.id)},
+        )
+
+    return (await _serialize_paquetes([paquete], tenant_id, session))[0]
+
+
+@router.delete("/paquetes/{id}", status_code=204)
+async def delete_paquete(
+    id: uuid.UUID,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """Disuelve el paquete: las cotizaciones quedan sueltas (no se borran)."""
+    paquete = await _get_paquete(id, tenant_id, session)
+    now = _utcnow()
+
+    members_rows = await session.execute(
+        select(ImportCotizacion).where(
+            ImportCotizacion.paquete_id == paquete.id,
+            ImportCotizacion.tenant_id == tenant_id,
+        )
+    )
+    for m in members_rows.scalars().all():
+        m.paquete_id = None
+        m.updated_at = now
+        session.add(m)
+
+    paquete.is_active = False
+    paquete.updated_at = now
+    session.add(paquete)
+    await session.commit()
+    return Response(status_code=204)
+
+
+@router.patch("/cotizaciones/{id}/paquete", response_model=CotizacionRead)
+async def assign_cotizacion_paquete(
+    id: uuid.UUID,
+    body: AssignPaquetePayload,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """Mueve una cotización a un paquete (o la saca si paquete_id es null).
+    Al entrar a un paquete adopta su estado para mantener el envío consistente."""
+    cotizacion = await _get_cotizacion(id, tenant_id, session)
+    now = _utcnow()
+
+    if body.paquete_id is None:
+        cotizacion.paquete_id = None
+        cotizacion.updated_at = now
+    else:
+        paquete = await _get_paquete(body.paquete_id, tenant_id, session)
+        cotizacion.paquete_id = paquete.id
+        if paquete.cliente_id is None and cotizacion.cliente_id is not None:
+            paquete.cliente_id = cotizacion.cliente_id
+            paquete.updated_at = now
+            session.add(paquete)
+        _set_status(cotizacion, paquete.status, now)
 
     session.add(cotizacion)
     await session.commit()

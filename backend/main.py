@@ -174,6 +174,13 @@ app.include_router(
     prefix="/api/auth",
 )
 
+# --- Passkeys / WebAuthn (Face ID, huella, Windows Hello, PIN) ---
+from api.routers import webauthn
+app.include_router(
+    webauthn.router,
+    prefix="/api/auth/webauthn",
+)
+
 # --- Sesión Enriquecida (Onboarding + Invitaciones) ---
 app.include_router(
     session_router.router,
@@ -258,7 +265,7 @@ app.include_router(
 )
 
 # ==========================================
-# MÓDULOS OPERATIVOS DE PANADERÍA
+# MÓDULOS OPERATIVOS
 # ==========================================
 from api.routers import bodega as bodega_router
 from api.routers import recetas as recetas_router
@@ -303,5 +310,20 @@ app.include_router(amazon_scrape_router.router, prefix="/api/amazon")
 from api.routers import importaciones as importaciones_router
 app.include_router(importaciones_router.router, prefix="/api/importaciones")
 
+from api.routers import import_catalog as import_catalog_router
+app.include_router(import_catalog_router.router, prefix="/api/import-catalog")
+
 from api.routers import push as push_router
 app.include_router(push_router.router, prefix="/api/push")
+
+from api.routers import presence as presence_router
+app.include_router(presence_router.router, prefix="/api/presence")
+
+from api.routers import system as system_router
+app.include_router(system_router.router, prefix="/api/admin/system")
+
+from api.routers import backups as backups_router
+app.include_router(backups_router.router, prefix="/api/admin/backups")
+
+from api.routers import public_plans as public_plans_router
+app.include_router(public_plans_router.router, prefix="/api/public")

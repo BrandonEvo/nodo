@@ -425,7 +425,7 @@ export function AdminTenants() {
             </label>
             <input
               type="text"
-              placeholder="Ej. Panadería La Luna"
+              placeholder="Ej. Tienda La Luna"
               value={tenantName}
               onChange={e => setTenantName(e.target.value)}
               required
