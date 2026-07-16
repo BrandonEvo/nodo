@@ -575,7 +575,10 @@ async def open_store(
     settings.store_opened_at = now
     settings.store_session_id = uuid.uuid4()
     if body.closes_at is not None:
-        settings.store_closes_at = body.closes_at.replace(tzinfo=None)
+        # `.replace(tzinfo=None)` tiraba el offset en vez de convertirlo: un dueño en
+        # USA (el caso normal de este módulo) mandando "cierro 5 PM" desde California
+        # cerraba la tienda 7h antes, o sea ya en el pasado.
+        settings.store_closes_at = _naive_utc(body.closes_at)
     elif body.minutes is not None and body.minutes > 0:
         settings.store_closes_at = now + timedelta(minutes=body.minutes)
     else:
