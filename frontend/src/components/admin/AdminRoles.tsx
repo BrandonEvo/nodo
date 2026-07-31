@@ -103,11 +103,6 @@ export function AdminRoles() {
   return (
     <>
       <div className="flex flex-col gap-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Auditoría de Roles</h1>
-          <p className="text-nodo-sub text-sm font-medium mt-0.5">Vista global de membresías y acceso a módulos.</p>
-        </div>
 
         {/* Summary cards */}
         {!loading && (

@@ -201,11 +201,7 @@ export function AdminUsers() {
     <>
       <div className="flex flex-col gap-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Usuarios y Empleados</h1>
-            <p className="text-nodo-sub text-sm font-medium mt-0.5">Directorio global de todas las cuentas.</p>
-          </div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-nodo-dim pointer-events-none" />

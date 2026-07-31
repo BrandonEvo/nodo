@@ -26,11 +26,34 @@ export interface ShopperCatalogSettings {
   bank_account_number?: string | null;
   bank_account_type?: string | null;
   ai_copy_enabled: boolean;
-  // Tienda en vivo (drop) — sólo dueño.
+  // Venta en vivo — sólo dueño.
   store_status: ShopperStoreStatus;
   store_name?: string | null;
   store_opened_at?: string | null;
   store_closes_at?: string | null;
+  store_banner_url?: string | null;
+}
+
+// ── Histórico de ventas en vivo ───────────────────────────────────────────────
+// Las cifras NO están congeladas: el backend las deriva de las reservas creadas
+// dentro de la ventana, así que entregar un pedido mañana mueve la venta de hoy.
+export interface ShopperStoreSession {
+  id: string;
+  store_name?: string | null;
+  banner_url?: string | null;
+  opened_at: string;
+  closed_at?: string | null;      // null = venta en curso
+  closes_at?: string | null;
+  units: number;
+  reservations: number;
+  clients: number;
+  revenue_gtq: number;            // apartado (bruto)
+  delivered_units: number;
+  delivered_revenue_gtq: number;
+  delivered_profit_gtq: number;   // plata de verdad
+  cancelled_lines: number;
+  top_title?: string | null;
+  top_units: number;
 }
 
 // ── Config PRIVADA de la calculadora ──────────────────────────────────────────
@@ -150,10 +173,11 @@ export interface PublicShopperCatalog {
   trip_close_at?: string | null;
   trip_label?: string | null;
   origin_label?: string | null;
-  // Tienda en vivo: status efectivo (ya considera el reloj), nombre y cierre.
+  // Venta en vivo: status efectivo (ya considera el reloj), nombre y cierre.
   store_status: ShopperStoreStatus;
   store_name?: string | null;
   store_closes_at?: string | null;
+  store_banner_url?: string | null;   // foto de fondo del banner; sólo con la venta viva
   categories: string[];
   reserved_people: number;
   reserved_units: number;
@@ -377,11 +401,21 @@ export const shopperCatalogService = {
   updateSettings: (data: Partial<ShopperCatalogSettings>): Promise<ShopperCatalogSettings> =>
     api.patch(`${BASE}/settings`, data).then(r => r.data),
 
-  // ── Tienda en vivo (drop) ────────────────────────────────────────────────────
-  openStore: (data: { store_name?: string | null; minutes?: number | null; closes_at?: string | null }): Promise<ShopperCatalogSettings> =>
+  // ── Venta en vivo ────────────────────────────────────────────────────────────
+  // banner_url: omitir conserva la foto anterior; '' la quita.
+  openStore: (data: {
+    store_name?: string | null; minutes?: number | null; closes_at?: string | null;
+    banner_url?: string | null;
+  }): Promise<ShopperCatalogSettings> =>
     api.post(`${BASE}/store/open`, data).then(r => r.data),
   closeStore: (): Promise<ShopperCatalogSettings> =>
     api.post(`${BASE}/store/close`).then(r => r.data),
+
+  // ── Histórico de ventas en vivo (dueño) ──────────────────────────────────────
+  listStoreSessions: (limit = 30): Promise<ShopperStoreSession[]> =>
+    api.get(`${BASE}/store/sessions`, { params: { limit } }).then(r => r.data),
+  deleteStoreSession: (id: string): Promise<void> =>
+    api.delete(`${BASE}/store/sessions/${id}`).then(() => undefined),
 
   // ── Calculadora (privada) ────────────────────────────────────────────────────
   getCalcSettings: (): Promise<ShopperCalcSettings> =>
@@ -408,6 +442,12 @@ export const shopperCatalogService = {
   // ── Reservas (dueño) ─────────────────────────────────────────────────────────
   listReservations: (): Promise<ShopperReservation[]> =>
     api.get(`${BASE}/reservations`).then(r => r.data),
+  // Venta que llegó por otro medio (WhatsApp, en persona). Puede nacer ya entregada.
+  createManualSale: (data: {
+    catalog_item_id: string; client_name: string; client_phone: string;
+    quantity: number; status?: ShopperResStatus; notes?: string | null;
+  }): Promise<ShopperReservation> =>
+    api.post(`${BASE}/reservations`, data).then(r => r.data),
   updateReservation: (
     id: string,
     data: {
@@ -436,7 +476,7 @@ export const shopperCatalogService = {
   getClientReservation: (clientToken: string): Promise<PublicShopperReservation> =>
     api.get(`${BASE}/public/reservation/${clientToken}`).then(r => r.data),
 
-  // ── Pedido acumulado ("En mi maleta") ────────────────────────────────────────
+  // ── Pedido acumulado del cliente ─────────────────────────────────────────────
   getOrder: (orderToken: string): Promise<PublicShopperOrder> =>
     api.get(`${BASE}/public/order/${orderToken}`).then(r => r.data),
   lookupOrder: (phone: string, pin: string, catalogToken: string): Promise<PublicShopperOrder> =>

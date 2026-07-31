@@ -79,15 +79,17 @@ function getShopperReservationToken(): string | null {
   return match ? match[1] : null;
 }
 
-// /mi-maleta/<order_token> — pedido acumulado del cliente (Personal Shopper)
+// /mi-pedido/<order_token> — pedido acumulado del cliente (Personal Shopper).
+// /mi-maleta es el alias viejo: "maleta" es jerga interna del shopper y el cliente no
+// tiene por qué enterarse, pero los links ya compartidos por WhatsApp viven para siempre.
 function getShopperOrderToken(): string | null {
-  const match = window.location.pathname.match(/^\/mi-maleta\/([0-9a-f-]{36})$/i);
+  const match = window.location.pathname.match(/^\/(?:mi-pedido|mi-maleta)\/([0-9a-f-]{36})$/i);
   return match ? match[1] : null;
 }
 
-// /mi-maleta (sin token) — consulta por WhatsApp + PIN
+// /mi-pedido (sin token) — consulta por WhatsApp + PIN
 function isShopperOrderLookup(): boolean {
-  return /^\/mi-maleta\/?$/.test(window.location.pathname);
+  return /^\/(?:mi-pedido|mi-maleta)\/?$/.test(window.location.pathname);
 }
 
 // /importa/<token> — catálogo público del módulo Importaciones

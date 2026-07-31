@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plane, Calculator, ClipboardList, Globe, Users, Plus } from 'lucide-react';
+import { Calculator, ClipboardList, Globe, Users, Plus } from 'lucide-react';
 import type { AppProps } from '../index';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { CalculadoraTab } from './CalculadoraTab';
@@ -36,20 +36,11 @@ export function ImportacionesApp(_props: AppProps) {
 
   return (
     <>
-      <div className="flex flex-col gap-4 pb-40 lg:pb-6 w-full max-w-5xl mx-auto">
+      <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto">
 
-        {/* ─── Header compacto: una sola fila ─── */}
+        {/* ─── Controles de vista: el título ya vive en la AppBar ─── */}
         <div className="flex items-center gap-3 min-h-[44px]">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: 'var(--nodo-iris)', boxShadow: 'var(--nodo-shadow-fab)' }}
-          >
-            <Plane className="w-5 h-5" style={{ color: 'var(--nodo-on-iris)' }} />
-          </div>
-          <h1 className="text-xl font-black text-nodo-ink leading-none flex-1 min-w-0 truncate">
-            Importaciones
-          </h1>
-          {/* Sub-vista de Cotizar visible junto al título (móvil y desktop) */}
+          {/* Sub-vista de Cotizar */}
           {activeTab === 'cotizar' && (
             <SegmentedControl
               options={COTIZAR_VIEWS}

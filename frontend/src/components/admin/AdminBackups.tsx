@@ -212,13 +212,7 @@ export function AdminBackups() {
       <div className="flex flex-col gap-5 pb-8 w-full max-w-2xl lg:max-w-5xl">
 
         {/* Header */}
-        <div className="flex items-center justify-between pt-2">
-          <div>
-            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Cartuchera</h1>
-            <p className="text-nodo-sub text-sm font-medium mt-0.5">
-              Exportá e insertá los datos de cada empresa como un cartucho
-            </p>
-          </div>
+        <div className="flex items-center justify-end">
           <div className="flex items-center gap-2">
             <button onClick={openSettings}
               className="w-10 h-10 flex items-center justify-center rounded-xl bg-nodo-inset hover:bg-nodo-raised transition-colors">

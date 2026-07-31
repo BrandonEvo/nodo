@@ -3,10 +3,11 @@ import { createPortal } from 'react-dom';
 import {
   Plus, Loader2, AlertTriangle, Check, X, Trash2, Search, Camera, Link2, PencilLine,
   Bell, Settings2, Share2, Package, Users, Tag, MessageCircle, Box, Sparkles, ArrowRight,
-  Store, Radio, Zap, Clock, Flame, Minus, Play, ShoppingBag, Ticket, Dices, Power, ChevronDown,
-  Maximize2,
+  Store, Radio, Zap, Clock, Flame, Minus, Play, Ticket, Dices, Power, ChevronDown,
+  Maximize2, History, UserPlus, ListChecks,
 } from 'lucide-react';
 import type { AppProps } from '../index';
+import { useModuleChrome, ModuleActions } from '@/components/chrome/ModuleChrome';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { haptic } from '@/utils/haptic';
@@ -16,7 +17,7 @@ import {
   type ShopperCatalogItem, type ShopperCatalogSettings, type ShopperCalcSettings,
   type ShopperReservation, type ShopperResStatus, type ShopperListing,
   type ShopperCoupon, type ShopperCouponInput, type CouponDiscountType,
-  type ShopperStats,
+  type ShopperStats, type ShopperStoreSession,
 } from '@/services/shopper_catalog.service';
 import { shopperAmazonService } from '@/services/shopper_amazon.service';
 import {
@@ -72,21 +73,21 @@ function useNow(active: boolean, ms = 1000) {
   return now;
 }
 
-// Formatea el countdown de un drop: días si falta mucho, si no H:MM:SS / MM:SS.
+// Formatea el countdown de la venta: días si falta mucho, si no H:MM:SS / MM:SS.
 function fmtClock(diffMs: number): { big: string; small: string; urgent: boolean } {
-  if (diffMs <= 0) return { big: '0:00', small: 'cerrada', urgent: true };
+  if (diffMs <= 0) return { big: '0:00', small: 'se acabó', urgent: true };
   const s = Math.floor(diffMs / 1000);
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60), sec = s % 60;
   const p = (n: number) => String(n).padStart(2, '0');
-  if (d > 0) return { big: `${d}d ${h}h`, small: 'para el cierre', urgent: false };
-  if (h > 0) return { big: `${h}:${p(m)}:${p(sec)}`, small: 'para el cierre', urgent: false };
-  return { big: `${m}:${p(sec)}`, small: 'para el cierre', urgent: m < 10 };
+  if (d > 0) return { big: `${d}d ${h}h`, small: 'para que cierre', urgent: false };
+  if (h > 0) return { big: `${h}:${p(m)}:${p(sec)}`, small: 'para que cierre', urgent: false };
+  return { big: `${m}:${p(sec)}`, small: 'para que cierre', urgent: m < 10 };
 }
 
-// Link al pedido acumulado del cliente ("En mi maleta") — acceso rápido para compartir.
+// Link al pedido del cliente — acceso rápido para compartir.
 const orderLink = (orderToken?: string | null): string | null =>
-  orderToken ? `${window.location.origin}/mi-maleta/${orderToken}` : null;
+  orderToken ? `${window.location.origin}/mi-pedido/${orderToken}` : null;
 
 // ── Lightbox de imagen ──────────────────────────────────────────────────────────
 // Portal a document.body: el contenido del BottomSheet vive dentro de .nodo-glass-panel
@@ -112,8 +113,8 @@ function ImageLightbox({ src, title, onClose }: { src: string; title?: string | 
   );
 }
 
-// ── Resultado del drop (clímax al cerrar) ────────────────────────────────────────
-type DropResultData = {
+// ── Resultado de la venta (clímax al cerrar) ────────────────────────────────────
+type SaleResultData = {
   units: number;
   reservations: number;
   clients: number;
@@ -122,11 +123,11 @@ type DropResultData = {
   topUnits: number;
 };
 
-// Scope-drop: reservas vivas (no canceladas/no_disponible) creadas desde que abriste la
-// tienda. Es el "potencial" del drop — plata apartada, aún no cobrada (por eso el copy).
-function computeDropResult(
+// Alcance de la venta: reservas vivas (no canceladas/no_disponible) creadas desde que
+// abriste. Es lo APARTADO — plata prometida, todavía no cobrada (por eso el copy).
+function computeSaleResult(
   reservations: ShopperReservation[], items: ShopperCatalogItem[], openedMs: number,
-): DropResultData {
+): SaleResultData {
   const byId = new Map(items.map(i => [i.id, i]));
   let units = 0, revenueGtq = 0, count = 0;
   const phones = new Set<string>();
@@ -149,8 +150,8 @@ function computeDropResult(
   return { units, reservations: count, clients: phones.size, revenueGtq, topTitle, topUnits };
 }
 
-function DropResultModal({ data, onClose, onNewDrop }: {
-  data: DropResultData; onClose: () => void; onNewDrop: () => void;
+function SaleResultModal({ data, onClose, onNewSale }: {
+  data: SaleResultData; onClose: () => void; onNewSale: () => void;
 }) {
   const empty = data.reservations === 0;
   return createPortal(
@@ -158,39 +159,40 @@ function DropResultModal({ data, onClose, onNewDrop }: {
       <div className="w-full max-w-sm nodo-card-hero p-6 text-center animate-in zoom-in-95 duration-300">
         <div className="text-5xl mb-2">{empty ? '🌱' : '🏁'}</div>
         <h2 className="text-[26px] font-black text-nodo-ink leading-tight">
-          {empty ? 'Drop cerrado' : '¡Cerraste el drop!'}
+          {empty ? 'Venta cerrada' : '¡Cerraste la venta!'}
         </h2>
         <p className="text-sm font-semibold text-nodo-sub mt-1">
           {empty
-            ? 'Esta vez nadie apartó. Probá otro horario o avisá antes por WhatsApp.'
-            : `${data.clients} cliente${data.clients === 1 ? '' : 's'} apartaron en tu tienda 🎉`}
+            ? 'Esta vez nadie apartó nada. Probá otro horario o avisales por WhatsApp antes de abrir.'
+            : `${data.clients} ${data.clients === 1 ? 'persona apartó' : 'personas apartaron'} algo 🎉`}
         </p>
 
         {!empty && (
           <>
             <div className="mt-5 rounded-2xl bg-nodo-primary text-nodo-on-primary p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-nodo-on-primary/80">Apartado en el drop</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-nodo-on-primary/80">Te apartaron</p>
               <p className="text-[40px] font-black tabular-nums leading-none mt-1">{fmtGTQ(data.revenueGtq)}</p>
               <p className="text-[11px] font-bold text-nodo-on-primary/80 mt-1">
-                {data.units} unidad{data.units === 1 ? '' : 'es'} · {data.reservations} reserva{data.reservations === 1 ? '' : 's'}
+                {data.units} producto{data.units === 1 ? '' : 's'} · {data.reservations} pedido{data.reservations === 1 ? '' : 's'}
               </p>
             </div>
             {data.topTitle && (
               <div className="mt-2.5 rounded-2xl bg-nodo-inset p-3 text-left">
-                <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Lo más apartado</p>
+                <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">Lo que más se llevaron</p>
                 <p className="text-sm font-black text-nodo-ink line-clamp-1 mt-0.5">{data.topTitle}</p>
-                <p className="text-[11px] font-bold text-nodo-sub tabular-nums">{data.topUnits} unidad{data.topUnits === 1 ? '' : 'es'}</p>
+                <p className="text-[11px] font-bold text-nodo-sub tabular-nums">{data.topUnits} {data.topUnits === 1 ? 'vez' : 'veces'}</p>
               </div>
             )}
             <p className="text-[11px] font-semibold text-nodo-dim mt-3">
-              Confirmá y cobrá desde Reservas. Tu ganancia real vive en “Cómo te fue”.
+              Este dinero todavía no es tuyo: te lo apartaron. Escribiles por WhatsApp desde
+              Reservas para confirmar y cobrar.
             </p>
           </>
         )}
 
-        <button onClick={() => { haptic.tap(); onNewDrop(); }}
+        <button onClick={() => { haptic.tap(); onNewSale(); }}
           className="nodo-btn-primary mt-5">
-          <Radio size={18} /> Abrir otro drop
+          <Radio size={18} /> Abrir otra venta
         </button>
         <button onClick={onClose}
           className="w-full h-12 mt-2 rounded-2xl font-black text-sm text-nodo-sub active:scale-95 transition-transform">
@@ -210,7 +212,7 @@ export function PersonalShopperApp(_props: AppProps) {
   const [reservations, setReservations] = useState<ShopperReservation[]>([]);
   const [coupons, setCoupons] = useState<ShopperCoupon[]>([]);
   const [stats, setStats] = useState<ShopperStats | null>(null);
-  const [dropResult, setDropResult] = useState<DropResultData | null>(null);
+  const [saleResult, setSaleResult] = useState<SaleResultData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -220,11 +222,29 @@ export function PersonalShopperApp(_props: AppProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showClients, setShowClients] = useState(false);
   const [showCoupons, setShowCoupons] = useState(false);
+  const [showCostFix, setShowCostFix] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showManualSale, setShowManualSale] = useState(false);
 
-  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
-  const flash = useCallback((kind: 'ok' | 'err', msg: string) => {
-    setToast({ kind, msg });
-    setTimeout(() => setToast(null), 2600);
+  // Modo Editar: no es una preferencia de vista (el grid con fotos es lo que ve el
+  // cliente), es una herramienta de mantenimiento. Por eso es temporal y no persiste.
+  const [manage, setManage] = useState<null | 'catalog' | 'live'>(null);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [riskAsk, setRiskAsk] = useState<{ all: string[]; safe: string[]; risky: ShopperCatalogItem[] } | null>(null);
+  // Ítems ya borrados en pantalla pero cuyo DELETE todavía no salió: el backend hace
+  // soft-delete SIN restore, así que deshacer sólo existe si el request aún no se disparó.
+  const [ghosts, setGhosts] = useState<Set<string>>(() => new Set());
+  const pendingDelete = useRef<{ ids: string[]; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string; undo?: () => void } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // El toast con Deshacer vive 6s (hay que leerlo y decidir); el informativo, 2.6s.
+  const flash = useCallback((kind: 'ok' | 'err', msg: string, undo?: () => void) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ kind, msg, undo });
+    toastTimer.current = setTimeout(() => setToast(null), undo ? 6000 : 2600);
   }, []);
 
   const load = useCallback(async () => {
@@ -237,7 +257,7 @@ export function PersonalShopperApp(_props: AppProps) {
       setItems(its); setSettings(st); setCalc(cs); setReservations(res); setCoupons(cps);
       setStats(sts);
     } catch {
-      flash('err', 'No se pudo cargar tu tienda.');
+      flash('err', 'No se pudo cargar tu tienda. Probá de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -264,16 +284,145 @@ export function PersonalShopperApp(_props: AppProps) {
   const hasStats = !!stats
     && (stats.realized.lines + stats.committed.lines + stats.potential.lines) > 0;
 
-  // Ítems del drop actual = publicados 'live' durante esta sesión de tienda.
-  const liveItems = useMemo(
+  // Los productos detrás de "N sin costo real": vendidos (o apartados) sin que sepamos
+  // qué te costaron, así que /stats adivina el costo y la ganancia que ves es de mentira.
+  // Son ESTOS los que hay que arreglar, y por eso el badge abre una lista y no un cartel.
+  const costlessItems = useMemo(() => {
+    const counted = new Set(
+      reservations
+        .filter(r => r.is_active && (FLOW as string[]).includes(r.status))
+        .map(r => r.catalog_item_id),
+    );
+    return items.filter(i => i.calc_total_cost_gtq == null && counted.has(i.id));
+  }, [items, reservations]);
+
+  // Ítems de la venta actual = publicados 'live' durante esta sesión.
+  // `*All` incluye los fantasmas (filas que ya salieron en pantalla pero cuyo DELETE
+  // todavía no salió): el modo Editar las necesita montadas para animarlas y para que
+  // Deshacer las devuelva. Todo lo demás consume las listas ya filtradas.
+  const liveAll = useMemo(
     () => items.filter(i => i.listing === 'live' && i.is_published && i.is_active
       && (!openedMs || (toMs(i.published_at) ?? Infinity) >= openedMs - 5000)),
     [items, openedMs],
   );
-  const catalogItems = useMemo(
+  const catalogAll = useMemo(
     () => items.filter(i => i.listing === 'catalog' && i.is_active),
     [items],
   );
+  const liveItems = useMemo(() => liveAll.filter(i => !ghosts.has(i.id)), [liveAll, ghosts]);
+  const catalogItems = useMemo(() => catalogAll.filter(i => !ghosts.has(i.id)), [catalogAll, ghosts]);
+
+  // Cuántos clientes tienen apartado cada producto. Es el único dato que el undo no
+  // puede explicar solo, así que decide si el borrado masivo pregunta o no pregunta.
+  const reservedCount = useMemo(() => {
+    const m = new Map<string, number>();
+    reservations.forEach(r => {
+      if (!r.is_active || r.status === 'cancelada' || r.status === 'no_disponible') return;
+      m.set(r.catalog_item_id, (m.get(r.catalog_item_id) ?? 0) + 1);
+    });
+    return m;
+  }, [reservations]);
+
+  const manageRows = manage === 'live' ? liveItems : catalogItems;
+
+  const flushDelete = useCallback(async () => {
+    const p = pendingDelete.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendingDelete.current = null;
+    const ids = p.ids;
+    // De a 4: cuarenta DELETE simultáneos desde el celular pegan contra el rate-limit.
+    const fails: string[] = [];
+    for (let i = 0; i < ids.length; i += 4) {
+      const chunk = ids.slice(i, i + 4);
+      const r = await Promise.allSettled(chunk.map(id => svc.remove(id)));
+      r.forEach((x, k) => { if (x.status === 'rejected') fails.push(chunk[k]); });
+    }
+    if (!alive.current) return;
+    // Se limpian sólo los ids de ESTE lote: si mientras tanto entró otro borrado, sus
+    // fantasmas tienen que seguir en pie.
+    setGhosts(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+    await load();
+    if (fails.length) flash('err', `No se pudo quitar ${fails.length}. Siguen en tu catálogo.`);
+  }, [load, flash]);
+
+  // Salir del módulo o mandarlo a background confirma lo pendiente: el dueño ya decidió,
+  // cancelarle el borrado en silencio sería peor que aplicarlo. Si iOS mata la pestaña
+  // antes, el producto simplemente sigue vivo — el modo de falla es el seguro.
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') void flushDelete(); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => { document.removeEventListener('visibilitychange', onHide); void flushDelete(); };
+  }, [flushDelete]);
+
+  const commitDelete = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    void flushDelete();                     // nunca dos lotes en vuelo
+    setGhosts(prev => new Set([...prev, ...ids]));
+    setSelected(new Set());
+    setRiskAsk(null);
+    haptic.confirm();
+    const timer = setTimeout(() => { void flushDelete(); }, 6000);
+    pendingDelete.current = { ids, timer };
+    flash('ok', ids.length === 1 ? 'Producto quitado' : `${ids.length} productos quitados`, () => {
+      clearTimeout(timer);
+      pendingDelete.current = null;
+      setGhosts(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+      setToast(null);
+      haptic.tap();
+    });
+  }, [flushDelete, flash]);
+
+  // Puerta única de borrado: pregunta sólo cuando hay algo que el undo no puede contar.
+  const requestDelete = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    const risky = manageRows.filter(i => ids.includes(i.id) && (reservedCount.get(i.id) ?? 0) > 0);
+    if (!risky.length) { commitDelete(ids); return; }
+    haptic.reject();
+    setRiskAsk({ all: ids, safe: ids.filter(id => !(reservedCount.get(id) ?? 0)), risky });
+  }, [manageRows, reservedCount, commitDelete]);
+
+  // Selección por criterio real: es acá donde 12 toques se vuelven 1.
+  const quickPicks = useMemo(() => {
+    const picks = manage === 'live'
+      ? [
+          { key: 'all',   label: 'Todos',    ids: manageRows.map(i => i.id) },
+          { key: 'out',   label: 'Agotados', ids: manageRows.filter(i => i.stock_available <= 0).map(i => i.id) },
+          { key: 'free',  label: 'Sin apartados', ids: manageRows.filter(i => !reservedCount.get(i.id)).map(i => i.id) },
+        ]
+      : [
+          { key: 'all',    label: 'Todos',    ids: manageRows.map(i => i.id) },
+          { key: 'exp',    label: 'Vencidos', ids: manageRows.filter(i => { const m = toMs(i.expires_at); return m != null && m <= now; }).map(i => i.id) },
+          { key: 'hidden', label: 'Ocultos',  ids: manageRows.filter(i => !i.is_published).map(i => i.id) },
+          { key: 'free',   label: 'Sin apartados', ids: manageRows.filter(i => !reservedCount.get(i.id)).map(i => i.id) },
+        ];
+    return picks.filter(p => p.ids.length > 0);
+  }, [manage, manageRows, reservedCount, now]);
+
+  useModuleChrome('Mi Tienda', storeLive ? 'Vendiendo en vivo 🔴' : 'Abrí una venta o publicá en tu catálogo');
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }, []);
+
+  // Un solo swipe abierto a la vez.
+  const openSwipe = useRef<(() => void) | null>(null);
+  const registerOpenSwipe = useCallback((close: () => void) => {
+    if (openSwipe.current && openSwipe.current !== close) openSwipe.current();
+    openSwipe.current = close;
+  }, []);
+
+  useEffect(() => {
+    if (manage) return;
+    setSelected(new Set());
+    openSwipe.current = null;
+  }, [manage]);
+  // Si la lista se vació no queda nada que editar. Se mide sobre la lista CON fantasmas
+  // para no desmontar el modo (y la animación) a mitad del borrado.
+  const manageAllLen = (manage === 'live' ? liveAll : catalogAll).length;
+  useEffect(() => {
+    if (manage && manageAllLen === 0) setManage(null);
+  }, [manage, manageAllLen]);
 
   const publicUrl = settings ? `${window.location.origin}/catalogo/${settings.public_token}` : '';
   const share = useCallback(async () => {
@@ -282,79 +431,81 @@ export function PersonalShopperApp(_props: AppProps) {
     if (!ok) { await navigator.clipboard?.writeText(publicUrl); flash('ok', 'Enlace copiado'); }
   }, [publicUrl, flash]);
 
-  const openStore = useCallback(async (storeName: string, minutes: number | null) => {
+  const openStore = useCallback(async (storeName: string, minutes: number | null, bannerUrl: string | null) => {
     setBusy(true);
     try {
-      const st = await svc.openStore({ store_name: storeName || null, minutes });
+      // banner_url: '' quita la foto, el data URI la reemplaza. Nunca omitido acá — el
+      // sheet siembra su estado con la foto actual, así que lo que mande es la intención.
+      const st = await svc.openStore({ store_name: storeName || null, minutes, banner_url: bannerUrl ?? '' });
       setSettings(st); setShowOpen(false);
       haptic.done();
-      flash('ok', '¡Tienda abierta! 🔴 En vivo');
+      flash('ok', '¡Estás en vivo! 🔴');
     } catch {
-      flash('err', 'No se pudo abrir la tienda.');
+      flash('err', 'No se pudo abrir la venta.');
     } finally { setBusy(false); }
   }, [flash]);
 
   const closeStore = useCallback(async () => {
-    if (!confirm('¿Cerrar la tienda? Ya no entran reservas nuevas. Las que ya hiciste quedan firmes.')) return;
+    if (!confirm('¿Cerrar la venta? Ya nadie va a poder apartar más. Lo que ya te apartaron no se pierde.')) return;
     setBusy(true);
-    // Snapshot de la ventana del drop ANTES de que settings pase a cerrado (openedMs se
-    // deriva de settings). El resultado es scope-drop: reservas creadas desde que abriste.
+    // Snapshot de la ventana de la venta ANTES de que settings pase a cerrado (openedMs
+    // se deriva de settings): reservas creadas desde que abriste.
     const opened = toMs(settings?.store_opened_at) ?? 0;
     try {
       const st = await svc.closeStore();
       setSettings(st);
       haptic.done();
-      const result = computeDropResult(reservations, items, opened);
-      setDropResult(result);   // clímax: pantalla "Resultado del drop"
+      const result = computeSaleResult(reservations, items, opened);
+      setSaleResult(result);   // clímax: pantalla "Resultado de la venta"
       void load();             // refresca stats para el reporting de arriba
     } catch {
-      flash('err', 'No se pudo cerrar la tienda.');
+      flash('err', 'No se pudo cerrar la venta.');
     } finally { setBusy(false); }
   }, [flash, settings, reservations, items, load]);
 
   return (
     <>
-      {toast && (
+      {/* Un toast que sólo informa puede vivir donde no estorbe. Uno que pide una decisión
+          en 6 segundos tiene que vivir donde el pulgar ya está. */}
+      {toast && (toast.undo ? (
+        <div className="fixed left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 bg-nodo-ink text-nodo-canvas text-sm font-bold px-4 py-3 rounded-2xl shadow-lg max-w-[92vw]"
+          style={{ bottom: 'calc(76px + env(safe-area-inset-bottom, 0px))' }}>
+          <span className="flex-1">{toast.msg}</span>
+          <button onClick={toast.undo}
+            className="shrink-0 h-11 px-3 -my-1 font-black text-xs border border-nodo-canvas/30 rounded-lg active:scale-90 transition-transform">
+            Deshacer
+          </button>
+        </div>
+      ) : (
         <div className={`fixed top-4 right-4 z-[70] flex items-center gap-3 text-sm font-bold px-4 py-3 rounded-2xl shadow-lg max-w-xs
           ${toast.kind === 'ok' ? 'bg-nodo-success-bg border border-nodo-success-bd text-nodo-success-tx'
                                 : 'bg-nodo-danger-bg border border-nodo-danger-bd text-nodo-danger-tx'}`}>
           {toast.kind === 'ok' ? <Check size={16} /> : <AlertTriangle size={16} />}
           <span>{toast.msg}</span>
         </div>
-      )}
+      ))}
 
-      <div className="flex flex-col gap-5 pb-28">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-[28px] font-black text-nodo-ink leading-tight flex items-center gap-2">
-              <ShoppingBag size={26} className="text-nodo-primary" /> Mi Tienda
-            </h1>
-            <p className="text-nodo-sub text-sm font-medium mt-0.5">
-              {storeLive ? 'Estás en vivo — el reloj corre' : 'Abrí tu tienda o publicá en tu catálogo'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => { haptic.tap(); setShowReservas(true); }}
-              className="relative w-11 h-11 rounded-2xl bg-nodo-card border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 transition-transform">
-              <Bell size={18} />
-              {pendingCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-nodo-primary text-nodo-on-primary text-[10px] font-black flex items-center justify-center">{pendingCount}</span>
-              )}
-            </button>
-            <button onClick={() => { haptic.tap(); setShowCoupons(true); }}
-              className="relative w-11 h-11 rounded-2xl bg-nodo-card border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 transition-transform">
-              <Ticket size={18} />
-              {activeCoupons > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-nodo-success-tx text-white text-[10px] font-black flex items-center justify-center">{activeCoupons}</span>
-              )}
-            </button>
-            <button onClick={() => { haptic.tap(); setShowSettings(true); }}
-              className="w-11 h-11 rounded-2xl bg-nodo-card border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 transition-transform">
-              <Settings2 size={18} />
-            </button>
-          </div>
-        </div>
+      <div className={`flex flex-col gap-5 ${manage ? 'pb-40' : ''}`}>
+        <ModuleActions>
+          <button onClick={() => { haptic.tap(); setShowReservas(true); }}
+            className="nodo-appbar-action" aria-label="Reservas">
+            <Bell size={16} />
+            {pendingCount > 0 && (
+              <span className="nodo-appbar-badge bg-nodo-primary text-nodo-on-primary">{pendingCount}</span>
+            )}
+          </button>
+          <button onClick={() => { haptic.tap(); setShowCoupons(true); }}
+            className="nodo-appbar-action" aria-label="Cupones">
+            <Ticket size={16} />
+            {activeCoupons > 0 && (
+              <span className="nodo-appbar-badge bg-nodo-success-tx text-white">{activeCoupons}</span>
+            )}
+          </button>
+          <button onClick={() => { haptic.tap(); setShowSettings(true); }}
+            className="nodo-appbar-action" aria-label="Ajustes">
+            <Settings2 size={16} />
+          </button>
+        </ModuleActions>
 
         {loading ? (
           <div className="nodo-spinner-container"><Loader2 className="w-8 h-8 animate-spin text-nodo-sub" /></div>
@@ -362,7 +513,7 @@ export function PersonalShopperApp(_props: AppProps) {
           /* ══════════ TIENDA EN VIVO ══════════ */
           <>
             <LiveHero
-              storeName={settings?.store_name}
+              storeName={settings?.store_name} bannerUrl={settings?.store_banner_url}
               closesMs={closesMs} now={now}
               items={liveItems.length}
               reserving={reservations.filter(r => r.is_active && r.status === 'pendiente').length}
@@ -370,29 +521,35 @@ export function PersonalShopperApp(_props: AppProps) {
             />
 
             <div className="flex items-center justify-between">
-              <p className="nodo-section-label !mb-0">En el drop ({liveItems.length})</p>
-              {liveItems.length > 0 && (
-                <button onClick={share} className="text-xs font-black text-nodo-primary flex items-center gap-1 active:scale-95">
-                  <Share2 size={13} /> Compartir
-                </button>
-              )}
+              <p className="nodo-section-label !mb-0">En la venta ({liveItems.length})</p>
+              <div className="flex items-center gap-3">
+                {liveItems.length > 0 && manage !== 'live' && (
+                  <button onClick={() => { haptic.tap(); setManage('live'); }}
+                    className="text-xs font-bold text-nodo-sub flex items-center gap-1 active:scale-95 transition-transform">
+                    <ListChecks size={13} /> Editar
+                  </button>
+                )}
+                {liveItems.length > 0 && (
+                  <button onClick={share} className="text-xs font-black text-nodo-primary flex items-center gap-1 active:scale-95">
+                    <Share2 size={13} /> Compartir
+                  </button>
+                )}
+              </div>
             </div>
 
             {liveItems.length === 0 ? (
               <div className="nodo-empty-state py-12">
                 <Zap size={38} className="text-nodo-primary mb-3" />
-                <p className="text-sm font-bold text-nodo-ink">Publicá lo primero</p>
-                <p className="text-xs text-nodo-sub mt-1">Foto → precio → cantidad → listo</p>
+                <p className="text-sm font-bold text-nodo-ink">Subí tu primer producto</p>
+                <p className="text-xs text-nodo-sub mt-1">Le tomás la foto, le ponés precio y listo</p>
               </div>
+            ) : manage === 'live' ? (
+              <ManageList rows={liveAll} ghosts={ghosts} now={now} selected={selected}
+                reservedCount={reservedCount} onToggle={toggleSelected}
+                onDelete={id => requestDelete([id])} registerOpen={registerOpenSwipe} />
             ) : (
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                {liveItems.map(it => (
-                  <LiveItemCard key={it.id} item={it}
-                    onDelete={async () => {
-                      if (!confirm(`¿Quitar "${it.title}" del drop?`)) return;
-                      await svc.remove(it.id); await load(); flash('ok', 'Quitado');
-                    }} />
-                ))}
+                {liveItems.map(it => <LiveItemCard key={it.id} item={it} />)}
               </div>
             )}
           </>
@@ -402,7 +559,7 @@ export function PersonalShopperApp(_props: AppProps) {
             {timedOut && (
               <div className="nodo-card p-4 flex items-center gap-3 bg-nodo-warn-bg border-nodo-warn-bd">
                 <Clock size={20} className="text-nodo-warn-tx shrink-0" />
-                <p className="flex-1 text-sm font-bold text-nodo-warn-tx">Se acabó el tiempo del último drop.</p>
+                <p className="flex-1 text-sm font-bold text-nodo-warn-tx">Se acabó el tiempo de tu última venta.</p>
                 <button onClick={closeStore} disabled={busy}
                   className="h-9 px-3 rounded-xl bg-nodo-warn-tx text-white text-xs font-black active:scale-95 disabled:opacity-40">
                   Cerrar
@@ -416,14 +573,14 @@ export function PersonalShopperApp(_props: AppProps) {
               style={{ boxShadow: 'var(--nodo-shadow-hero)' }}>
               <div className="flex items-center gap-2 text-nodo-on-primary/90 mb-2">
                 <Radio size={18} />
-                <span className="text-[11px] font-black uppercase tracking-[0.14em]">Tienda en vivo</span>
+                <span className="text-[11px] font-black uppercase tracking-[0.14em]">Venta en vivo</span>
               </div>
-              <p className="text-[26px] font-black leading-tight">Abrir tienda 🔴</p>
+              <p className="text-[26px] font-black leading-tight">Abrir venta 🔴</p>
               <p className="text-sm font-semibold text-nodo-on-primary/80 mt-1">
-                Estás en la tienda ahora. Publicá rápido y dale a tus clientes un reloj para reservar.
+                Estás en la tienda comprando. Mostrá lo que ves y dales un tiempo para apartarlo.
               </p>
               <span className="inline-flex items-center gap-1.5 mt-4 h-11 px-5 rounded-full bg-nodo-on-primary text-nodo-primary font-black text-sm">
-                <Play size={16} /> Empezar el drop
+                <Play size={16} /> Empezar la venta
               </span>
             </button>
 
@@ -433,15 +590,16 @@ export function PersonalShopperApp(_props: AppProps) {
               <div className="nodo-card p-4">
                 <div className="flex items-center justify-between mb-3">
                   <p className="nodo-section-label !mb-0">Cómo te fue</p>
-                  {assumedLines > 0 && (
-                    <span className="text-[10px] font-bold text-nodo-warn-tx">{assumedLines} sin costo real</span>
-                  )}
+                  <button onClick={() => { haptic.tap(); setShowHistory(true); }}
+                    className="text-[11px] font-black text-nodo-primary flex items-center gap-1 active:scale-95">
+                    <History size={12} /> Ventas anteriores
+                  </button>
                 </div>
 
-                {/* Realizado — entregado, la única plata que cuenta */}
+                {/* Ganado de verdad = entregado. Es la única plata que existe. */}
                 <div className="rounded-2xl bg-nodo-success-bg p-3.5 mb-2.5">
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-bold text-nodo-success-tx/80 uppercase tracking-wide">Realizado · entregado</p>
+                    <p className="text-[10px] font-bold text-nodo-success-tx/80 uppercase tracking-wide">Ya ganaste (entregado)</p>
                     {stats.realized.orders > 0 && (
                       <span className="text-[10px] font-bold text-nodo-success-tx/70 tabular-nums">
                         {stats.realized.orders} pedido{stats.realized.orders === 1 ? '' : 's'}
@@ -452,36 +610,66 @@ export function PersonalShopperApp(_props: AppProps) {
                     <>
                       <div className="flex items-baseline gap-2 mt-0.5">
                         <p className="text-[28px] font-black text-nodo-success-tx tabular-nums leading-none">{fmtGTQ(stats.realized.profit_gtq)}</p>
-                        <span className="text-[11px] font-bold text-nodo-success-tx/70">ganancia neta</span>
+                        <span className="text-[11px] font-bold text-nodo-success-tx/70">te quedó limpio</span>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 text-[11px] font-bold text-nodo-success-tx/80 tabular-nums">
-                        <span>Vendido {fmtGTQ(stats.realized.net_revenue_gtq)}</span>
-                        {stats.realized.coupon_gtq > 0 && <span>· −{fmtGTQ(stats.realized.coupon_gtq)} cupón</span>}
+                        <span>Cobraste {fmtGTQ(stats.realized.net_revenue_gtq)}</span>
+                        {stats.realized.coupon_gtq > 0 && <span>· −{fmtGTQ(stats.realized.coupon_gtq)} en cupones</span>}
                         {stats.exchange_rate > 0 && <span>· {fmtUSD(stats.realized_profit_usd)}</span>}
                       </div>
                     </>
                   ) : (
                     <p className="text-[13px] font-bold text-nodo-success-tx/80 mt-1">
-                      Se llena al marcar pedidos como entregados 🎉
+                      Se llena cuando marques un pedido como entregado 🎉
                     </p>
                   )}
                 </div>
 
-                {/* Pipeline: en firme + potencial (neto de cupón) */}
                 <div className="grid grid-cols-2 gap-2.5">
                   <div className="rounded-2xl bg-nodo-inset p-3">
-                    <p className="text-[10px] font-bold text-nodo-sub uppercase tracking-wide">En firme</p>
+                    <p className="text-[10px] font-bold text-nodo-sub uppercase tracking-wide">Ya es seguro</p>
                     <p className="text-lg font-black text-nodo-ink tabular-nums leading-tight">{fmtGTQ(stats.committed.net_revenue_gtq)}</p>
-                    <p className="text-[10px] font-bold text-nodo-sub tabular-nums">{stats.committed.units} u · gana {fmtGTQ(stats.committed.profit_gtq)}</p>
+                    <p className="text-[10px] font-bold text-nodo-sub tabular-nums">{stats.committed.units} prod. · ganás {fmtGTQ(stats.committed.profit_gtq)}</p>
                   </div>
                   <div className="rounded-2xl bg-nodo-inset p-3">
-                    <p className="text-[10px] font-bold text-nodo-sub uppercase tracking-wide">Potencial</p>
+                    <p className="text-[10px] font-bold text-nodo-sub uppercase tracking-wide">Todavía en duda</p>
                     <p className="text-lg font-black text-nodo-ink tabular-nums leading-tight">{fmtGTQ(stats.potential.net_revenue_gtq)}</p>
-                    <p className="text-[10px] font-bold text-nodo-sub tabular-nums">{stats.potential.units} u · gana {fmtGTQ(stats.potential.profit_gtq)}</p>
+                    <p className="text-[10px] font-bold text-nodo-sub tabular-nums">{stats.potential.units} prod. · ganás {fmtGTQ(stats.potential.profit_gtq)}</p>
                   </div>
                 </div>
+
+                {/* El aviso viejo era un cartel muerto: te decía que los números estaban
+                    adivinados y no te dejaba hacer nada. Ahora abre la lista y se arregla. */}
+                {assumedLines > 0 && costlessItems.length > 0 && (
+                  <button onClick={() => { haptic.tap(); setShowCostFix(true); }}
+                    className="mt-2.5 w-full rounded-2xl bg-nodo-warn-bg border border-nodo-warn-bd p-3 flex items-center gap-2.5 text-left active:scale-[0.99] transition-transform">
+                    <AlertTriangle size={16} className="text-nodo-warn-tx shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-black text-nodo-warn-tx">
+                        Estos números son un estimado
+                      </p>
+                      <p className="text-[11px] font-semibold text-nodo-warn-tx/80">
+                        Nos falta saber qué te costaron {costlessItems.length} producto{costlessItems.length === 1 ? '' : 's'}. Tocá para decirnos.
+                      </p>
+                    </div>
+                    <ArrowRight size={15} className="text-nodo-warn-tx shrink-0" />
+                  </button>
+                )}
               </div>
             )}
+
+            {/* Te compraron por fuera del catálogo — el caso más común del negocio real. */}
+            <button onClick={() => { haptic.tap(); setShowManualSale(true); }}
+              className="nodo-card p-4 flex items-center gap-3 text-left active:scale-[0.99] transition-transform">
+              <div className="w-11 h-11 rounded-2xl bg-nodo-primary-soft flex items-center justify-center text-nodo-primary shrink-0">
+                <UserPlus size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-nodo-ink">Anotar una venta</p>
+                <p className="text-[11px] font-semibold text-nodo-sub">Te compraron por WhatsApp o en persona</p>
+              </div>
+              <ArrowRight size={16} className="text-nodo-dim shrink-0" />
+            </button>
 
             {/* Accesos */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -493,26 +681,34 @@ export function PersonalShopperApp(_props: AppProps) {
 
             {/* Catálogo Amazon (evergreen) */}
             <div className="flex items-center justify-between">
-              <p className="nodo-section-label !mb-0">Catálogo Amazon</p>
-              <button onClick={() => { haptic.tap(); setCreateListing('catalog'); }}
-                className="text-xs font-black text-nodo-primary flex items-center gap-1 active:scale-95">
-                <Plus size={14} /> Agregar
-              </button>
+              <p className="nodo-section-label !mb-0">Catálogo Amazon ({catalogItems.length})</p>
+              <div className="flex items-center gap-3">
+                {catalogItems.length > 0 && manage !== 'catalog' && (
+                  <button onClick={() => { haptic.tap(); setManage('catalog'); }}
+                    className="text-xs font-bold text-nodo-sub flex items-center gap-1 active:scale-95 transition-transform">
+                    <ListChecks size={13} /> Editar
+                  </button>
+                )}
+                <button onClick={() => { haptic.tap(); setCreateListing('catalog'); }}
+                  className="text-xs font-black text-nodo-primary flex items-center gap-1 active:scale-95">
+                  <Plus size={14} /> Agregar
+                </button>
+              </div>
             </div>
             {catalogItems.length === 0 ? (
               <div className="nodo-empty-state py-10">
                 <Link2 size={34} className="text-nodo-dim mb-2" />
-                <p className="text-sm font-bold text-nodo-ink">Catálogo vacío</p>
-                <p className="text-xs text-nodo-sub mt-1">Pegá un link de Amazon y publicalo por unos días</p>
+                <p className="text-sm font-bold text-nodo-ink">Tu catálogo está vacío</p>
+                <p className="text-xs text-nodo-sub mt-1">Pegá un link de Amazon y mostralo por unos días</p>
               </div>
+            ) : manage === 'catalog' ? (
+              <ManageList rows={catalogAll} ghosts={ghosts} now={now} selected={selected}
+                reservedCount={reservedCount} onToggle={toggleSelected}
+                onDelete={id => requestDelete([id])} registerOpen={registerOpenSwipe} />
             ) : (
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {catalogItems.map(it => (
                   <CatalogItemCard key={it.id} item={it} now={now}
-                    onDelete={async () => {
-                      if (!confirm(`¿Quitar "${it.title}"?`)) return;
-                      await svc.remove(it.id); await load(); flash('ok', 'Quitado');
-                    }}
                     onTogglePublish={async () => {
                       await svc.update(it.id, { is_published: !it.is_published }); await load();
                     }} />
@@ -523,8 +719,84 @@ export function PersonalShopperApp(_props: AppProps) {
         )}
       </div>
 
+      {/* Barra del modo Editar. z-[55]: sobre el BottomNav (50), bajo el BottomSheet (60). */}
+      {manage && (
+        <div className="fixed left-3 right-3 lg:left-auto lg:right-6 lg:w-[420px] z-[55] liquid-glass rounded-[26px] p-2.5"
+          style={{ bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' }}>
+          {quickPicks.length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto pb-2 -mb-0.5" style={{ scrollbarWidth: 'none' }}>
+              {quickPicks.map(p => {
+                const on = p.ids.every(id => selected.has(id));
+                return (
+                  <button key={p.key}
+                    onClick={() => {
+                      haptic.tap();
+                      setSelected(s => {
+                        const n = new Set(s);
+                        p.ids.forEach(id => on ? n.delete(id) : n.add(id));
+                        return n;
+                      });
+                    }}
+                    className={`shrink-0 h-9 px-3.5 rounded-full text-[12px] font-black active:scale-95 transition-transform
+                      ${on ? 'bg-nodo-primary text-nodo-on-primary' : 'bg-nodo-inset text-nodo-sub'}`}>
+                    {p.label} <span className="tabular-nums opacity-70">{p.ids.length}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <span className="flex-1 pl-1.5 text-[12px] font-bold text-nodo-sub tabular-nums">
+              {selected.size ? `${selected.size} seleccionado${selected.size > 1 ? 's' : ''}` : 'Tocá para elegir'}
+            </span>
+            <button onClick={() => { haptic.tap(); setManage(null); }}
+              className="h-11 px-4 rounded-full bg-nodo-inset text-nodo-ink text-[13px] font-black active:scale-95 transition-transform">
+              Listo
+            </button>
+            <button onClick={() => requestDelete([...selected])} disabled={!selected.size}
+              className="h-11 px-5 rounded-full bg-nodo-danger-tx text-white text-[13px] font-black flex items-center gap-1.5 active:scale-95 transition-transform disabled:opacity-30">
+              <Trash2 size={15} /> Quitar {selected.size || ''}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* El sheet sólo aparece cuando tiene algo que decir que el Deshacer no puede decir:
+          QUÉ estás por romper. Si nadie apartó nada, el undo alcanza y no se pregunta. */}
+      <BottomSheet open={!!riskAsk} onClose={() => setRiskAsk(null)} title="Ojo con estos"
+        footer={riskAsk ? (
+          <div className="flex flex-col gap-2">
+            {riskAsk.safe.length > 0 && (
+              <button onClick={() => commitDelete(riskAsk.safe)} className="nodo-btn-primary">
+                Quitar los {riskAsk.safe.length} sin apartados
+              </button>
+            )}
+            <button onClick={() => commitDelete(riskAsk.all)} className="nodo-btn-danger">
+              Quitar los {riskAsk.all.length} igual
+            </button>
+          </div>
+        ) : null}>
+        {riskAsk && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm font-semibold text-nodo-sub">
+              {riskAsk.risky.length === 1 ? 'Un cliente ya apartó' : 'Hay clientes que ya apartaron'} esto.
+              Si lo quitás desaparece de tu catálogo, pero el apartado y la plata siguen en Reservas.
+            </p>
+            {riskAsk.risky.map(it => (
+              <div key={it.id} className="flex items-center gap-3 p-2.5 rounded-2xl bg-nodo-warn-bg">
+                <Flame size={15} className="text-nodo-warn-tx shrink-0" />
+                <p className="flex-1 text-[13px] font-bold text-nodo-warn-tx line-clamp-1">{it.title}</p>
+                <span className="text-[11px] font-black text-nodo-warn-tx tabular-nums">
+                  {reservedCount.get(it.id) ?? 0}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </BottomSheet>
+
       {/* FAB contextual: publicar en vivo cuando la tienda está abierta */}
-      {storeLive && (
+      {storeLive && !manage && (
         <button onClick={() => { haptic.tap(); setCreateListing('live'); }}
           className="fixed bottom-24 right-5 z-40 h-16 pl-5 pr-6 rounded-full bg-nodo-primary text-nodo-on-primary flex items-center gap-2 font-black active:scale-90 transition-transform"
           style={{ boxShadow: 'var(--nodo-shadow-fab)' }}>
@@ -543,7 +815,8 @@ export function PersonalShopperApp(_props: AppProps) {
           onError={(m) => flash('err', m)}
         />
       )}
-      <OpenStoreSheet open={showOpen} onClose={() => setShowOpen(false)} busy={busy} onOpen={openStore} />
+      <OpenStoreSheet open={showOpen} onClose={() => setShowOpen(false)} busy={busy} onOpen={openStore}
+        currentBanner={settings?.store_banner_url} />
       <ReservasSheet open={showReservas} onClose={() => setShowReservas(false)}
         reservations={reservations} items={items} whatsapp={settings?.whatsapp_number}
         onChanged={load} onError={(m) => flash('err', m)} />
@@ -559,56 +832,86 @@ export function PersonalShopperApp(_props: AppProps) {
         coupons={coupons} markupPct={calc?.default_markup_pct ?? 30}
         publicUrl={publicUrl} totalRedeemed={couponRedeemed}
         onChanged={load} flash={flash} />
-      {dropResult && (
-        <DropResultModal data={dropResult}
-          onClose={() => setDropResult(null)}
-          onNewDrop={() => { setDropResult(null); setShowOpen(true); }} />
+      <CostFixSheet open={showCostFix} onClose={() => setShowCostFix(false)}
+        items={costlessItems} onSaved={load} onError={(m) => flash('err', m)} />
+      <SaleHistorySheet open={showHistory} onClose={() => setShowHistory(false)} flash={flash} />
+      <ManualSaleSheet open={showManualSale} onClose={() => setShowManualSale(false)}
+        items={items.filter(i => i.is_active)}
+        onSaved={load} onError={(m) => flash('err', m)} />
+      {saleResult && (
+        <SaleResultModal data={saleResult}
+          onClose={() => setSaleResult(null)}
+          onNewSale={() => { setSaleResult(null); setShowOpen(true); }} />
       )}
     </>
   );
 }
 
 // ── Hero en vivo: reloj gigante ─────────────────────────────────────────────────
-function LiveHero({ storeName, closesMs, now, items, reserving, onClose, onShare, busy }: {
-  storeName?: string | null; closesMs: number | null; now: number;
+// Lleva la misma foto que ve el cliente: es la única forma que tiene el dueño de ver qué
+// subió sin abrir el link público, y confirma de un vistazo que la venta está viva.
+function LiveHero({ storeName, bannerUrl, closesMs, now, items, reserving, onClose, onShare, busy }: {
+  storeName?: string | null; bannerUrl?: string | null; closesMs: number | null; now: number;
   items: number; reserving: number; onClose: () => void; onShare: () => void; busy: boolean;
 }) {
   const clock = closesMs != null ? fmtClock(closesMs - now) : null;
   const urgent = clock?.urgent ?? false;
+  const photo = !!bannerUrl;
+  const skin = (photo
+    ? { '--sc-fg': '#FFFFFF', '--sc-fg-2': 'rgba(255,255,255,0.74)',
+        '--sc-chip': 'rgba(0,0,0,0.42)', '--sc-btn-fg': '#111111' }
+    : { '--sc-fg': 'var(--nodo-on-primary)', '--sc-fg-2': 'var(--nodo-on-primary-2, rgba(255,255,255,0.74))',
+        '--sc-chip': 'var(--nodo-veil, rgba(255,255,255,0.14))', '--sc-btn-fg': 'var(--nodo-primary)' }
+  ) as React.CSSProperties;
+
   return (
-    <div className="nodo-card-hero p-5 bg-nodo-primary text-nodo-on-primary" style={{ boxShadow: 'var(--nodo-shadow-hero)' }}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 motion-safe:animate-ping" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-          </span>
-          <span className="text-[12px] font-black uppercase tracking-[0.14em]">En vivo{storeName ? ` · ${storeName}` : ''}</span>
-        </div>
-        <button onClick={onShare} className="h-9 w-9 rounded-xl bg-nodo-on-primary/15 flex items-center justify-center active:scale-90 transition-transform">
-          <Share2 size={16} />
-        </button>
-      </div>
+    <div className="nodo-card-hero relative overflow-hidden p-5 bg-nodo-primary"
+      style={{ boxShadow: 'var(--nodo-shadow-hero)', ...skin }}>
+      {photo && (<>
+        <img src={bannerUrl!} alt="" aria-hidden="true" decoding="async"
+          className="s-hero-photo absolute inset-0 w-full h-full object-cover object-[center_35%]" />
+        <div className="s-hero-scrim absolute inset-0 pointer-events-none" />
+      </>)}
 
-      {clock ? (
-        <div className="mt-3 flex items-end gap-3">
-          <span className={`font-black tabular-nums tracking-tighter leading-none ${urgent ? 'text-red-200 motion-safe:animate-pulse' : ''} text-[56px] lg:text-[68px]`}>
-            {clock.big}
-          </span>
-          <span className="text-sm font-bold text-nodo-on-primary/70 mb-2">{clock.small}</span>
+      <div className="relative" style={{ color: 'var(--sc-fg)' }}>
+        <div className="flex items-center justify-between gap-3">
+          <div className={`flex items-center gap-2 ${photo ? 'h-8 pl-2.5 pr-3 rounded-full backdrop-blur-sm' : ''}`}
+            style={photo ? { background: 'var(--sc-chip)' } : undefined}>
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 motion-safe:animate-ping" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+            </span>
+            <span className="text-[12px] font-black uppercase tracking-[0.14em]">En vivo{storeName ? ` · ${storeName}` : ''}</span>
+          </div>
+          <button onClick={onShare} aria-label="Compartir mi tienda"
+            className="h-9 w-9 rounded-xl flex items-center justify-center active:scale-90 transition-transform"
+            style={{ background: 'var(--sc-chip)' }}>
+            <Share2 size={16} />
+          </button>
         </div>
-      ) : (
-        <p className="mt-3 text-[40px] font-black leading-none flex items-center gap-2"><Radio size={30} /> Sin límite</p>
-      )}
 
-      <div className="mt-4 flex items-center gap-4">
-        <StatMini icon={<Package size={14} />} label="productos" value={items} />
-        <StatMini icon={<Flame size={14} />} label="reservando" value={reserving} />
-        <div className="flex-1" />
-        <button onClick={onClose} disabled={busy}
-          className="h-11 px-5 rounded-full bg-nodo-on-primary text-nodo-primary font-black text-sm active:scale-95 transition-transform disabled:opacity-40 flex items-center gap-1.5">
-          {busy ? <Loader2 size={16} className="animate-spin" /> : '🏁'} Cerrar tienda
-        </button>
+        {clock ? (
+          <div className="mt-3 flex items-end gap-3">
+            <span className={`font-black tabular-nums tracking-tighter leading-none text-[clamp(42px,13.5vw,56px)] lg:text-[68px]
+              ${urgent ? 's-clock-urgent text-red-200' : ''}`}>
+              {clock.big}
+            </span>
+            <span className="text-sm font-bold mb-2" style={{ color: 'var(--sc-fg-2)' }}>{clock.small}</span>
+          </div>
+        ) : (
+          <p className="mt-3 text-[40px] font-black leading-none flex items-center gap-2"><Radio size={30} /> Sin límite</p>
+        )}
+
+        <div className="mt-4 flex items-center gap-4">
+          <StatMini icon={<Package size={14} />} label="publicados" value={items} />
+          <StatMini icon={<Flame size={14} />} label="apartados" value={reserving} />
+          <div className="flex-1" />
+          <button onClick={onClose} disabled={busy}
+            className="h-11 px-5 rounded-full font-black text-sm active:scale-95 transition-transform disabled:opacity-40 flex items-center gap-1.5"
+            style={{ background: 'var(--sc-fg)', color: 'var(--sc-btn-fg)' }}>
+            {busy ? <Loader2 size={16} className="animate-spin" /> : '🏁'} Cerrar venta
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -617,9 +920,9 @@ function LiveHero({ storeName, closesMs, now, items, reserving, onClose, onShare
 function StatMini({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-nodo-on-primary/80">{icon}</span>
+      <span style={{ color: 'var(--sc-fg-2)' }}>{icon}</span>
       <span className="text-lg font-black tabular-nums">{value}</span>
-      <span className="text-[11px] font-semibold text-nodo-on-primary/70">{label}</span>
+      <span className="text-[11px] font-semibold" style={{ color: 'var(--sc-fg-2)' }}>{label}</span>
     </div>
   );
 }
@@ -635,7 +938,158 @@ function QuickCard({ icon, label, value, onClick }: { icon: React.ReactNode; lab
 }
 
 // ── Tarjetas de ítem ─────────────────────────────────────────────────────────────
-function LiveItemCard({ item, onDelete }: { item: ShopperCatalogItem; onDelete: () => void }) {
+// ── Modo Editar: filas para limpiar el catálogo ─────────────────────────────────
+// Fila de 72px, tap en cualquier parte para seleccionar. El swipe es el atajo para el
+// "este me sobra" de a uno; el borrado real de tanda sale de los chips de la barra.
+const SWIPE_OPEN = 88;     // ancho de la capa "Quitar"
+const SWIPE_COMMIT = 132;  // pasado esto, soltar borra directo
+const SWIPE_LOCK = 8;      // px de intención antes de decidir eje
+
+function useSwipeDelete(onDelete: () => void, registerOpen: (close: () => void) => void) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const st = useRef({ x0: 0, y0: 0, dx: 0, lock: null as null | 'x' | 'y', open: false, armed: false });
+
+  const settle = useCallback((to: number, ms = 220) => {
+    const el = rowRef.current;
+    if (!el) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.style.transition = reduce ? 'transform 120ms linear' : `transform ${ms}ms cubic-bezier(.22,1,.36,1)`;
+    el.style.transform = `translate3d(${to}px,0,0)`;
+    el.style.willChange = '';
+    st.current.open = to !== 0;
+  }, []);
+
+  const close = useCallback(() => settle(0, 180), [settle]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const el = rowRef.current;
+    if (!el) return;
+    st.current = { x0: e.clientX, y0: e.clientY, dx: 0, lock: null, open: st.current.open, armed: false };
+    el.style.transition = 'none';
+    el.style.willChange = 'transform';
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const s = st.current, el = rowRef.current;
+    if (!el) return;
+    const dx = e.clientX - s.x0, dy = e.clientY - s.y0;
+
+    if (s.lock === null) {
+      // El 1.5 sesga a favor del scroll: en la duda gana el gesto vertical, que el
+      // usuario hace cincuenta veces más seguido que el swipe.
+      if (Math.abs(dy) > SWIPE_LOCK && Math.abs(dy) >= Math.abs(dx)) { s.lock = 'y'; return; }
+      if (Math.abs(dx) > SWIPE_LOCK && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        s.lock = 'x';
+        el.setPointerCapture(e.pointerId);   // sólo capturamos cuando ya ganamos el eje
+        registerOpen(close);
+      } else return;
+    }
+    if (s.lock === 'y') return;              // nunca capturado → el scroll nativo sigue vivo
+
+    const base = s.open ? -SWIPE_OPEN : 0;
+    let x = Math.min(0, base + dx);
+    if (x < -SWIPE_OPEN) x = -(SWIPE_OPEN + (Math.abs(x) - SWIPE_OPEN) * 0.35);   // rubber band
+    s.dx = x;
+    el.style.transform = `translate3d(${x}px,0,0)`;
+
+    // Haptic al CRUZAR el umbral, no al soltar: es lo que lo hace sentir nativo.
+    if (!s.armed && Math.abs(x) >= SWIPE_COMMIT) { s.armed = true; haptic.confirm(); }
+    else if (s.armed && Math.abs(x) < SWIPE_COMMIT) { s.armed = false; haptic.tap(); }
+  };
+
+  const onPointerUp = () => {
+    const s = st.current;
+    if (s.lock !== 'x') { s.lock = null; return; }
+    s.lock = null;
+    if (Math.abs(s.dx) >= SWIPE_COMMIT) { settle(-window.innerWidth, 180); onDelete(); return; }
+    settle(Math.abs(s.dx) >= SWIPE_OPEN * 0.5 ? -SWIPE_OPEN : 0);
+  };
+
+  return { rowRef, onPointerDown, onPointerMove, onPointerUp, isOpen: () => st.current.open };
+}
+
+function ManageList({ rows, ghosts, now, selected, reservedCount, onToggle, onDelete, registerOpen }: {
+  rows: ShopperCatalogItem[]; ghosts: Set<string>; now: number; selected: Set<string>;
+  reservedCount: Map<string, number>; onToggle: (id: string) => void;
+  onDelete: (id: string) => void; registerOpen: (close: () => void) => void;
+}) {
+  return (
+    <div>
+      {rows.map(it => (
+        <div key={it.id} className="nodo-row-slot" data-out={ghosts.has(it.id) ? '1' : undefined}>
+          <div>
+            <ManageRow item={it} now={now} selected={selected.has(it.id)}
+              reserved={reservedCount.get(it.id) ?? 0}
+              onToggle={() => onToggle(it.id)} onDelete={() => onDelete(it.id)}
+              registerOpen={registerOpen} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ManageRow({ item, now, selected, reserved, onToggle, onDelete, registerOpen }: {
+  item: ShopperCatalogItem; now: number; selected: boolean; reserved: number;
+  onToggle: () => void; onDelete: () => void; registerOpen: (close: () => void) => void;
+}) {
+  const { rowRef, onPointerDown, onPointerMove, onPointerUp, isOpen } = useSwipeDelete(onDelete, registerOpen);
+  const expMs = toMs(item.expires_at);
+  const daysLeft = expMs != null ? Math.ceil((expMs - now) / 86400000) : null;
+  const expired = daysLeft != null && daysLeft <= 0;
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-nodo-danger-tx">
+      {/* Capa revelada por el swipe — estática, no anima */}
+      <button onClick={onDelete} tabIndex={-1} aria-hidden="true"
+        className="absolute inset-y-0 right-0 w-[88px] flex flex-col items-center justify-center gap-0.5 text-white">
+        <Trash2 size={18} />
+        <span className="text-[10px] font-black uppercase tracking-wide">Quitar</span>
+      </button>
+
+      <div ref={rowRef}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+        onClick={() => { if (isOpen()) return; haptic.tap(); onToggle(); }}
+        role="button" aria-pressed={selected}
+        className={`relative h-[72px] px-3 flex items-center gap-3 select-none border rounded-2xl
+          ${selected ? 'bg-nodo-primary-soft border-nodo-primary' : 'bg-nodo-card border-nodo-line'}`}
+        style={{ touchAction: 'pan-y' }}>
+
+        <span className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-150
+          ${selected ? 'bg-nodo-primary border-nodo-primary text-nodo-on-primary' : 'border-nodo-line-s text-transparent'}`}>
+          <Check size={14} strokeWidth={3.5} />
+        </span>
+
+        <div className="shrink-0 w-12 h-12 rounded-xl bg-nodo-inset overflow-hidden">
+          {item.image_url
+            ? <img src={item.image_url} alt="" loading="lazy" className="w-full h-full object-cover" />
+            : <div className="w-full h-full flex items-center justify-center text-nodo-dim"><Package size={18} /></div>}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-bold text-nodo-ink leading-tight line-clamp-1">{item.title}</p>
+          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] font-bold tabular-nums">
+            {item.price_gtq != null && <span className="text-nodo-ink">{fmtGTQ(item.price_gtq)}</span>}
+            <span className={item.is_published ? 'text-nodo-success-tx' : 'text-nodo-dim'}>
+              · {item.is_published ? 'Publicado' : 'Oculto'}
+            </span>
+            {expired && <span className="text-nodo-danger-tx">· Vencido</span>}
+          </div>
+        </div>
+
+        {reserved > 0 && (
+          <span className="shrink-0 flex items-center gap-1 px-2 h-6 rounded-full bg-nodo-warn-bg text-nodo-warn-tx text-[10px] font-black">
+            <Flame size={10} /> {reserved}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LiveItemCard({ item }: { item: ShopperCatalogItem }) {
   const reserved = Math.max(0, item.stock_total - item.stock_available);
   const soldOut = !item.is_made_to_order && item.stock_available <= 0;
   return (
@@ -647,10 +1101,6 @@ function LiveItemCard({ item, onDelete }: { item: ShopperCatalogItem; onDelete: 
         <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-black ${soldOut ? 'bg-nodo-ink text-nodo-canvas' : 'bg-nodo-primary text-nodo-on-primary'}`}>
           {soldOut ? 'AGOTADO' : item.is_made_to_order ? 'Por encargo' : `quedan ${item.stock_available}`}
         </span>
-        <button onClick={onDelete}
-          className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center active:scale-90">
-          <Trash2 size={13} />
-        </button>
       </div>
       <div className="p-2.5 flex flex-col gap-1 flex-1">
         <p className="text-[13px] font-bold text-nodo-ink leading-tight line-clamp-2">{item.title}</p>
@@ -665,8 +1115,8 @@ function LiveItemCard({ item, onDelete }: { item: ShopperCatalogItem; onDelete: 
   );
 }
 
-function CatalogItemCard({ item, now, onDelete, onTogglePublish }: {
-  item: ShopperCatalogItem; now: number; onDelete: () => void; onTogglePublish: () => void;
+function CatalogItemCard({ item, now, onTogglePublish }: {
+  item: ShopperCatalogItem; now: number; onTogglePublish: () => void;
 }) {
   const expMs = toMs(item.expires_at);
   const daysLeft = expMs != null ? Math.ceil((expMs - now) / 86400000) : null;
@@ -680,10 +1130,6 @@ function CatalogItemCard({ item, now, onDelete, onTogglePublish }: {
         {item.is_offer && (
           <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-nodo-danger-tx text-white text-[10px] font-black">🔥 Oferta</span>
         )}
-        <button onClick={onDelete}
-          className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center active:scale-90">
-          <Trash2 size={13} />
-        </button>
       </div>
       <div className="p-2.5 flex flex-col gap-1 flex-1">
         <p className="text-[13px] font-bold text-nodo-ink leading-tight line-clamp-2">{item.title}</p>
@@ -704,33 +1150,85 @@ function CatalogItemCard({ item, now, onDelete, onTogglePublish }: {
 }
 
 // ── Abrir tienda ─────────────────────────────────────────────────────────────────
-function OpenStoreSheet({ open, onClose, busy, onOpen }: {
-  open: boolean; onClose: () => void; busy: boolean;
-  onOpen: (storeName: string, minutes: number | null) => void;
+// Tiendas recientes: a partir de la segunda venta, escribir el nombre desaparece.
+// Es lo que le devuelve al dueño los toques que le cuesta la foto.
+const STORES_KEY = 'nodo_shopper_recent_stores';
+const recentStores = (): string[] => {
+  try { return (JSON.parse(localStorage.getItem(STORES_KEY) || '[]') as string[]).slice(0, 3); }
+  catch { return []; }
+};
+const rememberStore = (n: string) => {
+  if (!n.trim()) return;
+  try {
+    localStorage.setItem(STORES_KEY, JSON.stringify(
+      [n, ...recentStores().filter(s => s.toLowerCase() !== n.toLowerCase())].slice(0, 3)));
+  } catch { /* Safari privado */ }
+};
+
+function OpenStoreSheet({ open, onClose, busy, onOpen, currentBanner }: {
+  open: boolean; onClose: () => void; busy: boolean; currentBanner?: string | null;
+  onOpen: (storeName: string, minutes: number | null, bannerUrl: string | null) => void;
 }) {
   const [name, setName] = useState('');
   const [minutes, setMinutes] = useState<number | null>(120);
+  const [banner, setBanner] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [recent, setRecent] = useState<string[]>([]);
+  const camRef = useRef<HTMLInputElement>(null);
+  const galRef = useRef<HTMLInputElement>(null);
   const DURATIONS: { m: number | null; label: string }[] = [
     { m: 60, label: '1 hora' }, { m: 120, label: '2 horas' },
-    { m: 180, label: '3 horas' }, { m: null, label: 'A mano' },
+    { m: 180, label: '3 horas' }, { m: null, label: 'Sin reloj' },
   ];
-  useEffect(() => { if (open) { setName(''); setMinutes(120); } }, [open]);
+  useEffect(() => {
+    if (open) {
+      setName(''); setMinutes(120); setBanner(currentBanner ?? null);
+      setPhotoBusy(false); setRecent(recentStores());
+    }
+  }, [open, currentBanner]);
+
+  const onBanner = async (f: File | null) => {
+    if (!f) return;
+    setPhotoBusy(true);
+    try {
+      // Más chica y más comprimida que la foto de un producto (720/0.7): ésta va scrimeada
+      // detrás de texto gigante, así que la blandura no se ve — pero los bytes se pagan en
+      // CADA espectador y en cada rotación de `v`, no una sola vez.
+      let d = await fileToResizedDataUrl(f, { maxSize: 800, quality: 0.5 });
+      if (d.length > 200_000) d = await fileToResizedDataUrl(f, { maxSize: 640, quality: 0.42 });
+      setBanner(d);
+    } catch { /* la foto es opcional: no bloquea abrir */ }
+    finally { setPhotoBusy(false); }
+  };
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Abrir tienda en vivo"
+    <BottomSheet open={open} onClose={onClose} title="Abrir venta en vivo"
       footer={
-        <button onClick={() => onOpen(name, minutes)} disabled={busy}
+        // photoBusy bloquea: fileToResizedDataUrl decodifica en el main thread y tocar
+        // ABRIR con el encode en vuelo abriría la venta sin foto.
+        <button onClick={() => { rememberStore(name); onOpen(name, minutes, banner); }} disabled={busy || photoBusy}
           className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2">
           {busy ? <Loader2 size={18} className="animate-spin" /> : <Radio size={18} />} ABRIR 🔴 EN VIVO
         </button>
       }>
       <div className="flex flex-col gap-4">
         <div>
-          <label className="nodo-label">¿En qué tienda estás?</label>
+          <label className="nodo-label">¿En qué tienda estás comprando?</label>
+          {recent.length > 0 && (
+            <div className="flex gap-2 flex-wrap mb-2">
+              {recent.map(s => (
+                <button key={s} onClick={() => { haptic.tap(); setName(s); }}
+                  className={`rounded-full px-3.5 py-2 text-sm font-bold active:scale-95 transition-transform border
+                    ${name === s ? 'bg-nodo-primary text-nodo-on-primary border-transparent' : 'bg-nodo-inset text-nodo-ink border-nodo-line'}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
           <input value={name} onChange={e => setName(e.target.value)} placeholder="ej. Costco, Amazon, Ross…" className="nodo-input" />
         </div>
         <div>
-          <label className="nodo-label">¿Cuánto dura el drop?</label>
+          <label className="nodo-label">¿Cuánto tiempo la dejás abierta?</label>
           <div className="grid grid-cols-4 gap-2">
             {DURATIONS.map(d => (
               <button key={d.label} onClick={() => { haptic.tap(); setMinutes(d.m); }}
@@ -740,8 +1238,44 @@ function OpenStoreSheet({ open, onClose, busy, onOpen }: {
             ))}
           </div>
           <p className="text-[11px] text-nodo-sub mt-2">
-            {minutes ? `El reloj corre ${minutes / 60}h y al llegar a cero se cierra sola.` : 'Sin reloj: la cerrás vos a mano cuando termines.'}
+            {minutes ? `Tus clientes ven un reloj de ${minutes / 60}h. Al llegar a cero se cierra sola.` : 'Sin reloj: queda abierta hasta que vos la cerrés.'}
           </p>
+        </div>
+
+        {/* Última y opcional: la foto no puede meterse entre el dueño y el botón de abrir. */}
+        <div>
+          <label className="nodo-label">Foto de la tienda (opcional)</label>
+          <button onClick={() => camRef.current?.click()} disabled={photoBusy}
+            className="relative w-full h-32 rounded-2xl overflow-hidden bg-nodo-inset border-2 border-dashed border-nodo-line flex items-center justify-center active:scale-[0.98] transition-transform">
+            {photoBusy ? <Loader2 size={20} className="animate-spin text-nodo-sub" />
+              : banner ? (<>
+                  <img src={banner} className="absolute inset-0 w-full h-full object-cover object-[center_35%]" alt="" />
+                  <span className="relative px-3 py-1.5 rounded-full text-xs font-black flex items-center gap-1 text-white" style={{ background: 'rgba(0,0,0,.5)' }}>
+                    <Camera size={12} /> Cambiar
+                  </span>
+                </>)
+              : <span className="flex flex-col items-center gap-1 text-nodo-sub">
+                  <Camera size={22} />
+                  <span className="text-xs font-bold">Tomale una foto a la tienda</span>
+                  <span className="text-[10px] text-nodo-dim">Tus clientes la ven de fondo</span>
+                </span>}
+          </button>
+          <div className="flex items-center justify-center gap-3 mt-1.5">
+            <button onClick={() => galRef.current?.click()} className="text-[11px] font-bold text-nodo-sub underline">
+              Elegir de galería
+            </button>
+            {banner && (
+              <button onClick={() => setBanner(null)} className="text-[11px] font-bold text-nodo-sub underline">
+                Quitar foto
+              </button>
+            )}
+          </div>
+          {/* capture: la foto es del ahora y está parada adentro de la tienda → cámara
+              directo, sin el selector del OS. En desktop el atributo se ignora. */}
+          <input ref={camRef} type="file" accept="image/*" capture="environment" hidden
+            onChange={e => onBanner(e.target.files?.[0] || null)} />
+          <input ref={galRef} type="file" accept="image/*" hidden
+            onChange={e => onBanner(e.target.files?.[0] || null)} />
         </div>
       </div>
     </BottomSheet>
@@ -873,7 +1407,7 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
         <button onClick={save} disabled={!canSave || saving}
           className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2">
           {saving ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
-          {isLive ? 'PUBLICAR AL DROP' : 'PUBLICAR EN CATÁLOGO'}
+          {isLive ? 'PUBLICAR A LA VENTA' : 'PUBLICAR EN CATÁLOGO'}
         </button>
       }>
       <div className="flex flex-col gap-4">
@@ -930,13 +1464,13 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="nodo-label">Precio USA ($)</label>
+                    <label className="nodo-label">¿Cuánto cuesta allá? ($)</label>
                     <input value={priceUsd} onChange={e => { setPriceUsd(e.target.value); setPriceTouched(false); }}
                       inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
                   </div>
                   {!isCaja ? (
                     <div>
-                      <label className="nodo-label">Peso (lb)</label>
+                      <label className="nodo-label">¿Cuánto pesa? (libras)</label>
                       <input value={weight} onChange={e => setWeight(e.target.value)} inputMode="decimal" className="nodo-input-number" />
                     </div>
                   ) : (
@@ -972,15 +1506,15 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
             {/* Costo manual: sin calculadora, capturarlo para margen y ganancias */}
             {mode === 'manual' && (
               <div>
-                <label className="nodo-label">Costo (lo que te costó) (Q)</label>
+                <label className="nodo-label">¿Cuánto te costó a vos? (Q)</label>
                 <input value={costGtq} onChange={e => setCostGtq(e.target.value)}
                   inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
-                <p className="text-[11px] text-nodo-sub mt-1">Para calcular tu ganancia. Queda privado.</p>
+                <p className="text-[11px] text-nodo-sub mt-1">Solo vos lo ves. Sirve para saber cuánto ganás.</p>
               </div>
             )}
 
             <div>
-              <label className="nodo-label">Precio de venta (Q)</label>
+              <label className="nodo-label">¿A cuánto lo vendés? (Q)</label>
               <input value={priceGtq} onChange={e => { setPriceGtq(e.target.value); setPriceTouched(true); }}
                 inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
               {(() => {
@@ -1013,7 +1547,7 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
               <div className="flex items-center justify-between nodo-card p-3 bg-nodo-inset">
                 <div>
                   <p className="text-sm font-black text-nodo-ink">¿Cuántas tenés?</p>
-                  <p className="text-[11px] text-nodo-sub">Se acaban cuando se reservan todas</p>
+                  <p className="text-[11px] text-nodo-sub">Cuando se aparten todas, se marca agotado</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => setQty(q => Math.max(1, q - 1))}
@@ -1031,7 +1565,7 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
 
             {!isLive && (
               <div>
-                <label className="nodo-label">Disponible por</label>
+                <label className="nodo-label">¿Por cuántos días lo mostrás?</label>
                 <div className="grid grid-cols-4 gap-2">
                   {[1, 3, 7, 14].map(d => (
                     <button key={d} onClick={() => { haptic.tap(); setDays(d); }}
@@ -1045,12 +1579,349 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
 
             {isOffer && (
               <div>
-                <label className="nodo-label">Precio normal (tachado)</label>
+                <label className="nodo-label">Precio de antes (sale tachado)</label>
                 <input value={compareAt} onChange={e => setCompareAt(e.target.value)} inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
               </div>
             )}
           </>
         )}
+      </div>
+    </BottomSheet>
+  );
+}
+
+// ── Registrar una venta a mano ─────────────────────────────────────────────────
+// "Alguien me escribió por otro lado y le vendí". Sin esto esa venta no existe para
+// el sistema: ni descuenta stock, ni cuenta en "Cómo te fue", ni el cliente puede
+// seguir su pedido. El estado arranca en "Confirmado" porque el caso normal es que
+// la venta YA está cerrada cuando el dueño la teclea.
+function ManualSaleSheet({ open, onClose, items, onSaved, onError }: {
+  open: boolean; onClose: () => void; items: ShopperCatalogItem[];
+  onSaved: () => Promise<void>; onError: (m: string) => void;
+}) {
+  const [itemId, setItemId] = useState('');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [qty, setQty] = useState(1);
+  const [status, setStatus] = useState<ShopperResStatus>('confirmada');
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    if (open) { setItemId(''); setName(''); setPhone(''); setQty(1); setStatus('confirmada'); setSearch(''); }
+  }, [open]);
+
+  const sellable = useMemo(
+    () => items.filter(i => i.is_active).filter(i =>
+      !search.trim() || i.title.toLowerCase().includes(search.trim().toLowerCase())),
+    [items, search],
+  );
+  const picked = items.find(i => i.id === itemId) || null;
+  const valid = !!picked && name.trim().length > 0 && phone.replace(/\D/g, '').length >= 8 && qty >= 1;
+
+  const save = async () => {
+    if (!valid || !picked) return;
+    setSaving(true);
+    try {
+      await svc.createManualSale({
+        catalog_item_id: picked.id, client_name: name.trim(), client_phone: phone.trim(),
+        quantity: qty, status,
+      });
+      await onSaved();
+      haptic.done();
+      onClose();
+    } catch (e: any) {
+      const d = e?.response?.data?.detail;
+      onError(typeof d === 'string' ? d : 'No se pudo registrar la venta.');
+    } finally { setSaving(false); }
+  };
+
+  const STEPS: { v: ShopperResStatus; label: string }[] = [
+    { v: 'confirmada', label: 'Se lo aparté' },
+    { v: 'comprada', label: 'Ya lo compré' },
+    { v: 'entregada', label: 'Ya lo entregué' },
+  ];
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Registrar una venta"
+      footer={
+        <button onClick={save} disabled={!valid || saving}
+          className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2">
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} GUARDAR VENTA
+        </button>
+      }>
+      <div className="flex flex-col gap-4">
+        <p className="text-sm font-semibold text-nodo-sub">
+          ¿Te compraron por WhatsApp o en persona? Anotalo acá para que descuente del
+          inventario y te cuente en tus ganancias.
+        </p>
+
+        <div>
+          <label className="nodo-label">¿Qué producto?</label>
+          {items.length === 0 ? (
+            <p className="text-xs font-bold text-nodo-warn-tx">Primero publicá un producto.</p>
+          ) : (
+            <>
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar producto…" className="nodo-input mb-2" />
+              <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
+                {sellable.map(i => (
+                  <button key={i.id} onClick={() => { haptic.tap(); setItemId(i.id); }}
+                    className={`flex items-center gap-2.5 p-2 rounded-2xl border text-left active:scale-[0.99] transition-transform
+                      ${itemId === i.id ? 'border-nodo-primary bg-nodo-primary-soft' : 'border-nodo-line bg-nodo-inset'}`}>
+                    {i.image_url
+                      ? <img src={i.image_url} className="w-9 h-9 rounded-lg object-cover shrink-0" alt="" />
+                      : <div className="w-9 h-9 rounded-lg bg-nodo-card flex items-center justify-center text-nodo-dim shrink-0"><Package size={14} /></div>}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-bold text-nodo-ink truncate">{i.title}</p>
+                      <p className="text-[11px] font-bold text-nodo-sub tabular-nums">
+                        {i.price_gtq != null ? fmtGTQ(i.price_gtq) : 'sin precio'}
+                        {!i.is_made_to_order && ` · quedan ${i.stock_available}`}
+                      </p>
+                    </div>
+                    {itemId === i.id && <Check size={16} className="text-nodo-primary shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="nodo-label">¿Quién te compró?</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Nombre" className="nodo-input" />
+          </div>
+          <div>
+            <label className="nodo-label">Su WhatsApp</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="5512 3456" className="nodo-input" inputMode="tel" />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between nodo-card p-3 bg-nodo-inset">
+          <p className="text-sm font-black text-nodo-ink">¿Cuántos se llevó?</p>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setQty(q => Math.max(1, q - 1))}
+              className="w-10 h-10 rounded-xl bg-nodo-card border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 transition-transform">
+              <Minus size={16} />
+            </button>
+            <span className="w-10 text-center text-lg font-black text-nodo-ink tabular-nums">{qty}</span>
+            <button onClick={() => setQty(q => q + 1)}
+              className="w-10 h-10 rounded-xl bg-nodo-primary flex items-center justify-center text-nodo-on-primary active:scale-90 transition-transform">
+              <Plus size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="nodo-label">¿En qué va?</label>
+          <div className="grid grid-cols-3 gap-2">
+            {STEPS.map(s => (
+              <button key={s.v} onClick={() => { haptic.tap(); setStatus(s.v); }}
+                className={`h-12 rounded-2xl text-[11px] font-black px-1 active:scale-95 transition-transform ${status === s.v ? 'bg-nodo-primary text-nodo-on-primary' : 'bg-nodo-inset text-nodo-sub border border-nodo-line'}`}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {picked && picked.price_gtq != null && (
+          <div className="rounded-2xl bg-nodo-primary-soft p-3 flex items-center justify-between">
+            <span className="text-xs font-bold text-nodo-sub">Total de esta venta</span>
+            <span className="text-lg font-black text-nodo-ink tabular-nums">{fmtGTQ(picked.price_gtq * qty)}</span>
+          </div>
+        )}
+      </div>
+    </BottomSheet>
+  );
+}
+
+// ── Histórico de ventas en vivo ────────────────────────────────────────────────
+function SaleHistorySheet({ open, onClose, flash }: {
+  open: boolean; onClose: () => void; flash: (k: 'ok' | 'err', m: string) => void;
+}) {
+  const [rows, setRows] = useState<ShopperStoreSession[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try { setRows(await svc.listStoreSessions()); }
+    catch { setRows([]); flash('err', 'No se pudo cargar el histórico.'); }
+  }, [flash]);
+  useEffect(() => { if (open) { setRows(null); void load(); } }, [open, load]);
+
+  const remove = async (s: ShopperStoreSession) => {
+    if (!confirm('¿Quitar esta venta de la lista? Tus pedidos y tu dinero no se tocan.')) return;
+    setBusy(s.id);
+    try { await svc.deleteStoreSession(s.id); await load(); flash('ok', 'Quitada de la lista'); }
+    catch { flash('err', 'No se pudo quitar.'); }
+    finally { setBusy(null); }
+  };
+
+  const fmtDay = (iso: string) => {
+    const ms = toMs(iso);
+    return ms == null ? '' : new Date(ms).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  const fmtSpan = (s: ShopperStoreSession) => {
+    const a = toMs(s.opened_at), b = toMs(s.closed_at);
+    if (a == null) return '';
+    const t = (ms: number) => new Date(ms).toLocaleTimeString('es-GT', { hour: 'numeric', minute: '2-digit' });
+    return b == null ? `${t(a)} · en curso` : `${t(a)} – ${t(b)}`;
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Tus ventas anteriores">
+      <div className="flex flex-col gap-3">
+        {rows == null && <div className="nodo-spinner-container"><Loader2 className="w-8 h-8 animate-spin text-nodo-sub" /></div>}
+        {rows?.length === 0 && (
+          <div className="nodo-empty-state py-10">
+            <History size={30} className="text-nodo-dim mb-2" />
+            <p className="text-sm font-bold text-nodo-dim">Todavía no cerraste ninguna venta</p>
+            <p className="text-xs text-nodo-sub mt-1">Cuando abrás y cerrés una, queda guardada acá</p>
+          </div>
+        )}
+        {rows?.map(s => {
+          const live = s.closed_at == null;
+          return (
+            <div key={s.id} className="nodo-card overflow-hidden">
+              {s.banner_url && (
+                <div className="h-20 w-full relative">
+                  <img src={s.banner_url} className="w-full h-full object-cover" alt="" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/55 to-transparent" />
+                </div>
+              )}
+              <div className="p-3 flex flex-col gap-2.5">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-black text-nodo-ink truncate">
+                      {s.store_name || 'Venta en vivo'} {live && '🔴'}
+                    </p>
+                    <p className="text-[11px] font-semibold text-nodo-sub">{fmtDay(s.opened_at)} · {fmtSpan(s)}</p>
+                  </div>
+                  {!live && (
+                    <button onClick={() => remove(s)} disabled={busy === s.id}
+                      className="w-8 h-8 rounded-lg bg-nodo-inset text-nodo-sub flex items-center justify-center active:scale-90 transition-transform disabled:opacity-40 shrink-0">
+                      {busy === s.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    </button>
+                  )}
+                </div>
+
+                {s.reservations === 0 ? (
+                  <p className="text-[12px] font-semibold text-nodo-dim">Nadie apartó nada esta vez.</p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl bg-nodo-success-bg p-2.5">
+                        <p className="text-[9px] font-bold text-nodo-success-tx/80 uppercase tracking-wide">Ya ganaste</p>
+                        <p className="text-base font-black text-nodo-success-tx tabular-nums leading-tight">{fmtGTQ(s.delivered_profit_gtq)}</p>
+                        <p className="text-[10px] font-bold text-nodo-success-tx/70 tabular-nums">
+                          {s.delivered_units} entregado{s.delivered_units === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-nodo-inset p-2.5">
+                        <p className="text-[9px] font-bold text-nodo-sub uppercase tracking-wide">Te apartaron</p>
+                        <p className="text-base font-black text-nodo-ink tabular-nums leading-tight">{fmtGTQ(s.revenue_gtq)}</p>
+                        <p className="text-[10px] font-bold text-nodo-sub tabular-nums">
+                          {s.units} prod. · {s.clients} {s.clients === 1 ? 'persona' : 'personas'}
+                        </p>
+                      </div>
+                    </div>
+                    {s.top_title && (
+                      <p className="text-[11px] font-semibold text-nodo-sub truncate">
+                        🏆 Lo más pedido: <span className="font-black text-nodo-ink">{s.top_title}</span> ({s.top_units})
+                      </p>
+                    )}
+                    {s.cancelled_lines > 0 && (
+                      <p className="text-[11px] font-semibold text-nodo-dim">
+                        {s.cancelled_lines} pedido{s.cancelled_lines === 1 ? '' : 's'} se cayó
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </BottomSheet>
+  );
+}
+
+// ── Arreglar costos faltantes ──────────────────────────────────────────────────
+// El "N sin costo real" de antes era un diagnóstico sin cura. Esto es la cura: la
+// lista corta de productos que rompen el número, con un campo cada uno. Guarda de a
+// uno (no todo-o-nada): arreglar 3 de 5 ya deja el reporte más cerca de la verdad.
+function CostFixSheet({ open, onClose, items, onSaved, onError }: {
+  open: boolean; onClose: () => void; items: ShopperCatalogItem[];
+  onSaved: () => Promise<void>; onError: (m: string) => void;
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => { if (open) setDrafts({}); }, [open]);
+
+  const save = async (it: ShopperCatalogItem) => {
+    const cost = num(drafts[it.id] ?? '');
+    if (cost <= 0) return;
+    setBusy(it.id);
+    try {
+      await svc.update(it.id, { cost_gtq: cost });
+      await onSaved();
+      haptic.done();
+    } catch {
+      onError('No se pudo guardar el costo.');
+    } finally { setBusy(null); }
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="¿Qué te costaron?">
+      <div className="flex flex-col gap-3">
+        <p className="text-sm font-semibold text-nodo-sub">
+          De estos productos no sabemos cuánto pagaste, así que tu ganancia es un cálculo
+          aproximado. Escribí lo que te costó cada uno y los números se vuelven exactos.
+        </p>
+        {items.length === 0 && (
+          <div className="nodo-empty-state py-10">
+            <Check size={30} className="text-nodo-success-tx mb-2" />
+            <p className="text-sm font-bold text-nodo-dim">Todo tiene su costo ✓</p>
+          </div>
+        )}
+        {items.map(it => {
+          const draft = drafts[it.id] ?? '';
+          const cost = num(draft);
+          const price = it.price_gtq ?? 0;
+          const profit = price - cost;
+          return (
+            <div key={it.id} className="nodo-card p-3 flex flex-col gap-2.5">
+              <div className="flex items-center gap-3">
+                {it.image_url
+                  ? <img src={it.image_url} className="w-12 h-12 rounded-xl object-cover shrink-0" alt="" />
+                  : <div className="w-12 h-12 rounded-xl bg-nodo-inset flex items-center justify-center text-nodo-dim shrink-0"><Package size={18} /></div>}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-nodo-ink line-clamp-2 leading-tight">{it.title}</p>
+                  <p className="text-[11px] font-bold text-nodo-sub tabular-nums">Lo vendés a {fmtGTQ(price)}</p>
+                </div>
+              </div>
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <label className="nodo-label">Te costó (Q)</label>
+                  <input value={draft} inputMode="decimal" placeholder="0.00" className="nodo-input-number"
+                    onChange={e => setDrafts(d => ({ ...d, [it.id]: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') void save(it); }} />
+                </div>
+                <button onClick={() => save(it)} disabled={cost <= 0 || busy === it.id}
+                  className="h-12 px-4 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black active:scale-95 transition-transform disabled:opacity-30 flex items-center gap-1.5 shrink-0">
+                  {busy === it.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                </button>
+              </div>
+              {cost > 0 && price > 0 && (
+                <p className={`text-[11px] font-bold tabular-nums ${profit >= 0 ? 'text-nodo-success-tx' : 'text-nodo-danger-tx'}`}>
+                  {profit >= 0
+                    ? `Ganás ${fmtGTQ(profit)} por cada uno`
+                    : `⚠️ Perdés ${fmtGTQ(Math.abs(profit))} por cada uno`}
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
     </BottomSheet>
   );
@@ -1105,7 +1976,7 @@ function ReservasSheet({ open, onClose, reservations, items, whatsapp, onChanged
       {zoom && <ImageLightbox src={zoom.src} title={zoom.title} onClose={() => setZoom(null)} />}
       <div className="flex flex-col gap-3">
         {active.length === 0 && (
-          <div className="nodo-empty-state py-10"><Bell size={30} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-dim">Aún no hay reservas</p></div>
+          <div className="nodo-empty-state py-10"><Bell size={30} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-dim">Todavía nadie te apartó nada</p></div>
         )}
         {active.map(r => {
           const meta = RES_META[r.status];
@@ -1134,7 +2005,7 @@ function ReservasSheet({ open, onClose, reservations, items, whatsapp, onChanged
                       <span className="text-nodo-ink">Venta {fmtGTQ(sale)}</span>
                       {cost != null
                         ? <span className="text-nodo-sub"> · Costo {fmtGTQ(cost)}</span>
-                        : <span className="text-nodo-warn-tx"> · sin costo</span>}
+                        : <span className="text-nodo-warn-tx"> · no sé qué costó</span>}
                     </p>
                   )}
                 </div>
@@ -1244,18 +2115,18 @@ function SettingsSheet({ open, onClose, settings, calc, onSaved, onError }: {
           <>
             <SegmentedControl<FreightMode>
               options={[
-                { value: 'maleta', label: 'Maleta (peso)', icon: <Package size={14} /> },
-                { value: 'caja', label: 'Caja (volumen)', icon: <Box size={14} /> },
+                { value: 'maleta', label: 'Por peso', icon: <Package size={14} /> },
+                { value: 'caja', label: 'Por tamaño', icon: <Box size={14} /> },
               ]}
               value={freight} onChange={setFreight} />
             {freight === 'maleta' ? (
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Precio maleta ($)" value={scCost} onChange={setScCost} />
-                <Field label="Libras disponibles" value={scCap} onChange={setScCap} />
+                <Field label="¿Cuánto pagaste por la maleta? ($)" value={scCost} onChange={setScCost} />
+                <Field label="¿Cuántas libras te caben?" value={scCap} onChange={setScCap} />
               </div>
             ) : (
               <>
-                <Field label="Precio caja ($)" value={boxCost} onChange={setBoxCost} />
+                <Field label="¿Cuánto pagaste por la caja? ($)" value={boxCost} onChange={setBoxCost} />
                 <div className="grid grid-cols-3 gap-2">
                   <Field label="Largo (in)" value={boxL} onChange={setBoxL} />
                   <Field label="Ancho (in)" value={boxW} onChange={setBoxW} />
@@ -1264,9 +2135,9 @@ function SettingsSheet({ open, onClose, settings, calc, onSaved, onError }: {
               </>
             )}
             <div className="grid grid-cols-3 gap-3">
-              <Field label="Tipo cambio" value={exchange} onChange={setExchange} />
-              <Field label="Tax (%)" value={tax} onChange={setTax} />
-              <Field label="Ganancia (%)" value={markup} onChange={setMarkup} />
+              <Field label="Dólar a quetzal" value={exchange} onChange={setExchange} />
+              <Field label="Impuesto USA (%)" value={tax} onChange={setTax} />
+              <Field label="Tu ganancia (%)" value={markup} onChange={setMarkup} />
             </div>
           </>
         ) : (
@@ -1274,8 +2145,8 @@ function SettingsSheet({ open, onClose, settings, calc, onSaved, onError }: {
             <div><label className="nodo-label">Nombre del negocio</label><input value={biz} onChange={e => setBiz(e.target.value)} className="nodo-input" /></div>
             <div><label className="nodo-label">WhatsApp</label><input value={wa} onChange={e => setWa(e.target.value)} className="nodo-input" inputMode="tel" /></div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Entrega mín. (días)" value={dmin} onChange={setDmin} />
-              <Field label="Entrega máx. (días)" value={dmax} onChange={setDmax} />
+              <Field label="Entrego desde (días)" value={dmin} onChange={setDmin} />
+              <Field label="Entrego hasta (días)" value={dmax} onChange={setDmax} />
             </div>
             <div className="grid grid-cols-1 gap-3">
               <div><label className="nodo-label">Banco</label><input value={bankName} onChange={e => setBankName(e.target.value)} className="nodo-input" /></div>
@@ -1340,7 +2211,7 @@ function ClientsSheet({ open, onClose, reservations, flash }: {
       {zoom && <ImageLightbox src={zoom.src} title={zoom.title} onClose={() => setZoom(null)} />}
       <div className="flex flex-col gap-2">
         {clients.length === 0 && (
-          <div className="nodo-empty-state py-10"><Users size={30} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-dim">Aún sin clientes</p></div>
+          <div className="nodo-empty-state py-10"><Users size={30} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-dim">Todavía no tenés clientes</p></div>
         )}
         {clients.map(c => {
           const isOpen = expanded === c.key;

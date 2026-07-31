@@ -6,6 +6,7 @@ import {
   Clock,
 } from 'lucide-react';
 import type { AppProps } from '../index';
+import { useModuleChrome, ModuleActions } from '@/components/chrome/ModuleChrome';
 import { cocinaService, type ProductionOrder, type OrderPreview, type MatrixResponse } from '@/services/cocina.service';
 import { recetasService, type Recipe } from '@/services/recetas.service';
 import { BottomSheet } from '@/components/ui/BottomSheet';
@@ -298,6 +299,9 @@ export function CocinaApp(_props: AppProps) {
   const pendingCount    = orders.filter(o => o.status === 'pending').length;
   const inProgressCount = orders.filter(o => o.status === 'en_proceso').length;
 
+  const activeCount = orders.filter(o => o.status !== 'completed').length;
+  useModuleChrome('Producción', `${activeCount} orden${activeCount === 1 ? '' : 'es'} activa${activeCount === 1 ? '' : 's'}`);
+
   const TAB_OPTS = [
     { value: 'produccion' as const, label: 'Producción', icon: <ChefHat size={13} /> },
     { value: 'matriz'     as const, label: 'Matriz',     icon: <LayoutGrid size={13} /> },
@@ -330,31 +334,17 @@ export function CocinaApp(_props: AppProps) {
         </div>
       )}
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          {/* Módulo pill */}
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-nodo-primary-soft mb-2">
-            <ChefHat size={12} className="text-nodo-primary" />
-            <span className="text-[11px] font-black text-nodo-primary uppercase tracking-wider">Cocina</span>
-          </div>
-          <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Producción</h1>
-          <p className="text-sm text-nodo-sub font-medium mt-0.5">
-            {orders.filter(o => o.status !== 'completed').length} órdenes activas
-          </p>
-        </div>
-
+      <ModuleActions>
         {activeTab === 'produccion' && (
           <button
             onClick={() => setShowNewOrder(true)}
-            className="w-12 h-12 rounded-full text-white flex items-center justify-center active:scale-90 transition-transform shrink-0 mt-1"
-            style={{ backgroundColor: 'var(--nodo-primary)', boxShadow: '0 6px 20px var(--nodo-shadow-fab)' }}
+            className="nodo-appbar-action"
             aria-label="Nueva orden"
           >
-            <Plus size={20} />
+            <Plus size={18} />
           </button>
         )}
-      </div>
+      </ModuleActions>
 
       {/* ── KPI cards (órdenes activas) ──────────────────────────────────────── */}
       {orders.length > 0 && activeTab === 'produccion' && (

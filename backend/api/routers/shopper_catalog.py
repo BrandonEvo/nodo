@@ -20,7 +20,7 @@ Autenticado (get_current_tenant_id → RLS):
 Público (sin auth, rate-limit propio, filtro por tenant derivado del token):
   GET  /public/{token}                                 → catálogo visible al cliente
   POST /public/{token}/reserve/{iid}                   → apartar (acumula pedido + PIN)
-  GET  /public/order/{order_token}                     → pedido acumulado ("En mi maleta")
+  GET  /public/order/{order_token}                     → pedido acumulado del cliente
   POST /public/order/lookup                            → recuperar con WhatsApp + PIN
   PATCH/DELETE /public/order/{ot}/line/{rid}           → editar/quitar línea pendiente
   POST /public/order/{ot}/line/{rid}/swap/{niid}       → aceptar reemplazo
@@ -47,7 +47,7 @@ from core.limiter import limiter
 from api.services.push_service import send_push_to_tenant
 from models.bakery import (
     ShopperCatalogSettings, ShopperCatalogItem, ShopperReservation,
-    ShopperTripItem, ShopperCalcSettings,
+    ShopperTripItem, ShopperCalcSettings, ShopperStoreSession,
     ShopperCoupon, ShopperCouponRedemption,
     SHOPPER_STATUS_FLOW as STATUS_FLOW,
     SHOPPER_OFF_RAMP as OFF_RAMP,
@@ -61,11 +61,13 @@ from models.schemas import (
     ShopperCatalogItemCreate, ShopperCatalogItemUpdate, ShopperCatalogItemRead,
     PublicShopperCatalog, PublicShopperCatalogItem, PublicShopperPulse, ShopperPayInfo,
     ShopperReservationCreate, ShopperReservationUpdate, ShopperReservationRead,
+    ShopperManualSaleCreate,
     PublicShopperReservationRead, PublicShopperOrder, PublicShopperOrderLine,
     PublicShopperOrderLineUpdate, ShopperOrderLookupBody,
     ShopperCouponInput, ShopperCouponRead, CouponRedemptionRead,
     CouponApplyBody, CouponPreview,
     ShopperStatsRead, ShopperStatsBucket, ShopperStatsProduct,
+    ShopperStoreSessionRead,
 )
 
 router = APIRouter(tags=["Shopper Catalog"])
@@ -232,7 +234,7 @@ async def _similar_items(
     orig_tokens = _tokens(original.title)
     scored: list[tuple[float, datetime, ShopperCatalogItem]] = []
     for c in result.scalars().all():
-        # Sólo se sugieren reemplazos evergreen (catálogo): un ítem de un drop en
+        # Sólo se sugieren reemplazos evergreen (catálogo): un ítem de una venta en
         # vivo puede estar cerrado o vencido y no se puede volver a apartar.
         if c.id in exclude or c.listing == "live" or not _is_available(c):
             continue
@@ -558,7 +560,7 @@ async def update_settings(
     return settings
 
 
-# ── Tienda en vivo (drop) ──────────────────────────────────────────────────────
+# ── Venta en vivo ─────────────────────────────────────────────────────────────
 
 @router.post("/store/open", response_model=ShopperCatalogSettingsRead)
 async def open_store(
@@ -566,14 +568,24 @@ async def open_store(
     tenant_id: uuid.UUID = Depends(get_current_tenant_id),
     session: AsyncSession = Depends(get_session),
 ):
-    """Abre la tienda en vivo: arranca el reloj y una sesión nueva. Los ítems que
+    """Abre la venta en vivo: arranca el reloj y una sesión nueva. Los ítems que
     se publiquen mientras esté viva quedan sellados a esta sesión."""
     settings = await _get_or_create_settings(tenant_id, session)
     now = _now()
+
+    # Abrir con una venta ya viva (doble toque, dos pestañas) dejaría la sesión anterior
+    # abierta para siempre: settings.store_session_id se pisa y nadie la cierra nunca.
+    if _effective_store_live(settings, now):
+        await _close_open_sessions(tenant_id, session, now)
+
     settings.store_status = "live"
     settings.store_name = body.store_name.strip() if body.store_name else None
     settings.store_opened_at = now
     settings.store_session_id = uuid.uuid4()
+    # Omitir la foto conserva la anterior (reabrir en Target no obliga a re-subirla);
+    # "" la quita.
+    if body.banner_url is not None:
+        settings.store_banner_url = body.banner_url or None
     if body.closes_at is not None:
         # `.replace(tzinfo=None)` tiraba el offset en vez de convertirlo: un dueño en
         # USA (el caso normal de este módulo) mandando "cierro 5 PM" desde California
@@ -585,6 +597,16 @@ async def open_store(
         settings.store_closes_at = None   # a mano
     settings.updated_at = now
     session.add(settings)
+
+    session.add(ShopperStoreSession(
+        tenant_id=tenant_id,
+        store_session_id=settings.store_session_id,
+        store_name=settings.store_name,
+        banner_url=settings.store_banner_url,
+        opened_at=now,
+        closes_at=settings.store_closes_at,
+    ))
+
     await session.commit()
     await session.refresh(settings)
     return settings
@@ -595,15 +617,38 @@ async def close_store(
     tenant_id: uuid.UUID = Depends(get_current_tenant_id),
     session: AsyncSession = Depends(get_session),
 ):
-    """Cierra la tienda: se congela como un drop. No toca las reservas ya hechas
-    (quedan firmes); los ítems live dejan de aceptar reservas por _listing_open."""
+    """Cierra la venta: se congela. No toca las reservas ya hechas (quedan firmes);
+    los ítems en vivo dejan de aceptar reservas por _listing_open. Sella la sesión
+    del histórico con la hora real de cierre."""
     settings = await _get_or_create_settings(tenant_id, session)
+    now = _now()
     settings.store_status = "closed"
-    settings.updated_at = _now()
+    settings.updated_at = now
     session.add(settings)
+    await _close_open_sessions(tenant_id, session, now)
     await session.commit()
     await session.refresh(settings)
     return settings
+
+
+async def _close_open_sessions(tenant_id: uuid.UUID, session: AsyncSession, now: datetime) -> None:
+    """Sella toda sesión sin closed_at. Es un barrido y no un update puntual porque el
+    reloj puede vencer sin que nadie toque "cerrar" (el dueño cierra la app y se va):
+    la próxima apertura o cierre encuentra la huérfana y la sella igual. Sin commit —
+    corre dentro del tx del caller."""
+    rows = (await session.execute(
+        select(ShopperStoreSession).where(
+            ShopperStoreSession.tenant_id == tenant_id,
+            ShopperStoreSession.closed_at == None,
+            ShopperStoreSession.is_active == True,
+        )
+    )).scalars().all()
+    for s in rows:
+        # Si el reloj ya había vencido, la venta murió a esa hora, no cuando el dueño
+        # finalmente abrió la app. Mentir acá inflaría la duración del histórico.
+        s.closed_at = min(now, s.closes_at) if s.closes_at and s.closes_at < now else now
+        s.updated_at = now
+        session.add(s)
 
 
 # ── Config PRIVADA de la calculadora (nunca pública) ──────────────────────────
@@ -688,7 +733,7 @@ async def create_catalog_item(
     published_at = now if body.is_published else None
 
     # Publicar en vivo exige la tienda abierta; el ítem se publica ya, se sella a la
-    # sesión actual y muere con la tienda (expires_at = cierre del drop).
+    # sesión actual y muere con la venta (expires_at = cierre de la venta).
     if listing == "live":
         settings = await _get_or_create_settings(tenant_id, session)
         if not _effective_store_live(settings, now):
@@ -873,6 +918,85 @@ async def list_reservations(
         if r.replaces_reservation_id and r.status != "cancelada"
     }
     return [_reservation_read(r, i, r.id in resolved) for r, i in rows]
+
+
+@router.post("/reservations", response_model=ShopperReservationRead,
+             status_code=status.HTTP_201_CREATED)
+async def create_manual_sale(
+    body: ShopperManualSaleCreate,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """El dueño registra a mano una venta que llegó por otro medio. Difiere del apartado
+    público en tres cosas: no exige la venta abierta (por eso existe — el cliente escribió
+    al WhatsApp, no al catálogo), puede nacer en cualquier estado del flujo, y no manda
+    push (el dueño ya sabe: lo está tecleando él). Sí respeta el stock: registrar 3 de un
+    producto del que quedan 2 es la misma sobreventa, la teclee un cliente o el dueño."""
+    if not body.client_name.strip() or not body.client_phone.strip():
+        raise HTTPException(status_code=400, detail="Nombre y WhatsApp son requeridos.")
+    if body.quantity < 1:
+        raise HTTPException(status_code=400, detail="La cantidad debe ser al menos 1.")
+    if body.status not in STATUS_FLOW:
+        raise HTTPException(status_code=400, detail="Estado inválido.")
+
+    item = (await session.execute(
+        select(ShopperCatalogItem).where(
+            ShopperCatalogItem.id == body.catalog_item_id,
+            ShopperCatalogItem.tenant_id == tenant_id,
+            ShopperCatalogItem.is_active == True,
+        ).with_for_update()
+    )).scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Producto no encontrado.")
+
+    await _expire_pending_reservations(item, session, commit=False)
+
+    now = _now()
+    available = _max_qty(item)
+    if available < body.quantity:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Solo quedan {available} unidad(es) de este producto."
+                if available > 0 else "Este producto ya está agotado."
+            ),
+        )
+
+    order_token, order_pin = await _resolve_order_token(tenant_id, body.client_phone, session)
+
+    reservation = ShopperReservation(
+        tenant_id=tenant_id,
+        catalog_item_id=item.id,
+        client_name=body.client_name.strip(),
+        client_phone=body.client_phone.strip(),
+        client_token=uuid.uuid4(),
+        order_token=order_token,
+        order_pin=order_pin,
+        quantity=body.quantity,
+        status=body.status,
+        notes=body.notes,
+        expires_at=now + timedelta(hours=RESERVATION_EXPIRY_HOURS),
+    )
+    # Una venta que nace ya avanzada necesita sus timestamps: sin esto "Cómo te fue"
+    # la cuenta como entregada pero sin fecha de entrega.
+    for st in STATUS_FLOW[1:STATUS_FLOW.index(body.status) + 1]:
+        setattr(reservation, STATUS_TS_FIELD[st], now)
+    session.add(reservation)
+
+    # Espeja _apply_stock_transition: entregada vive en stock_sold, no en stock_reserved.
+    # Sumar siempre a reserved dejaría lo ya entregado apartado para siempre — el producto
+    # jamás se libera y _physical_available lo da por agotado de por vida.
+    if body.status == "entregada":
+        item.stock_sold = item.stock_sold + body.quantity
+    else:
+        item.stock_reserved = item.stock_reserved + body.quantity
+    item.last_reserved_at = now
+    item.updated_at = now
+    session.add(item)
+
+    await session.commit()
+    await session.refresh(reservation)
+    return _reservation_read(reservation, item)
 
 
 @router.patch("/reservations/{reservation_id}", response_model=ShopperReservationRead)
@@ -1124,13 +1248,13 @@ async def get_public_catalog(
         ).order_by(ShopperCatalogItem.published_at.desc())
     )
     all_items = items_result.scalars().all()
-    # Los ítems 'live' sólo pertenecen al drop de la sesión ACTUAL: al abrir una
-    # tienda nueva, los de drops viejos desaparecen del público (no reviven).
+    # Los ítems 'live' sólo pertenecen a la venta de la sesión ACTUAL: al abrir una
+    # venta nueva, los de ventas viejas desaparecen del público (no reviven).
     items = [
         i for i in all_items
         if i.listing == "catalog" or i.store_session_id == settings.store_session_id
     ]
-    # Cuando hay tienda viva, el drop va primero; dentro de cada grupo, lo más nuevo arriba.
+    # Cuando hay venta viva, va primero; dentro de cada grupo, lo más nuevo arriba.
     items.sort(key=lambda i: (
         0 if (i.listing == "live" and _listing_open(i, settings, now)) else 1,
         -(i.published_at or i.created_at).timestamp(),
@@ -1167,6 +1291,9 @@ async def get_public_catalog(
         store_status="live" if _effective_store_live(settings, now) else "closed",
         store_name=settings.store_name,
         store_closes_at=settings.store_closes_at,
+        # Sólo con la venta viva: una foto de Target colgada bajo un catálogo cerrado
+        # promete una venta que no está pasando.
+        store_banner_url=settings.store_banner_url if _effective_store_live(settings, now) else None,
         categories=categories,
         reserved_people=int(reserved_people or 0),
         reserved_units=int(reserved_units or 0),
@@ -1231,7 +1358,7 @@ async def get_public_pulse(
     status_code=status.HTTP_201_CREATED,
 )
 # 30/min por-IP: bajo CGNAT (Tigo/Claro) muchos clientes distintos comparten IP en un
-# drop → 10/min ahogaba compradores reales. Con el lock atómico de stock (FOR UPDATE) el
+# venta → 10/min ahogaba compradores reales. Con el lock atómico de stock (FOR UPDATE) el
 # rate-limit ya NO es el backstop de sobreventa, sólo anti-DoS, así que aflojarlo es seguro.
 @limiter.limit("30/minute")
 async def create_reservation(
@@ -1277,7 +1404,7 @@ async def create_reservation(
     await _expire_pending_reservations(item, session, commit=False)
 
     now = _now()
-    # Drop cerrado / catálogo vencido → ya no se aparta (mensaje genérico, no filtra por qué).
+    # Venta cerrada / catálogo vencido → ya no se aparta (mensaje genérico, no filtra por qué).
     # detail estructurado: el cliente lee `remaining` para voltear la card a AGOTADO en vivo.
     if not _listing_open(item, settings, now):
         raise HTTPException(status_code=409, detail={
@@ -1350,7 +1477,7 @@ async def create_reservation(
         await send_push_to_tenant(
             session=session,
             tenant_id=settings.tenant_id,
-            title="🧳 Nueva reserva en tu maleta",
+            title="🛍️ Nueva reserva",
             body=f"{reservation.client_name} apartó {item.title}",
             data={"module": "personal-shopper", "view": "catalog", "reservation_id": str(reservation.id)},
         )
@@ -2579,3 +2706,131 @@ async def shopper_stats(
         recurring_customers=sum(1 for ots in phones.values() if len(ots) > 1),
         top_products=top_products,
     )
+
+
+# ── Histórico de ventas en vivo ───────────────────────────────────────────────
+
+@router.get("/store/sessions", response_model=list[ShopperStoreSessionRead])
+async def list_store_sessions(
+    limit: int = Query(30, ge=1, le=100),
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """Histórico de ventas en vivo, la más reciente arriba. Las cifras se derivan de
+    las reservas creadas dentro de la ventana de cada venta (no hay snapshot congelado:
+    entregar un pedido mañana tiene que mover el número de la venta de hoy)."""
+    sessions = (await session.execute(
+        select(ShopperStoreSession).where(
+            ShopperStoreSession.tenant_id == tenant_id,
+            ShopperStoreSession.is_active == True,
+        ).order_by(ShopperStoreSession.opened_at.desc()).limit(limit)
+    )).scalars().all()
+    if not sessions:
+        return []
+
+    assumed_ratio = await _assumed_cost_ratio(tenant_id, session)
+    # Una sola query para todas las ventas: el histórico es una lista, no una vista de
+    # detalle, y N ventanas × 1 query cada una se degrada rápido.
+    oldest = min(s.opened_at for s in sessions)
+    rows = (await session.execute(
+        select(ShopperReservation, ShopperCatalogItem).join(
+            ShopperCatalogItem, ShopperReservation.catalog_item_id == ShopperCatalogItem.id
+        ).where(
+            ShopperReservation.tenant_id == tenant_id,
+            ShopperReservation.is_active == True,
+            ShopperReservation.created_at >= oldest,
+        )
+    )).all()
+
+    out: list[ShopperStoreSessionRead] = []
+    for s in sessions:
+        # La venta en curso no tiene closed_at: su ventana llega hasta ahora.
+        end = s.closed_at or _now()
+        agg = _summarize_window(rows, s.opened_at, end, assumed_ratio)
+        out.append(ShopperStoreSessionRead(
+            id=s.id, store_name=s.store_name, banner_url=s.banner_url,
+            opened_at=s.opened_at, closed_at=s.closed_at, closes_at=s.closes_at,
+            **agg,
+        ))
+    return out
+
+
+def _summarize_window(rows, start: datetime, end: datetime, assumed_ratio: Decimal) -> dict:
+    """Métricas de las reservas creadas dentro de [start, end]. Separa lo APARTADO
+    (bruto, aún puede evaporarse) de lo ENTREGADO (plata de verdad) — meterlos en un
+    solo número es exactamente la mentira que el endpoint /stats vino a matar."""
+    units = reservations = clients_n = 0
+    delivered_units = cancelled = 0
+    revenue = Decimal("0")
+    delivered_revenue = Decimal("0")
+    delivered_profit = Decimal("0")
+    phones: set[str] = set()
+    per_item: dict[uuid.UUID, dict] = {}
+
+    for r, item in rows:
+        if not (start <= r.created_at <= end):
+            continue
+        if r.status in ("cancelada", "no_disponible"):
+            cancelled += 1
+            continue
+        qty = r.quantity or 0
+        price = Decimal(str(item.price_gtq or 0))
+        units += qty
+        reservations += 1
+        revenue += price * qty
+        if r.client_phone:
+            phones.add(r.client_phone)
+        if r.status == "entregada":
+            unit_cost = (
+                Decimal(str(item.calc_total_cost_gtq))
+                if item.calc_total_cost_gtq is not None else price * assumed_ratio
+            )
+            delivered_units += qty
+            delivered_revenue += price * qty
+            delivered_profit += (price - unit_cost) * qty
+        p = per_item.setdefault(r.catalog_item_id, {"title": item.title, "units": 0})
+        p["units"] += qty
+
+    clients_n = len(phones)
+    top_title, top_units = None, 0
+    for p in per_item.values():
+        if p["units"] > top_units:
+            top_units, top_title = p["units"], p["title"]
+
+    q = lambda d: float(d.quantize(Decimal("0.01")))
+    return {
+        "units": units, "reservations": reservations, "clients": clients_n,
+        "revenue_gtq": q(revenue),
+        "delivered_units": delivered_units,
+        "delivered_revenue_gtq": q(delivered_revenue),
+        "delivered_profit_gtq": q(delivered_profit),
+        "cancelled_lines": cancelled,
+        "top_title": top_title, "top_units": top_units,
+    }
+
+
+@router.delete("/store/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_store_session(
+    session_id: uuid.UUID,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """Saca una venta del histórico para que no estorbe. Soft-delete: borra la FILA DEL
+    HISTÓRICO, nunca las reservas ni la plata — el dueño está limpiando una lista, no
+    deshaciendo ventas, y "Cómo te fue" sigue contando esos pedidos."""
+    row = (await session.execute(
+        select(ShopperStoreSession).where(
+            ShopperStoreSession.id == session_id,
+            ShopperStoreSession.tenant_id == tenant_id,
+            ShopperStoreSession.is_active == True,
+        )
+    )).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Venta no encontrada.")
+    if row.closed_at is None:
+        raise HTTPException(status_code=409, detail="Cerrá la venta antes de quitarla del histórico.")
+    row.is_active = False
+    row.updated_at = _now()
+    session.add(row)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -3,7 +3,7 @@
  * Coach-mark tipo spotlight sobre los elementos reales (por [data-tour="..."]),
  * autocontenido y sin librerías. Dos pasos, una línea de texto cada uno.
  *
- * El velo apaga la pantalla salvo el hueco del CTA, y el reloj del drop sigue
+ * El velo apaga la pantalla salvo el hueco del CTA, y el reloj de la venta sigue
  * corriendo dentro del tooltip: la urgencia no se pausa, se enfoca.
  *
  * El padre decide cuándo montar, qué pasos incluir y persiste el "ya lo vi".

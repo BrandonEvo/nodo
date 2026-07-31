@@ -5,6 +5,7 @@ import {
   Check, Warehouse, Loader2, X, Package,
 } from 'lucide-react';
 import type { AppProps } from '../index';
+import { useModuleChrome, ModuleActions } from '@/components/chrome/ModuleChrome';
 import { bodegaService, type InventoryItem, type PriceHistoryEntry, type StockMovementEntry } from '@/services/bodega.service';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 
@@ -55,6 +56,12 @@ export function BodegaApp(_props: AppProps) {
   useEffect(() => { load(); }, [load]);
 
   const lowStock = useMemo(() => inventory.filter(i => i.current_stock < i.minimum_stock), [inventory]);
+
+  useModuleChrome(
+    'Inventario',
+    `${inventory.length} insumo${inventory.length === 1 ? '' : 's'}`
+      + (lowStock.length > 0 ? ` · ${lowStock.length} bajo mínimo` : ''),
+  );
 
   const filtered = useMemo(() => {
     let list = inventory;
@@ -184,34 +191,15 @@ export function BodegaApp(_props: AppProps) {
         </div>
       )}
 
-      {/* ── HEADER ────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          {/* Módulo pill */}
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-nodo-primary-soft mb-2">
-            <Warehouse size={12} className="text-nodo-primary" />
-            <span className="text-[11px] font-black text-nodo-primary uppercase tracking-wider">Bodega</span>
-          </div>
-          <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Inventario</h1>
-          <p className="text-sm text-nodo-sub font-medium mt-0.5">
-            {inventory.length} insumos
-            {lowStock.length > 0
-              ? <span className="text-nodo-danger-tx"> · {lowStock.length} bajo mínimo</span>
-              : inventory.length > 0
-                ? <span className="text-nodo-success-tx"> · todo en orden</span>
-                : null
-            }
-          </p>
-        </div>
+      <ModuleActions>
         <button
           onClick={() => setSheet({ view: 'nuevo' })}
-          className="w-12 h-12 rounded-full bg-nodo-primary text-white flex items-center justify-center active:scale-90 transition-transform shrink-0"
-          style={{ boxShadow: '0 6px 20px var(--nodo-shadow-fab)' }}
-          title="Nuevo insumo"
+          className="nodo-appbar-action"
+          aria-label="Nuevo insumo"
         >
-          <Plus size={20} strokeWidth={2.5} />
+          <Plus size={18} strokeWidth={2.5} />
         </button>
-      </div>
+      </ModuleActions>
 
       {/* ── KPI CARDS (asimétrico) ─────────────────────────────────────────── */}
       {inventory.length > 0 && (

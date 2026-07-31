@@ -136,13 +136,7 @@ export function TeamManagement() {
     <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Gestión de Equipo</h1>
-          <p className="text-nodo-sub text-sm font-medium mt-0.5">
-            Invita colaboradores y gestiona sus accesos.
-          </p>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
         <button
           onClick={() => { setShowForm(!showForm); setNewlyCreated(null); }}
           className="inline-flex items-center gap-2 px-5 py-3 bg-nodo-ink text-nodo-canvas font-bold text-sm rounded-xl shadow-md active:scale-[0.97] transition-transform shrink-0"

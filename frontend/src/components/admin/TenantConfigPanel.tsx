@@ -128,12 +128,6 @@ export function TenantConfigPanel() {
     <PrivacyPolicyModal open={showPrivacy} onClose={() => setShowPrivacy(false)} />
     <div className="flex flex-col gap-4 max-w-4xl">
 
-      <div>
-        <h1 className="nodo-module-title">
-          Configuración<span style={{ color: 'var(--nodo-iris-start)' }}>.</span>
-        </h1>
-        <p className="nodo-module-subtitle">Ajusta la identidad visual de tu organización.</p>
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
 
@@ -353,7 +347,7 @@ export function TenantConfigPanel() {
       </div>
 
       {/* ── Guardar — sticky: siempre a la mano, sobre el BottomNav en mobile ── */}
-      <div className="sticky bottom-[calc(env(safe-area-inset-bottom,0px)+72px)] lg:bottom-4 z-10">
+      <div className="sticky bottom-[calc(var(--nodo-bottomnav-h)+12px)] lg:bottom-4 z-10">
         <button
           onClick={handleSave}
           disabled={!canSave || saving}

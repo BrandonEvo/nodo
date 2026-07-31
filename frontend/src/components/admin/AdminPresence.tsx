@@ -34,7 +34,7 @@ const APP_LABELS: Record<string, string> = {
   autos: 'Autos',
   reportes: 'Reportes',
   gastos: 'Gastos',
-  'personal-shopper': 'Personal Shopper',
+  'personal-shopper': 'Mi Tienda',
   ventas: 'Ventas',
   citas: 'Citas',
 };
@@ -102,13 +102,7 @@ export function AdminPresence() {
   return (
     <div className="flex flex-col gap-5 pb-8 w-full max-w-2xl lg:max-w-4xl">
       {/* Header */}
-      <div className="flex items-center justify-between pt-2">
-        <div>
-          <h1 className="text-[28px] font-black text-nodo-ink leading-tight">En línea</h1>
-          <p className="text-nodo-sub text-sm font-medium mt-0.5">
-            Usuarios activos · ventana de {snap?.window_minutes ?? 2} min
-          </p>
-        </div>
+      <div className="flex items-center justify-end">
         <button onClick={() => load(true)} disabled={refreshing}
           className="w-10 h-10 flex items-center justify-center rounded-xl bg-nodo-inset hover:bg-nodo-raised transition-colors disabled:opacity-40">
           <RefreshCw size={15} className={`text-nodo-sub ${refreshing ? 'animate-spin' : ''}`} />

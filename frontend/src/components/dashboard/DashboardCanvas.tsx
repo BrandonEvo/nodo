@@ -473,10 +473,6 @@ export function DashboardCanvas({
   if (activeTab === 'profile') {
     return (
       <div className="space-y-8 max-w-lg">
-        <div>
-          <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Mi Perfil</h1>
-          <p className="text-nodo-sub text-sm font-medium mt-0.5">Configuración personal.</p>
-        </div>
         <div className="bg-nodo-card rounded-3xl border border-nodo-line shadow-sm p-6 lg:p-8 flex items-center gap-5">
           {userPicture ? (
             <img src={userPicture} alt="Avatar" className="w-16 h-16 rounded-2xl object-cover shadow-sm" referrerPolicy="no-referrer" />
@@ -711,7 +707,10 @@ export function DashboardCanvas({
 
   if (AppComponent) {
     return (
-      <div className="space-y-6">
+      // `grow` y no `flex-1`: llena el alto de <main> para que los módulos con `h-full`
+      // (Mostrador, Recetas) resuelvan contra algo, pero sin encoger por debajo de su
+      // contenido — los módulos largos siguen scrolleando <main>.
+      <div className="grow flex flex-col">
         <Suspense fallback={
           <div className="flex items-center justify-center h-64">
             <Spinner size="lg" />
@@ -834,13 +833,6 @@ function TenantEmployeeManager({ activeModules }: { activeModules: Array<{ id: s
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-[28px] font-black text-nodo-ink leading-tight flex items-center gap-3">
-          <Briefcase className="text-blue-500 w-7 h-7" /> Empleados
-        </h1>
-        <p className="text-nodo-sub text-sm font-medium mt-0.5">Gestiona los accesos a módulos de tu equipo.</p>
-      </div>
-
       {loading ? (
         <div className="flex items-center justify-center h-40">
           <Spinner size="lg" />
@@ -944,13 +936,6 @@ function PlatformConfigPanel() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-[28px] font-black text-nodo-ink leading-tight flex items-center gap-3">
-          <SlidersHorizontal className="text-cyan-500 w-7 h-7" /> Configuración de Plataforma
-        </h1>
-        <p className="text-nodo-sub text-sm font-medium mt-0.5">Parámetros globales del sistema.</p>
-      </div>
-
       {loading ? (
         <div className="flex items-center justify-center h-40">
           <Spinner size="lg" />

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Lock, Banknote, CreditCard, Receipt, Check, AlertTriangle, ShoppingBag, ChefHat, Trash2, Loader2, X, Package, Minus, Plus } from 'lucide-react';
 import { haptic } from '@/utils/haptic';
 import type { AppProps } from '../index';
+import { useModuleChrome } from '@/components/chrome/ModuleChrome';
 import { cierreService, type ShiftSummary } from '@/services/cierre.service';
 import { recetasService } from '@/services/recetas.service';
 import { BottomSheet } from '@/components/ui/BottomSheet';
@@ -79,6 +80,8 @@ export function CierreApp(_props: AppProps) {
     timeZone: 'America/Guatemala',
   });
 
+  useModuleChrome('Cierre de Turno', dateStr);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -147,17 +150,12 @@ export function CierreApp(_props: AppProps) {
           </div>
         )}
 
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Cierre de Turno</h1>
-            <p className="text-nodo-sub text-sm font-medium mt-1 capitalize">{dateStr}</p>
-          </div>
-          <DualClock className="mt-1 shrink-0" />
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] text-nodo-dim font-medium">
+            Las ventas se cuentan por el día de <span className="font-bold text-nodo-sub">Guatemala</span>.
+          </p>
+          <DualClock className="shrink-0" />
         </div>
-        <p className="-mt-3 text-[11px] text-nodo-dim font-medium">
-          Las ventas se cuentan por el día de <span className="font-bold text-nodo-sub">Guatemala</span>.
-        </p>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 

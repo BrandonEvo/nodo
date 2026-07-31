@@ -4,6 +4,7 @@ import {
   DollarSign, Users, Package, Wrench, TrendingDown, Banknote, Check,
 } from 'lucide-react';
 import type { AppProps } from '../index';
+import { useModuleChrome } from '@/components/chrome/ModuleChrome';
 import { gastosService, type ExpenseLine, type ExpenseSummary, CATEGORY_LABELS, CC_LABELS } from '@/services/gastos.service';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 
@@ -51,6 +52,9 @@ export function GastosApp(_props: AppProps) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
+
+  useModuleChrome('Gastos Generales (OPEX)');
+
   const [summary, setSummary] = useState<ExpenseSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -152,13 +156,8 @@ export function GastosApp(_props: AppProps) {
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto space-y-5 pb-12">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-nodo-sub" />
-            <h1 className="nodo-module-title">Gastos Generales (OPEX)</h1>
-          </div>
+      <div className="max-w-4xl mx-auto space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3">
           <div className="flex items-center gap-2">
             <select
               value={month}

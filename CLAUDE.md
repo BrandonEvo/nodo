@@ -236,7 +236,7 @@ Nunca menos de 16px en tarjetas. Las clases `nodo-card`, `nodo-btn-primary` etc.
 | Rol | Tailwind |
 |---|---|
 | Número hero (dato principal) | `text-[52px] lg:text-[68px] font-black tabular-nums tracking-tighter` |
-| Título de módulo / pantalla | `text-[28px] font-black text-nodo-ink leading-tight` |
+| Título de módulo / pantalla | *(no se escribe: lo pone la AppBar vía `useModuleChrome`)* |
 | Valor KPI | `text-2xl font-black text-nodo-ink tabular-nums` |
 | Label de KPI | `text-[10px] font-semibold text-nodo-sub` |
 | Sección uppercase | `text-[9px] font-bold text-nodo-dim uppercase tracking-[0.14em]` |
@@ -378,22 +378,41 @@ Las clases `nodo-*` están definidas en `@layer components` de `index.css`. **Us
 | `nodo-select` | igual que `nodo-input` pero `<select>` | Select |
 | `nodo-textarea` | `w-full px-4 py-3 bg-nodo-inset...` | Textarea |
 | `nodo-label` | `text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-1.5 block` | Label de campo |
-| `nodo-module-title` | `text-[28px] font-black text-nodo-ink leading-tight` | Título de módulo |
-| `nodo-module-subtitle` | `text-nodo-sub text-sm font-medium mt-0.5` | Subtítulo de módulo |
+| `nodo-appbar-action` | botón 36px de la AppBar (fondo inset + borde) | Acción de módulo en la barra |
+| `nodo-appbar-badge` | contador absoluto arriba-derecha del botón | Badge de la acción |
+| `pb-nav` | `padding-bottom: calc(var(--nodo-bottomnav-h) + 12px)` | Despejar el BottomNav |
 | `nodo-section-label` | `text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-3` | Label de sección |
 | `nodo-empty-state` | `flex flex-col items-center justify-center h-40 text-center px-4` | Estado vacío |
 | `nodo-spinner-container` | `flex items-center justify-center h-64` | Loading spinner |
 
 ### Patrones de UI — Obligatorios
 
-#### Header de módulo
+#### Header de módulo — NO se dibuja en el cuerpo
+
+El título vive en la **AppBar** (`components/navigation/AppBar.tsx`), que se paga igual
+esté o no. Un `<h1>` en el cuerpo cuesta ~100px de pantalla en un iPhone y duplica el
+título. Los módulos declaran su chrome y no dibujan encabezado:
 
 ```tsx
-<div>
-  <h1 className="nodo-module-title">Nombre del Módulo</h1>
-  <p className="nodo-module-subtitle">Subtítulo contextual</p>
-</div>
+import { useModuleChrome, ModuleActions } from '@/components/chrome/ModuleChrome';
+
+// Sin llamarlo, la barra ya muestra el `name` del módulo (tabla `modules`).
+// Se llama sólo para dar subtítulo contextual o un título distinto al de la BD.
+useModuleChrome('Inventario', `${items.length} insumos`);
+
+// Acciones del módulo → portal a la derecha de la barra. UNO solo por módulo.
+<ModuleActions>
+  <button onClick={...} className="nodo-appbar-action" aria-label="Nuevo insumo">
+    <Plus size={18} />
+    {pending > 0 && <span className="nodo-appbar-badge bg-nodo-primary text-nodo-on-primary">{pending}</span>}
+  </button>
+</ModuleActions>
 ```
+
+Reglas: nada de `<h1>` ni `pb-*` propio en el root del módulo (`<main>` ya pone `pb-nav`);
+el padding vertical vive en `<main>` y en ningún wrapper interno, o los `sticky` internos
+se despegan de la barra. Controles anchos (selects, `SegmentedControl`) van en fila propia
+en el cuerpo, no en la barra: no entran en 56px.
 
 #### Tarjeta estándar
 

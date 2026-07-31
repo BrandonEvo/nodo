@@ -4,6 +4,7 @@ import {
   TrendingUp, TrendingDown, Wrench, Settings2, ChevronRight,
 } from 'lucide-react';
 import type { AppProps } from '../index';
+import { useModuleChrome, ModuleActions } from '@/components/chrome/ModuleChrome';
 import {
   autosService,
   type AutosCalculoInput,
@@ -198,6 +199,8 @@ export function AutosApp(_props: AppProps) {
     }
   };
 
+  useModuleChrome('Importación de Vehículos', 'USA → Guatemala · Cálculo automático');
+
   const handleReset = () => {
     setCostoReal(0);
     setStateCode('');
@@ -214,24 +217,15 @@ export function AutosApp(_props: AppProps) {
   return (
     <div className="w-full max-w-7xl mx-auto">
 
-      {/* ── HEADER ── */}
-      <header className="mb-6 flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-nodo-ink flex items-center justify-center">
-            <Car size={22} className="text-nodo-canvas" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-black text-nodo-ink leading-none">Importación de Vehículos</h1>
-            <p className="text-xs font-medium text-nodo-sub mt-1">USA → Guatemala · Cálculo automático</p>
-          </div>
-        </div>
+      <ModuleActions>
         <button
           onClick={handleReset}
-          className="h-10 px-4 rounded-xl text-xs font-bold flex items-center gap-2 bg-nodo-card text-nodo-sub hover:bg-nodo-danger-bg hover:text-nodo-danger-tx border border-nodo-line transition-all"
+          className="nodo-appbar-action"
+          aria-label="Reiniciar cálculo"
         >
-          <RotateCcw size={14} /> Reiniciar
+          <RotateCcw size={16} />
         </button>
-      </header>
+      </ModuleActions>
 
       {error && (
         <div className="mb-4 bg-nodo-danger-bg border border-nodo-danger-bd text-nodo-danger-tx text-sm font-medium px-4 py-3 rounded-2xl flex items-center justify-between">

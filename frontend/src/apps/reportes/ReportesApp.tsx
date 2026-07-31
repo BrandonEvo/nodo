@@ -4,6 +4,7 @@ import {
   AlertTriangle, Loader2, ChevronDown, ChevronUp, BarChart3,
 } from 'lucide-react';
 import type { AppProps } from '../index';
+import { useModuleChrome } from '@/components/chrome/ModuleChrome';
 import { reportesService, type MonthlyReport, type MonthlyProductRow } from '@/services/reportes.service';
 
 const MONTHS = [
@@ -116,14 +117,11 @@ export function ReportesApp(_props: AppProps) {
 
   const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - i);
 
+  useModuleChrome('Reporte Mensual P&L');
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-12">
-      {/* Header + selector */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="w-5 h-5 text-slate-600" />
-          <h1 className="text-lg font-semibold text-slate-800">Reporte Mensual P&L</h1>
-        </div>
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="flex items-center justify-end gap-3">
         <div className="flex gap-2">
           <select
             value={month}

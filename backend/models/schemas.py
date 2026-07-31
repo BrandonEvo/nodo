@@ -901,22 +901,26 @@ class ShopperCatalogSettingsRead(BaseModel):
     bank_account_number: Optional[str] = None
     bank_account_type: Optional[str] = None
     ai_copy_enabled: bool = False
-    # Tienda en vivo (drop) — visible sólo al dueño.
+    # Venta en vivo — visible sólo al dueño.
     store_status: str = "closed"          # closed | live
     store_name: Optional[str] = None
     store_opened_at: Optional[datetime] = None
     store_closes_at: Optional[datetime] = None
+    store_banner_url: Optional[str] = None
 
     class Config:
         from_attributes = True
 
 
 class ShopperStoreOpen(BaseModel):
-    """Abre la tienda en vivo. Duración por minutos o fecha exacta; sin ninguna
-    de las dos = tienda a mano (sin countdown, se cierra manualmente)."""
+    """Abre la venta en vivo. Duración por minutos o fecha exacta; sin ninguna
+    de las dos = venta a mano (sin countdown, se cierra manualmente)."""
     store_name: Optional[str] = None
     minutes: Optional[int] = None
     closes_at: Optional[datetime] = None
+    # Foto de fondo del banner (data URI redimensionado). Omitir = conserva la
+    # anterior; "" = quitarla.
+    banner_url: Optional[str] = None
 
 
 class ShopperCatalogSettingsUpdate(BaseModel):
@@ -933,6 +937,7 @@ class ShopperCatalogSettingsUpdate(BaseModel):
     bank_account_number: Optional[str] = None
     bank_account_type: Optional[str] = None
     ai_copy_enabled: Optional[bool] = None
+    store_banner_url: Optional[str] = None
 
 
 # ── Config PRIVADA de la calculadora (nunca pública) ──────────────────────────
@@ -1117,10 +1122,13 @@ class PublicShopperCatalog(BaseModel):
     trip_close_at: Optional[datetime] = None
     trip_label: Optional[str] = None
     origin_label: Optional[str] = None
-    # Tienda en vivo: status EFECTIVO (ya considera el reloj), nombre y cierre.
+    # Venta en vivo: status EFECTIVO (ya considera el reloj), nombre y cierre.
     store_status: str = "closed"          # closed | live
     store_name: Optional[str] = None
     store_closes_at: Optional[datetime] = None
+    # Foto del banner. Es una imagen que el dueño eligió mostrar al cliente, así que
+    # exponerla es el punto; no revela costos ni capacidad.
+    store_banner_url: Optional[str] = None
     categories: list[str] = []
     reserved_people: int = 0
     reserved_units: int = 0
@@ -1146,6 +1154,19 @@ class ShopperReservationCreate(BaseModel):
     client_phone: str
     quantity: int = 1
     deposit_amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class ShopperManualSaleCreate(BaseModel):
+    """El dueño registra a mano una venta que llegó por otro medio (WhatsApp, en
+    persona, teléfono). Va por get_current_tenant_id, no por el token público, y a
+    diferencia del apartado del cliente puede nacer en cualquier estado del flujo:
+    lo que ya se entregó se registra como entregado, no como apartado."""
+    catalog_item_id: uuid.UUID
+    client_name: str
+    client_phone: str
+    quantity: int = 1
+    status: str = "confirmada"
     notes: Optional[str] = None
 
 
@@ -1406,6 +1427,30 @@ class ShopperStatsRead(BaseModel):
     unique_customers: int = 0
     recurring_customers: int = 0         # teléfonos con >1 pedido
     top_products: list[ShopperStatsProduct] = []
+
+
+class ShopperStoreSessionRead(BaseModel):
+    """Una venta en vivo del histórico. Las cifras NO están congeladas: se derivan de
+    las reservas creadas dentro de la ventana, así que si un pedido se entrega o se
+    cancela después del cierre, esta venta lo refleja. `revenue_gtq` es lo apartado
+    (bruto); `delivered_*` es lo que de verdad se cobró y entregó."""
+    id: uuid.UUID
+    store_name: Optional[str] = None
+    banner_url: Optional[str] = None
+    opened_at: datetime
+    closed_at: Optional[datetime] = None   # null = venta en curso
+    closes_at: Optional[datetime] = None
+
+    units: int = 0
+    reservations: int = 0
+    clients: int = 0
+    revenue_gtq: float = 0
+    delivered_units: int = 0
+    delivered_revenue_gtq: float = 0
+    delivered_profit_gtq: float = 0
+    cancelled_lines: int = 0
+    top_title: Optional[str] = None
+    top_units: int = 0
 
 
 # ==========================================

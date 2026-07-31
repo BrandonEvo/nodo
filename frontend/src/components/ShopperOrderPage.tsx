@@ -1,11 +1,11 @@
 /**
- * Pedido acumulado del cliente — "En mi maleta". Tablero de progreso por línea,
- * edición de cantidad / quitar mientras esté pendiente, y off-ramp cálido
- * (reemplazo o descartar) cuando el shopper no consiguió algo.
+ * Pedido del cliente. Seguimiento por producto, edición de cantidad / quitar mientras
+ * esté pendiente, y salida cálida (reemplazo o descartar) cuando el shopper no
+ * consiguió algo. Nada acá le habla al cliente de "maleta": es jerga del negocio.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Loader2, Package, MessageCircle, Minus, Plus, Trash2, Luggage,
+  Loader2, Package, MessageCircle, Minus, Plus, Trash2, ShoppingBag, Plane,
   X, RefreshCw, Ticket, Check, Sparkles, ArrowRight,
 } from 'lucide-react';
 import { haptic } from '@/utils/haptic';
@@ -48,13 +48,14 @@ function errMsg(e: unknown): string | null {
   return typeof detail === 'string' ? detail : null;
 }
 
-// Tablero de progreso: pasos del "viaje" de cada producto.
-const STEPS: { key: ShopperResStatus; label: string; emoji: string }[] = [
-  { key: 'pendiente',  label: 'Apartado',  emoji: '🕒' },
-  { key: 'confirmada', label: 'Confirmado', emoji: '✅' },
-  { key: 'comprada',   label: 'Comprado',  emoji: '🛍️' },
-  { key: 'en_camino',  label: 'En maleta', emoji: '✈️' },
-  { key: 'entregada',  label: 'Entregado', emoji: '🎉' },
+// Los 5 pasos del pedido, en palabras que no hay que explicarle a nadie. `hint` es la
+// respuesta a "¿y eso qué significa?" — el estado solo no se la contesta a un primerizo.
+const STEPS: { key: ShopperResStatus; label: string; hint: string }[] = [
+  { key: 'pendiente',  label: 'Apartado',   hint: 'Te lo guardamos. Falta confirmarlo.' },
+  { key: 'confirmada', label: 'Confirmado', hint: 'Listo, va contigo en este viaje.' },
+  { key: 'comprada',   label: 'Comprado',   hint: 'Ya lo compramos en la tienda.' },
+  { key: 'en_camino',  label: 'En camino',  hint: 'Viene viajando hacia vos.' },
+  { key: 'entregada',  label: 'Entregado',  hint: '¡Ya es tuyo! Gracias 🎉' },
 ];
 const STEP_IDX: Record<string, number> = { pendiente: 0, confirmada: 1, comprada: 2, en_camino: 3, entregada: 4 };
 
@@ -112,7 +113,7 @@ export function ShopperOrderPage({ orderToken }: Props) {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-nodo-canvas"><Loader2 className="w-8 h-8 animate-spin text-nodo-sub" /></div>;
   if (error || !order) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-nodo-canvas gap-3 px-6 text-center">
-      <Luggage size={44} className="text-nodo-dim" />
+      <ShoppingBag size={44} className="text-nodo-dim" />
       <p className="text-lg font-black text-nodo-ink">{error}</p>
       {order?.catalog_token && <a href={`/catalogo/${order.catalog_token}`} className="text-sm font-bold text-nodo-primary underline">Ver el catálogo</a>}
     </div>
@@ -128,8 +129,10 @@ export function ShopperOrderPage({ orderToken }: Props) {
         .coupon-shake { animation: coupon-shake .42s ease-in-out; }
         .coupon-gift  { animation: coupon-gift .4s cubic-bezier(.22,1,.36,1) both; }
         .coupon-pop   { animation: coupon-pop .3s ease-out both; }
+        .ot-move      { transition: transform .8s cubic-bezier(.22,1,.36,1); will-change: transform; }
         @media (prefers-reduced-motion: reduce) {
           .coupon-shake, .coupon-gift, .coupon-pop { animation: none; }
+          .ot-move { transition: none; }
         }
       `}</style>
       {celebrate && (
@@ -147,11 +150,11 @@ export function ShopperOrderPage({ orderToken }: Props) {
       <div className="max-w-2xl mx-auto px-4 py-4 flex flex-col gap-4 pb-16">
         {/* Hero */}
         <div className="rounded-[28px] p-5 bg-nodo-primary text-nodo-on-primary" style={{ boxShadow: 'var(--nodo-shadow-hero)' }}>
-          <div className="flex items-center gap-2 mb-1"><Luggage size={18} /><span className="text-[11px] font-bold uppercase tracking-wider text-nodo-on-primary/90">En mi maleta</span></div>
+          <div className="flex items-center gap-2 mb-1"><ShoppingBag size={18} /><span className="text-[11px] font-bold uppercase tracking-wider text-nodo-on-primary/90">Mi pedido</span></div>
           <p className="text-2xl font-black">Hola {order.client_name} 👋</p>
           <div className="flex items-center gap-3 mt-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-nodo-on-primary/70">Total</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-nodo-on-primary/70">Total a pagar</p>
               <p className="text-xl font-black tabular-nums">{fmtQ(order.total_gtq)}</p>
               {order.coupon_discount_gtq > 0 && (
                 <p className="text-[11px] font-bold text-nodo-on-primary/60 line-through tabular-nums">{fmtQ(order.subtotal_gtq)}</p>
@@ -166,12 +169,17 @@ export function ShopperOrderPage({ orderToken }: Props) {
               <>
                 <div className="w-px h-8 bg-nodo-on-primary/20" />
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-nodo-on-primary/70">Tu PIN 🔑</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-nodo-on-primary/70">Tu clave 🔑</p>
                   <p className="text-xl font-black tabular-nums tracking-widest">{order.order_pin}</p>
                 </div>
               </>
             )}
           </div>
+          {order.order_pin && (
+            <p className="text-[11px] font-semibold text-nodo-on-primary/70 mt-2">
+              Guardá tu clave: con ella y tu WhatsApp volvés a ver tu pedido cuando quieras.
+            </p>
+          )}
         </div>
 
         {/* Cupón */}
@@ -193,7 +201,7 @@ export function ShopperOrderPage({ orderToken }: Props) {
         {/* Pago */}
         {order.pay_info && (order.pay_info.bank_name || order.pay_info.bank_account_number) && (
           <div className="nodo-card p-4">
-            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-2">Datos de pago</p>
+            <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider mb-2">Dónde depositar</p>
             <div className="text-sm font-semibold text-nodo-ink space-y-0.5">
               {order.pay_info.bank_name && <p>{order.pay_info.bank_name}</p>}
               {order.pay_info.bank_account_number && <p className="tabular-nums">Cuenta: {order.pay_info.bank_account_number}</p>}
@@ -212,11 +220,11 @@ export function ShopperOrderPage({ orderToken }: Props) {
           {order.whatsapp_number && (
             <a href={`https://wa.me/${order.whatsapp_number.replace(/\D/g, '')}`} target="_blank" rel="noopener"
               className="flex-1 h-12 rounded-2xl bg-nodo-success-bg text-nodo-success-tx text-sm font-black flex items-center justify-center gap-2 active:scale-95">
-              <MessageCircle size={16} /> Escribir
+              <MessageCircle size={16} /> Escribinos
             </a>
           )}
         </div>
-        <button onClick={load} className="text-xs font-bold text-nodo-sub flex items-center justify-center gap-1.5 py-2"><RefreshCw size={13} /> Actualizar</button>
+        <button onClick={load} className="text-xs font-bold text-nodo-sub flex items-center justify-center gap-1.5 py-2"><RefreshCw size={13} /> Ver si hay novedades</button>
       </div>
     </div>
   );
@@ -253,18 +261,7 @@ function OrderLine({ line, busy, onQty, onRemove, onSwap, onDismiss }: {
         ) : <span className="text-xs font-bold text-nodo-sub shrink-0">×{line.quantity}</span>}
       </div>
 
-      {/* Progreso */}
-      {!isOff && (
-        <div className="flex items-center gap-1">
-          {STEPS.map((s, i) => (
-            <div key={s.key} className="flex-1 flex flex-col items-center gap-1">
-              <div className={`w-full h-1.5 rounded-full ${i <= stepIdx ? 'bg-nodo-primary' : 'bg-nodo-inset'}`} />
-              <span className={`text-[9px] font-bold ${i === stepIdx ? 'text-nodo-primary' : 'text-nodo-dim'}`}>{i === stepIdx ? `${s.emoji}` : ''}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {!isOff && <p className="text-[11px] font-semibold text-nodo-sub text-center">{STEPS[stepIdx]?.emoji} {STEPS[stepIdx]?.label}</p>}
+      {!isOff && <OrderTrack stepIdx={stepIdx} />}
 
       {/* Off-ramp cálido */}
       {line.status === 'no_disponible' && !line.resolved_by_substitute && (
@@ -298,6 +295,47 @@ function OrderLine({ line, busy, onQty, onRemove, onSwap, onDismiss }: {
           <button onClick={onDismiss} disabled={busy} className="text-xs font-bold text-nodo-sub flex items-center gap-1"><X size={12} /> Quitar</button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Seguimiento: una sola línea y el avión avanzando sobre ella ────────────────
+// Las 5 barras segmentadas de antes obligaban a contar cuadritos para saber dónde
+// estabas. Una línea con una posición se lee de un vistazo, sin instrucciones.
+//
+// Todo el movimiento es `transform` (GPU): el riel se rellena con scaleX y el avión
+// viaja con translateX. El truco del translateX en %: la capa del avión mide el ancho
+// completo del riel, así que translateX(40%) la corre 40% del RIEL — un % sobre el
+// tamaño del propio elemento, que es justo lo que necesitamos sin medir nada en JS.
+function OrderTrack({ stepIdx }: { stepIdx: number }) {
+  const last = STEPS.length - 1;
+  const pct = (Math.min(stepIdx, last) / last) * 100;
+  const step = STEPS[stepIdx];
+  const delivered = stepIdx >= last;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* px-3.5 = radio del marcador: el avión en 0% y en 100% cae sobre la punta del
+          riel y se ve entero, sin salirse de la tarjeta. */}
+      <div className="px-3.5">
+        <div className="relative h-7">
+          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-nodo-inset" />
+          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-nodo-primary origin-left ot-move"
+            style={{ transform: `scaleX(${pct / 100})` }} />
+          <div className="absolute inset-0 ot-move" style={{ transform: `translateX(${pct}%)` }}>
+            <div className={`absolute top-1/2 left-0 w-7 h-7 -translate-x-1/2 -translate-y-1/2 rounded-full
+              flex items-center justify-center ${delivered ? 'bg-nodo-success-tx' : 'bg-nodo-primary'}`}>
+              {delivered
+                ? <Check size={14} className="text-white" strokeWidth={3} />
+                : <Plane size={14} className="text-nodo-on-primary rotate-45" strokeWidth={2.5} />}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="text-center">
+        <p className="text-[13px] font-black text-nodo-ink">{step?.label}</p>
+        <p className="text-[11px] font-semibold text-nodo-sub">{step?.hint}</p>
+      </div>
     </div>
   );
 }

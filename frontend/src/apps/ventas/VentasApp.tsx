@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Check, Share2, X, Zap } from 'lucide-react';
 import type { AppProps } from '../index';
+import { useModuleChrome, ModuleActions } from '@/components/chrome/ModuleChrome';
 import {
   ventasService,
   type StoreMonitor, type StoreProduct, type StoreSettings,
@@ -24,6 +25,9 @@ const VIEW_OPTS = [
 
 export function VentasApp(_props: AppProps) {
   const [view, setView] = useState<View>('pedidos');
+
+  useModuleChrome('Ventas', 'Catálogo, pedidos y entregas');
+
   const [monitor, setMonitor] = useState<StoreMonitor | null>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [settings, setSettings] = useState<StoreSettings | null>(null);
@@ -130,23 +134,18 @@ export function VentasApp(_props: AppProps) {
         </div>
       )}
 
-      <div className="flex flex-col gap-6 pb-6 max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="nodo-module-title">Ventas</h1>
-            <p className="nodo-module-subtitle">Catálogo, pedidos y entregas</p>
-          </div>
-          <button
-            onClick={handleShareStore}
-            disabled={!settings}
-            className="nodo-btn-secondary shrink-0 flex items-center gap-2 disabled:opacity-30"
-          >
-            <Share2 size={15} />
-            <span className="hidden sm:inline">Compartir tienda</span>
-          </button>
-        </div>
+      <ModuleActions>
+        <button
+          onClick={handleShareStore}
+          disabled={!settings}
+          className="nodo-appbar-action"
+          aria-label="Compartir tienda"
+        >
+          <Share2 size={16} />
+        </button>
+      </ModuleActions>
 
+      <div className="flex flex-col gap-6 max-w-4xl mx-auto">
         <SegmentedControl options={VIEW_OPTS} value={view} onChange={v => setView(v)} />
 
         {loading ? (

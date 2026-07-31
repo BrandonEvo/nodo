@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { BookOpen, Search, Plus, X, ChefHat, Loader2, Trash2, Package, TrendingUp, TrendingDown, Pencil, Check, AlertTriangle, BarChart3, ArrowUpDown, Printer, ArrowLeft } from 'lucide-react';
 import type { AppProps } from '../index';
+import { useModuleChrome, ModuleActions } from '@/components/chrome/ModuleChrome';
 import { recetasService, type Recipe, type RecipeWithIngredients, type RecipeIngredientRead } from '@/services/recetas.service';
 import { bodegaService, type InventoryItem } from '@/services/bodega.service';
 import { RecipeFormModal, type RecipeFormValues } from './RecipeFormModal';
@@ -341,6 +342,12 @@ export function RecetasApp(_props: AppProps) {
   });
 
   const profitCount = recipesSorted.filter(r => (r.margin ?? 0) >= 30).length;
+
+  useModuleChrome(
+    'Recetario',
+    `${recipes.length} receta${recipes.length === 1 ? '' : 's'}`
+      + (recipes.some(r => r.estimated_cost > 0) ? ` · ${profitCount} saludables` : ' · sin costos cargados'),
+  );
   const lowCount    = recipesSorted.filter(r => r.margin !== null && r.margin >= 0 && r.margin < 30).length;
   const lossCount   = recipesSorted.filter(r => r.margin !== null && r.margin < 0).length;
 
@@ -382,34 +389,24 @@ export function RecetasApp(_props: AppProps) {
           </div>
         )}
 
-        {/* ── Header ── */}
+        <ModuleActions>
+          <button
+            onClick={() => setShowNewRecipe(true)}
+            className="nodo-appbar-action"
+            aria-label="Nueva receta"
+          >
+            <Plus size={18} strokeWidth={2.5} />
+          </button>
+        </ModuleActions>
+
         <div className="shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="min-w-0">
-              <h1 className="text-[26px] font-black text-nodo-ink leading-tight">Recetario</h1>
-              <p className="text-nodo-sub text-xs font-medium mt-0.5">
-                {recipes.length} recetas
-                {recipes.some(r => r.estimated_cost > 0)
-                  ? ` · ${profitCount} saludables`
-                  : ' · sin costos cargados'}
-              </p>
-            </div>
-            <div className="flex-1 hidden sm:flex justify-center">
-              <SegmentedControl
-                options={VIEW_OPTS}
-                value={viewMode}
-                onChange={v => setViewMode(v as typeof viewMode)}
-                size="sm"
-              />
-            </div>
-            <button
-              onClick={() => setShowNewRecipe(true)}
-              className="w-11 h-11 rounded-full bg-nodo-primary text-nodo-on-primary flex items-center justify-center active:scale-90 transition-transform shrink-0"
-              style={{ boxShadow: 'var(--nodo-shadow-fab)' }}
-              title="Nueva receta"
-            >
-              <Plus size={18} strokeWidth={2.5} />
-            </button>
+          <div className="hidden sm:flex justify-center">
+            <SegmentedControl
+              options={VIEW_OPTS}
+              value={viewMode}
+              onChange={v => setViewMode(v as typeof viewMode)}
+              size="sm"
+            />
           </div>
           <div className="sm:hidden mt-3">
             <SegmentedControl

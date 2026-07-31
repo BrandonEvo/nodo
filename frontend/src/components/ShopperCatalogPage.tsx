@@ -1,6 +1,6 @@
 /**
- * Catálogo público del Personal Shopper — "Drop en vivo".
- * Tienda en vivo con reloj gigante tipo drop: apartar en 1 toque, escasez honesta
+ * Catálogo público del Personal Shopper — venta en vivo.
+ * Venta en vivo con reloj gigante: apartar en 1 toque, escasez honesta
  * (quedan N), momentum real, pedido acumulado + PIN. Al cerrar la tienda todo se
  * congela. Nunca expone costos ni capacidad interna.
  */
@@ -41,6 +41,15 @@ function onColor(hex?: string | null): string {
   const m = hex.replace('#', '');
   const r = parseInt(m.slice(0, 2), 16), g = parseInt(m.slice(2, 4), 16), b = parseInt(m.slice(4, 6), 16);
   return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#111111' : '#FFFFFF';
+}
+
+/** '#RRGGBB' → 'r,g,b' para componer rgba() en el scrim. El `|| 0` importa: un theme_color
+ *  malformado dejaría un var() inválido, y un var() inválido invalida la declaración
+ *  `background-image` ENTERA → banner sin scrim y texto blanco sobre la foto cruda. */
+function hexRgb(hex?: string | null): string {
+  if (!hex) return '105,231,168';
+  const m = hex.replace('#', '');
+  return [0, 2, 4].map(i => parseInt(m.slice(i, i + 2), 16) || 0).join(',');
 }
 
 function useNow(ms = 1000) {
@@ -266,14 +275,42 @@ export function ShopperCatalogPage({ token }: Props) {
   }, [orderToken]);
 
   const theme = cat?.theme_color;
-  const rootStyle = theme ? ({ ['--nodo-primary' as any]: theme, ['--nodo-on-primary' as any]: onColor(theme) }) : undefined;
+  // `text-nodo-on-primary/70` NO existe: el token de Tailwind es un `var()` pelado, sin el
+  // placeholder `<alpha-value>`, así que el modificador de opacidad se descarta en silencio
+  // y el texto hereda el color del padre a opacidad plena. Por eso la jerarquía tonal del
+  // hero viaja en vars propias en vez de utilidades.
+  const rootStyle = useMemo(() => {
+    if (!theme) return undefined;
+    const on = onColor(theme);
+    const rgb = on === '#111111' ? '17,17,17' : '255,255,255';
+    // Mismos nombres que inyecta AppShell (esta página es pública y no vive dentro de él).
+    return {
+      ['--nodo-primary' as any]: theme,
+      ['--nodo-on-primary' as any]: on,
+      ['--nodo-primary-rgb' as any]: hexRgb(theme),
+      // Asimétrico a propósito: el texto oscuro pierde legibilidad más rápido al bajar alpha.
+      ['--nodo-on-primary-2' as any]: `rgba(${rgb},${on === '#111111' ? 0.66 : 0.74})`,
+      ['--nodo-veil' as any]: `rgba(${rgb},0.14)`,
+      ['--nodo-hairline' as any]: `rgba(${rgb},0.28)`,
+    };
+  }, [theme]);
 
   // Efectivo: si el reloj ya pasó, tratamos la tienda como cerrada aunque el último
   // fetch dijera 'live' (se sincroniza al refrescar).
   const closesMs = toMs(cat?.store_closes_at);
   const liveNow = !!cat && cat.store_status === 'live' && (closesMs == null || closesMs > now);
   // El tutorial muestra el countdown real: la urgencia no se pausa, se enfoca.
-  const drop = liveNow && closesMs != null ? fmtDrop(closesMs - now) : null;
+  const saleClock = liveNow && closesMs != null ? fmtSaleClock(closesMs - now) : null;
+
+  // La entrada del hero sólo corre si la venta abrió MIENTRAS el cliente miraba (el poller
+  // flipea `live`). Animarlo en el primer paint retrasaría el LCP justo sobre el reloj, que
+  // es lo que la gente vino a ver. Mismo criterio que `loadedOnce` para los cards.
+  const heroEntry = useRef(false);
+  const prevLive = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (prevLive.current === false && liveNow) heroEntry.current = true;
+    prevLive.current = liveNow;
+  }, [liveNow]);
 
   // Al agotarse el reloj local, refrescamos una vez para traer el estado cerrado real.
   const wasLive = useRef(false);
@@ -306,7 +343,7 @@ export function ShopperCatalogPage({ token }: Props) {
     const steps: ShopperTourStep[] = [];
     if (t) steps.push({
       target: 'reservar', emoji: '👆', interactive: true,
-      text: `Tocá ${t.listing === 'live' ? 'Reservar' : 'Apartar'}. No pagás nada ahora.`,
+      text: 'Tocá Apartar. No pagás nada ahora.',
     });
     steps.push({ target: 'pedido', emoji: '🧾', text: 'Aquí seguís tu pedido.' });
     tourSteps.current = steps;
@@ -328,7 +365,7 @@ export function ShopperCatalogPage({ token }: Props) {
   }, [closeTour]);
 
   // Auto-apertura en la primera visita: sólo si hay algo reservable, nunca compró
-  // antes, y al drop le quedan más de 90s (con 40 segundos se necesita el botón,
+  // antes, y a la venta le quedan más de 90s (con 40 segundos se necesita el botón,
   // no una lección). El primer scroll o toque la desarma: ya arrancó solo.
   useEffect(() => {
     if (!ready || !cat || !tourArmed.current) return;
@@ -386,7 +423,7 @@ export function ShopperCatalogPage({ token }: Props) {
       .filter((i): i is PublicShopperItem => !!i && ok(i));
     if (co.length) return { title: 'Se llevan juntos', items: co.slice(0, 3) };
     const rest = c.items.filter(ok).sort((a, b) => b.reserved_count - a.reserved_count);
-    return rest.length ? { title: 'Seguí armando tu maleta', items: rest.slice(0, 3) } : null;
+    return rest.length ? { title: 'Seguí armando tu pedido', items: rest.slice(0, 3) } : null;
   };
 
   const doReserve = async (item: PublicShopperItem, name: string, phone: string, qty = 1, silent = false) => {
@@ -496,10 +533,16 @@ export function ShopperCatalogPage({ token }: Props) {
         .s-nudge      { animation: shopper-nudge .26s ease-out; }
         .s-closebadge { animation: shopper-badge-drop .30s ease-out both; }
         .s-pill-in    { animation: shopper-pill-in .28s cubic-bezier(.22,1,.36,1) both; }
+
+        /* .s-hero-photo / .s-hero-scrim / .s-clock-urgent viven en index.css: los comparte
+           el hero del dueño. */
+        @keyframes shopper-hero-in { from { opacity: 0; transform: translate3d(0,14px,0) scale(.97) } to { opacity: 1; transform: none } }
+        .s-hero-in { animation: shopper-hero-in .44s cubic-bezier(.22,1,.36,1) both; }
         @media (prefers-reduced-motion: reduce) {
           .s-card-in, .s-closebadge { animation: shopper-fade-in .2s linear both; }
           .s-pill-in { animation: shopper-fade-in .2s linear both; transform: translateX(-50%); }
           .s-badge-new, .s-tick, .s-nudge { animation: none; }
+          .s-hero-in { animation: shopper-fade-in .2s linear both; }
         }
       `}</style>
 
@@ -552,7 +595,8 @@ export function ShopperCatalogPage({ token }: Props) {
             <HelpCircle size={17} />
           </button>
           {cat.whatsapp_number && (
-            <a href={`https://wa.me/${cat.whatsapp_number.replace(/\D/g, '')}`} target="_blank" rel="noopener"
+            <a href={`https://wa.me/${cat.whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola${cat.business_name ? ` ${cat.business_name}` : ''}! Vi tu catálogo 👀`)}`}
+              target="_blank" rel="noopener" aria-label="Escribir por WhatsApp"
               className="w-10 h-10 rounded-full bg-nodo-success-bg text-nodo-success-tx flex items-center justify-center active:scale-90 shrink-0">
               <MessageCircle size={18} />
             </a>
@@ -562,35 +606,45 @@ export function ShopperCatalogPage({ token }: Props) {
 
       <div className="max-w-2xl mx-auto px-4 py-4 flex flex-col gap-4 pb-28">
         {/* Ver mi pedido */}
-        <a href={orderToken ? `/mi-maleta/${orderToken}` : `/mi-maleta?c=${token}`} data-tour="pedido"
+        <a href={orderToken ? `/mi-pedido/${orderToken}` : `/mi-pedido?c=${token}`} data-tour="pedido"
           className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl bg-nodo-inset border border-nodo-line active:scale-[0.99]">
-          <span className="text-sm font-bold text-nodo-ink flex items-center gap-2"><ShoppingBag size={16} className="text-nodo-primary" /> Consulta tu pedido</span>
+          <span className="text-sm font-bold text-nodo-ink flex items-center gap-2"><ShoppingBag size={16} className="text-nodo-primary" /> Ver mi pedido</span>
           <ArrowRight size={16} className="text-nodo-dim" />
         </a>
 
-        {/* Hero. El catálogo le gana al drop cerrado: con la tienda cerrada pero
-            productos comprables, "El drop terminó" mandaba a WhatsApp y enterraba
+        {/* Hero. El catálogo le gana a la venta cerrada: con la venta cerrada pero
+            productos comprables, "La venta terminó" mandaba a WhatsApp y enterraba
             el negocio permanente. La lápida sólo queda si no hay nada más que vender. */}
         {liveNow ? (
-          <LiveDropHero
-            storeName={cat.store_name} closesMs={closesMs} now={now}
+          <LiveSaleHero
+            storeName={cat.store_name} bannerUrl={cat.store_banner_url}
+            closesMs={closesMs} now={now}
             reservedPeople={cat.reserved_people} reservedUnits={cat.reserved_units}
+            whatsapp={cat.whatsapp_number} announce={heroEntry.current}
           />
         ) : catalogItems.length > 0 ? (
           <div className="rounded-[28px] p-5 bg-nodo-primary text-nodo-on-primary" style={{ boxShadow: 'var(--nodo-shadow-hero)' }}>
             <p className="text-[11px] font-black uppercase tracking-[0.14em] text-nodo-on-primary/80">🛍️ Catálogo</p>
-            <p className="text-2xl font-black mt-1">Apartá lo que quieras traer</p>
+            <p className="text-2xl font-black mt-1">Apartá lo que querés que te traiga</p>
             {cat.delivery_days_min > 0 && (
-              <p className="text-sm font-bold text-nodo-on-primary/95 mt-1">Entrega estimada {cat.delivery_days_min}–{cat.delivery_days_max} días</p>
+              <p className="text-sm font-bold text-nodo-on-primary/95 mt-1">Te llega en {cat.delivery_days_min} a {cat.delivery_days_max} días</p>
             )}
           </div>
         ) : liveItems.length > 0 ? (
           <div className="rounded-[28px] p-5 bg-nodo-ink text-nodo-canvas" style={{ boxShadow: 'var(--nodo-shadow-hero)' }}>
             <p className="text-[11px] font-black uppercase tracking-[0.14em] text-nodo-canvas/70">🏁 Tienda cerrada</p>
-            <p className="text-2xl font-black mt-1">El drop terminó</p>
+            <p className="text-2xl font-black mt-1">La venta terminó</p>
             <p className="text-sm font-semibold text-nodo-canvas/70 mt-1">
-              Escribime por WhatsApp para el próximo.
+              Escribime por WhatsApp y te aviso de la próxima.
             </p>
+            {/* El copy mandaba a WhatsApp sin dar dónde tocar. */}
+            {cat.whatsapp_number && (
+              <a href={`https://wa.me/${cat.whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent('Hola! Me perdí la venta 😅 ¿Me avisás de la próxima?')}`}
+                target="_blank" rel="noopener" onClick={() => haptic.tap()}
+                className="mt-3 inline-flex h-11 pl-3 pr-4 rounded-full items-center gap-1.5 text-[13px] font-black bg-nodo-canvas/15 border border-nodo-canvas/25 active:scale-95 transition-transform">
+                <MessageCircle size={15} /> Avisame de la próxima
+              </a>
+            )}
           </div>
         ) : null}
 
@@ -598,9 +652,9 @@ export function ShopperCatalogPage({ token }: Props) {
             visibles: sirven en la visita 1 y en la 40, y los lee un lector de pantalla. */}
         {(liveItems.length > 0 || catalogItems.length > 0) && (
           <ul className="flex flex-col gap-2 px-4 py-3 rounded-2xl bg-nodo-inset border border-nodo-line">
-            <FactRow emoji="✋" text="Apartás sin pagar nada" />
-            {cat.whatsapp_number && <FactRow emoji="💬" text="Te escribimos por WhatsApp" />}
-            {cat.delivery_days_min > 0 && <FactRow emoji="✈️" text={`Llega en ${cat.delivery_days_min}–${cat.delivery_days_max} días`} />}
+            <FactRow emoji="✋" text="Apartar es gratis: no pagás nada ahora" />
+            {cat.whatsapp_number && <FactRow emoji="💬" text="Después te escribimos por WhatsApp" />}
+            {cat.delivery_days_min > 0 && <FactRow emoji="✈️" text={`Te llega en ${cat.delivery_days_min} a ${cat.delivery_days_max} días`} />}
           </ul>
         )}
 
@@ -608,7 +662,7 @@ export function ShopperCatalogPage({ token }: Props) {
         {liveItems.length > 0 && (
           <div className="flex flex-col gap-3">
             <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider flex items-center gap-1.5">
-              {liveNow ? <><Zap size={12} className="text-nodo-primary" /> En vivo ahora</> : 'Del último drop'}
+              {liveNow ? <><Zap size={12} className="text-nodo-primary" /> En vivo ahora</> : 'De la última venta'}
             </p>
             <div className="grid grid-cols-2 gap-3">{liveItems.map(renderCard)}</div>
           </div>
@@ -626,20 +680,20 @@ export function ShopperCatalogPage({ token }: Props) {
         {catalogItems.length > 0 && (
           <div className="flex flex-col gap-3">
             {liveItems.length > 0 && (
-              <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">📦 También por encargo</p>
+              <p className="text-[10px] font-bold text-nodo-dim uppercase tracking-wider">📦 También te lo puedo traer</p>
             )}
             <div className="grid grid-cols-2 gap-3">{catalogItems.map(renderCard)}</div>
           </div>
         )}
 
         {liveItems.length === 0 && catalogItems.length === 0 && (
-          <div className="nodo-empty-state py-16"><Package size={36} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-dim">Nada por aquí todavía</p><p className="text-xs text-nodo-sub mt-1">Volvé pronto para el próximo drop</p></div>
+          <div className="nodo-empty-state py-16"><Package size={36} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-dim">Todavía no hay nada</p><p className="text-xs text-nodo-sub mt-1">Volvé pronto para la próxima venta</p></div>
         )}
       </div>
 
       {/* Order pill */}
       {orderCount > 0 && (
-        <a href={`/mi-maleta/${orderToken}`} data-tour="pill"
+        <a href={`/mi-pedido/${orderToken}`} data-tour="pill"
           className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 pl-4 pr-3 py-3 rounded-full bg-nodo-ink text-nodo-canvas font-black shadow-lg active:scale-95 transition-transform"
           style={{ animation: 'shopper-bump 0.3s ease-out' }} key={orderCount}>
           <ShoppingBag size={18} />
@@ -658,51 +712,103 @@ export function ShopperCatalogPage({ token }: Props) {
         onAdd={(i) => client.current && doReserve(i, client.current.name, client.current.phone, 1, true)} />
 
       {tourOpen && (
-        <ShopperFirstBuyTour steps={tourSteps.current} clock={drop?.big} urgent={drop?.urgent}
+        <ShopperFirstBuyTour steps={tourSteps.current} clock={saleClock?.big} urgent={saleClock?.urgent}
           onClose={closeTour} onTapThrough={onTourTapThrough} />
       )}
     </div>
   );
 }
 
-// ── Hero: reloj gigante del drop ─────────────────────────────────────────────────
-function LiveDropHero({ storeName, closesMs, now, reservedPeople, reservedUnits }: {
-  storeName?: string | null; closesMs: number | null; now: number;
-  reservedPeople: number; reservedUnits: number;
+// ── Hero: reloj gigante de la venta ─────────────────────────────────────────────
+// Con foto de la tienda real (Target, Ross…) de fondo. Foto y reloj no compiten: la foto
+// trabaja en visión periférica y frena el scroll; el reloj trabaja en fóvea y dispara el
+// toque. Scrimeada, la foto le presta autoridad al número en vez de robársela.
+function LiveSaleHero({ storeName, bannerUrl, closesMs, now, reservedPeople, reservedUnits, whatsapp, announce }: {
+  storeName?: string | null; bannerUrl?: string | null; closesMs: number | null; now: number;
+  reservedPeople: number; reservedUnits: number; whatsapp?: string | null; announce: boolean;
 }) {
+  const [photoIn, setPhotoIn] = useState(false);
   const diff = closesMs != null ? closesMs - now : null;
-  const clock = diff != null ? fmtDrop(diff) : null;
+  const clock = diff != null ? fmtSaleClock(diff) : null;
   const urgent = clock?.urgent ?? false;
+  const photo = !!bannerUrl;
+
+  // Sobre una foto la superficie es la FOTO, no el tema del negocio: un tenant con primario
+  // amarillo tiene --nodo-on-primary #111 y quedaría texto negro sobre un scrim oscuro.
+  // Sin foto, --sc-fg vuelve a ser el token y degrada exacto al diseño de siempre.
+  const skin = (photo
+    ? { '--sc-fg': '#FFFFFF', '--sc-fg-2': 'rgba(255,255,255,0.74)',
+        '--sc-chip': 'rgba(0,0,0,0.42)', '--sc-hair': 'rgba(255,255,255,0.22)' }
+    : { '--sc-fg': 'var(--nodo-on-primary)', '--sc-fg-2': 'var(--nodo-on-primary-2, rgba(255,255,255,0.74))',
+        '--sc-chip': 'var(--nodo-veil, rgba(255,255,255,0.14))', '--sc-hair': 'var(--nodo-hairline, rgba(255,255,255,0.28))' }
+  ) as React.CSSProperties;
+
+  const waHref = whatsapp
+    ? `https://wa.me/${whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(
+        `Hola! Te vi en vivo${storeName ? ` desde ${storeName}` : ''} 👀 ¿Me podés buscar algo?`)}`
+    : null;
+
   return (
-    <div className="rounded-[28px] p-5 bg-nodo-primary text-nodo-on-primary" style={{ boxShadow: 'var(--nodo-shadow-hero)' }}>
-      <div className="flex items-center gap-2">
-        <span className="relative flex h-3 w-3">
-          <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 motion-safe:animate-ping" />
-          <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-        </span>
-        <span className="text-[12px] font-black uppercase tracking-[0.14em]">En vivo{storeName ? ` · ${storeName}` : ''}</span>
-      </div>
+    <div className={`relative overflow-hidden flex flex-col rounded-[28px] p-5 bg-nodo-primary
+        ${photo ? 'min-h-[260px]' : ''} ${announce ? 's-hero-in' : ''}`}
+      style={{ boxShadow: 'var(--nodo-shadow-hero)', ...skin }}>
 
-      {clock ? (
-        <div className="mt-2 flex items-end gap-2">
-          <span className={`font-black tabular-nums tracking-tighter leading-none text-[56px] ${urgent ? 'text-red-200 motion-safe:animate-pulse' : ''}`}>{clock.big}</span>
-          <span className="text-sm font-bold text-nodo-on-primary/70 mb-2">{urgent ? '¡última llamada!' : 'para cerrar'}</span>
+      {photo && (<>
+        {/* El scrim se pinta aunque la foto nunca decodifique: la legibilidad no puede
+            depender de que la imagen cargue. */}
+        <img src={bannerUrl!} alt="" aria-hidden="true" decoding="async"
+          onLoad={() => setPhotoIn(true)}
+          ref={el => { if (el?.complete) setPhotoIn(true); }}
+          className={`s-hero-photo absolute inset-0 w-full h-full object-cover object-[center_35%]
+            ${photoIn ? 'opacity-100' : 'opacity-0'}`} />
+        <div className="s-hero-scrim absolute inset-0 pointer-events-none" />
+      </>)}
+
+      <div className="relative flex flex-col flex-1" style={{ color: 'var(--sc-fg)' }}>
+        <div className={`self-start flex items-center gap-2 ${photo ? 'h-8 pl-2.5 pr-3 rounded-full backdrop-blur-sm' : ''}`}
+          style={photo ? { background: 'var(--sc-chip)' } : undefined}>
+          <span className="relative flex h-3 w-3">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 motion-safe:animate-ping" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+          </span>
+          <span className="text-[12px] font-black uppercase tracking-[0.14em]">En vivo{storeName ? ` · ${storeName}` : ''}</span>
         </div>
-      ) : (
-        <p className="mt-2 text-3xl font-black leading-none">🔴 Estoy en la tienda ahora</p>
-      )}
 
-      <p className="text-sm font-semibold text-nodo-on-primary/80 mt-2">Reservá antes de que cierre — cuando el reloj llega a cero, se acabó.</p>
-      {reservedPeople >= 2 && (
-        <p className="text-[12px] font-black text-nodo-on-primary mt-2 flex items-center gap-1.5">
-          <Flame size={13} /> {reservedPeople} personas ya apartaron {reservedUnits}
-        </p>
-      )}
+        {/* Con foto empuja el texto abajo; sin foto colapsa a 8px = el mt-2 de siempre. */}
+        <div className="flex-1 min-h-[8px]" />
+
+        {clock ? (
+          <div className="flex items-end gap-3">
+            <span className={`font-black tabular-nums tracking-tighter leading-none text-[clamp(42px,13.5vw,56px)]
+              ${urgent ? 's-clock-urgent text-red-200' : ''}`}>{clock.big}</span>
+            <span className="text-sm font-bold mb-2" style={{ color: 'var(--sc-fg-2)' }}>
+              {urgent ? '¡última llamada!' : 'para que cierre'}
+            </span>
+          </div>
+        ) : (
+          <p className="text-[28px] font-black leading-tight">🔴 Estoy en la tienda ahora</p>
+        )}
+
+        <div className="mt-3 flex items-center justify-between gap-3">
+          {reservedPeople >= 2 ? (
+            <p className="min-w-0 truncate text-[11px] font-black flex items-center gap-1.5">
+              <Flame size={12} className="shrink-0" /> {reservedPeople} personas · {reservedUnits} apartados
+            </p>
+          ) : <span />}
+          {waHref && (
+            <a href={waHref} target="_blank" rel="noopener" onClick={() => haptic.tap()}
+              className="shrink-0 h-11 pl-3 pr-4 rounded-full flex items-center gap-1.5 text-[13px] font-black border active:scale-95 transition-transform"
+              style={{ background: 'var(--sc-chip)', borderColor: 'var(--sc-hair)' }}>
+              <MessageCircle size={15} /> Pedime algo
+            </a>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function fmtDrop(diffMs: number): { big: string; urgent: boolean } {
+function fmtSaleClock(diffMs: number): { big: string; urgent: boolean } {
   if (diffMs <= 0) return { big: '0:00', urgent: true };
   const s = Math.floor(diffMs / 1000);
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
@@ -780,7 +886,7 @@ function ProductCard({ item, now, forceClosed, busy, isNew, ticking, closing, to
   const soldOut = item.remaining != null && item.remaining <= 0;
   const low = !closed && item.remaining != null && item.remaining > 0 && item.remaining <= 3;
   const isLive = item.listing === 'live';
-  const cta = closed ? (soldOut ? 'Agotado' : 'Cerrado') : isLive ? 'Reservar' : 'Apartar';
+  const cta = closed ? (soldOut ? 'Agotado' : 'Ya cerró') : 'Apartar';
   return (
     <div id={'sc-' + item.id}
       className={`nodo-card overflow-hidden flex flex-col transition-opacity duration-500 ${closed ? 'opacity-60' : ''} ${isNew ? 's-card-in' : ''}`}>
@@ -834,11 +940,11 @@ function ReserveSheet({ item, onClose, remembered, busy, onSubmit }: {
   const valid = name.trim().length > 1 && phone.replace(/\D/g, '').length >= 8;
   const isLive = item?.listing === 'live';
   return (
-    <BottomSheet open={item != null} onClose={onClose} title={isLive ? 'Reservá antes de que cierre' : 'Aparta tu producto'}
+    <BottomSheet open={item != null} onClose={onClose} title={isLive ? 'Apartalo antes de que cierre' : 'Apartá tu producto'}
       footer={
         <button onClick={() => valid && onSubmit(name.trim(), phone.trim())} disabled={!valid || busy}
           className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2">
-          {busy ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} {isLive ? 'RESERVAR ⚡' : 'APARTAR'}
+          {busy ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} {isLive ? 'APARTAR ⚡' : 'APARTAR'}
         </button>
       }>
       <div className="flex flex-col gap-4">
@@ -851,8 +957,8 @@ function ReserveSheet({ item, onClose, remembered, busy, onSubmit }: {
             </div>
           </div>
         )}
-        <div><label className="nodo-label">Tu nombre</label><input value={name} onChange={e => setName(e.target.value)} placeholder="Nombre y apellido" className="nodo-input" autoFocus /></div>
-        <div><label className="nodo-label">Tu WhatsApp</label><input value={phone} onChange={e => setPhone(e.target.value)} placeholder="5512 3456" className="nodo-input" inputMode="tel" /></div>
+        <div><label className="nodo-label">¿Cómo te llamás?</label><input value={name} onChange={e => setName(e.target.value)} placeholder="Nombre y apellido" className="nodo-input" autoFocus /></div>
+        <div><label className="nodo-label">¿Cuál es tu WhatsApp?</label><input value={phone} onChange={e => setPhone(e.target.value)} placeholder="5512 3456" className="nodo-input" inputMode="tel" /></div>
         <p className="text-[11px] text-nodo-sub">Guardamos tu lugar y precio. Te contactamos por WhatsApp para confirmar. 🔒</p>
       </div>
     </BottomSheet>

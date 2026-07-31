@@ -1,12 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Sun, Moon, ChevronsUpDown } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Sidebar } from './navigation/Sidebar';
-import { Topbar } from './navigation/Topbar';
+import { AppBar } from './navigation/AppBar';
 import { BottomNav } from './navigation/BottomNav';
 import { DashboardCanvas } from './dashboard/DashboardCanvas';
 import { PushBanner } from './ui/PushBanner';
 import { TrialBanner } from './ui/TrialBanner';
-import { NodoMark, NodoWordmark } from './ui/NodoLogo';
+import { ModuleChromeProvider } from './chrome/ModuleChrome';
+import { TAB_LABELS, HOME_TABS } from '@/lib/tab-labels';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { usePushPermission } from '@/hooks/usePushPermission';
 import { authService } from '@/services/auth.service';
@@ -73,6 +73,15 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
             '--nodo-primary-deep':     darkenHex(tenantColor, 0.15),
             '--nodo-on-primary':       onPrimary,
             '--nodo-shadow-fab':       `0 8px 20px -4px rgba(${r},${g},${b},0.35)`,
+            // `text-nodo-on-primary/70` NO funciona: el token de Tailwind es un var() pelado,
+            // sin el placeholder `<alpha-value>`, así que el modificador de opacidad se
+            // descarta en silencio y el texto sale a opacidad plena. Estas son las variantes
+            // con alpha que sí existen. El alpha es asimétrico a propósito: el texto oscuro
+            // pierde legibilidad más rápido al bajarlo que el blanco.
+            '--nodo-primary-rgb':      `${r},${g},${b}`,
+            '--nodo-on-primary-2':     onPrimary === '#111111' ? 'rgba(17,17,17,0.66)' : 'rgba(255,255,255,0.74)',
+            '--nodo-veil':             onPrimary === '#111111' ? 'rgba(17,17,17,0.14)' : 'rgba(255,255,255,0.14)',
+            '--nodo-hairline':         onPrimary === '#111111' ? 'rgba(17,17,17,0.28)' : 'rgba(255,255,255,0.28)',
             // Marca nodo. — iridiscente derivado del tenantColor (hue ±50°)
             '--nodo-iris':             iris.gradient,
             '--nodo-iris-soft':        iris.soft,
@@ -98,6 +107,44 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
     const [activeTab, setActiveTab] = useState(getDefaultTab());
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+    // ── CHROME DE MÓDULO (título + acciones en la AppBar) ──
+    const mainRef = useRef<HTMLElement>(null);
+    const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
+    const [chromeOverride, setChromeOverride] = useState<{ title: string; subtitle?: string } | null>(null);
+    const chromeValue = useMemo(
+        () => ({ setTitle: setChromeOverride, actionsSlot }),
+        [actionsSlot],
+    );
+
+    // Sale de activeTab, no del hijo: mientras el chunk lazy del módulo carga, la barra
+    // ya muestra su nombre en vez de parpadear a "Inicio".
+    const defaultTitle = useMemo(() => {
+        if (HOME_TABS.has(activeTab)) return null;
+        const mod = activeModules.find(
+            (m: any) => m.code?.toLowerCase() === activeTab || m.frontend_route === activeTab,
+        );
+        return mod?.name ?? TAB_LABELS[activeTab] ?? null;
+    }, [activeTab, activeModules]);
+
+    const barTitle    = chromeOverride?.title ?? defaultTitle;
+    const barSubtitle = chromeOverride?.title ? chromeOverride.subtitle : undefined;
+
+    // <main> es un nodo persistente: sin esto, entrar a un módulo te deja en el scroll
+    // del anterior. El foco además anuncia la pantalla nueva sin un aria-live ruidoso.
+    useEffect(() => {
+        mainRef.current?.scrollTo({ top: 0 });
+        mainRef.current?.focus({ preventScroll: true });
+    }, [activeTab]);
+
+    useEffect(() => {
+        document.title = barTitle ? `${barTitle} · Nodo` : 'Nodo';
+    }, [barTitle]);
+
+    const goHome = useCallback(
+        () => setActiveTab(isSuperAdmin ? 'admin_home' : 'home'),
+        [isSuperAdmin],
+    );
+
     // Reset tab when switching impersonation modes
     useEffect(() => {
         if (appViewMode === 'superadmin') {
@@ -120,7 +167,9 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
     }, [activeTab]);
 
     return (
-        <div className="min-h-screen nodo-canvas-ambient" style={tenantCssVars}>
+        // h-dvh + overflow-hidden: con min-h-screen (100vh = large viewport en iOS) el
+        // body quedaba con scroll propio y toda la app se arrastraba bajo el BottomNav.
+        <div className="h-dvh overflow-hidden nodo-canvas-ambient" style={tenantCssVars}>
 
             {/* ── DESKTOP SIDEBAR ── */}
             <Sidebar
@@ -140,82 +189,38 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
             {/* ── MAIN AREA ── */}
             <div className={`${sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-[260px]'} transition-all duration-300 h-dvh overflow-hidden flex flex-col`}>
 
-                {/* ── DESKTOP TOPBAR ── */}
-                <Topbar
+                <AppBar
+                    title={barTitle}
+                    subtitle={barSubtitle}
+                    onBack={barTitle ? goHome : undefined}
+                    actionsRef={setActionsSlot}
                     displayName={displayName}
                     tenantName={tenantName}
+                    tenantLogo={tenantLogo}
+                    tenantColor={tenantColor}
                     userPicture={userPicture}
+                    isDark={isDark}
+                    onToggleDark={toggleDark}
                     realIsSuperAdmin={realIsSuperAdmin}
                     appViewMode={appViewMode}
                     onViewModeChange={setAppViewMode}
-                    tenantColor={tenantColor}
-                    isDark={isDark}
-                    onToggleDark={toggleDark}
                     availableTenants={availableTenants}
                     onSwitchTenant={handleSwitchTenant}
+                    onProfile={() => setActiveTab('profile')}
                 />
 
-                {/* ── MOBILE HEADER ── */}
-                <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-5 h-14 nodo-glass-bar border-b border-nodo-line"
-                    style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
-                >
-                    {/* Tenant identity / switcher mobile */}
-                    {availableTenants.length > 1 ? (
-                        <div className="flex items-center gap-1.5 bg-nodo-inset border border-nodo-line rounded-xl px-3 py-1.5 max-w-[180px]">
-                            <div
-                                className="w-5 h-5 rounded-md flex items-center justify-center text-white font-black text-[10px] shrink-0"
-                                style={{ backgroundColor: tenantColor }}
-                            >
-                                {tenantName.charAt(0)}
-                            </div>
-                            <select
-                                value={availableTenants.find((t: any) => t.is_active)?.tenant_id ?? ''}
-                                onChange={e => handleSwitchTenant(e.target.value)}
-                                className="bg-transparent text-xs font-bold text-nodo-ink outline-none cursor-pointer appearance-none truncate flex-1"
-                            >
-                                {availableTenants.map((t: any) => (
-                                    <option key={t.tenant_id} value={t.tenant_id}>{t.tenant_name}</option>
-                                ))}
-                            </select>
-                            <ChevronsUpDown className="w-3 h-3 text-nodo-dim shrink-0 pointer-events-none" />
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2.5">
-                            {tenantLogo ? (
-                                <img src={tenantLogo} alt={tenantName} className="w-8 h-8 rounded-xl object-contain" />
-                            ) : (
-                                <NodoMark size={28} />
-                            )}
-                            <NodoWordmark name={tenantName} className="text-sm text-nodo-ink" />
-                        </div>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={toggleDark}
-                            className="w-9 h-9 flex items-center justify-center rounded-xl text-nodo-dim hover:text-nodo-sub hover:bg-nodo-inset transition-colors"
-                            aria-label={isDark ? 'Modo claro' : 'Modo oscuro'}
-                        >
-                            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                        </button>
-                        {userPicture ? (
-                            <img src={userPicture} alt="Avatar"
-                                className="w-8 h-8 rounded-xl object-cover ring-2 ring-nodo-line"
-                                referrerPolicy="no-referrer"
-                            />
-                        ) : (
-                            <div
-                                className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-sm"
-                                style={{ background: `linear-gradient(135deg, ${tenantColor}, ${tenantColor}cc)` }}
-                            >
-                                {displayName.charAt(0).toUpperCase()}
-                            </div>
-                        )}
-                    </div>
-                </header>
-
                 {/* ── CONTENT CANVAS ── */}
-                <main className="flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 pb-28 lg:pb-10 overflow-y-auto flex flex-col">
+                {/* El padding vertical vive acá y en ningún wrapper interno: los sticky
+                    de los módulos se anclan al padding-box de este scroller. */}
+                <main
+                    ref={mainRef}
+                    tabIndex={-1}
+                    aria-labelledby="app-title"
+                    className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col outline-none
+                               px-4 pt-3 pb-nav
+                               sm:px-6 sm:pt-4
+                               lg:px-8 lg:pt-6 xl:px-10"
+                >
                     {!realIsSuperAdmin && userSession?.access_state && userSession.access_state !== 'active' && (
                         <div className="mb-5">
                             <TrialBanner
@@ -240,21 +245,23 @@ export function AppShell({ userSession, activeModules = [], onLogout, onReloadSe
                             />
                         </div>
                     )}
-                    <DashboardCanvas
-                        activeTab={activeTab}
-                        setActiveTab={setActiveTab}
-                        displayName={displayName}
-                        tenantName={tenantName}
-                        userPicture={userPicture}
-                        isSuperAdmin={isSuperAdmin}
-                        isTenantAdmin={isTenantAdmin}
-                        activeModules={activeModules}
-                        onLogout={onLogout}
-                        tenantLogo={tenantLogo}
-                        tenantColor={tenantColor}
-                        isDark={isDark}
-                        onToggleDark={toggleDark}
-                    />
+                    <ModuleChromeProvider value={chromeValue}>
+                        <DashboardCanvas
+                            activeTab={activeTab}
+                            setActiveTab={setActiveTab}
+                            displayName={displayName}
+                            tenantName={tenantName}
+                            userPicture={userPicture}
+                            isSuperAdmin={isSuperAdmin}
+                            isTenantAdmin={isTenantAdmin}
+                            activeModules={activeModules}
+                            onLogout={onLogout}
+                            tenantLogo={tenantLogo}
+                            tenantColor={tenantColor}
+                            isDark={isDark}
+                            onToggleDark={toggleDark}
+                        />
+                    </ModuleChromeProvider>
                 </main>
             </div>
 

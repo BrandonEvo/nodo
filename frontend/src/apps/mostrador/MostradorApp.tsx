@@ -5,6 +5,7 @@ import {
   Clock, RotateCcw,
 } from 'lucide-react';
 import type { AppProps } from '../index';
+import { useModuleChrome, ModuleActions } from '@/components/chrome/ModuleChrome';
 import { mostradorService, type Sale } from '@/services/mostrador.service';
 import type { Recipe } from '@/services/recetas.service';
 import { BottomSheet } from '@/components/ui/BottomSheet';
@@ -322,6 +323,8 @@ export function MostradorApp(_props: AppProps) {
     { value: 'ayer'   as Freshness, label: 'Ayer −40%' },
   ];
 
+  useModuleChrome('Punto de Venta', `${products.length} producto${products.length === 1 ? '' : 's'} disponible${products.length === 1 ? '' : 's'}`);
+
   const RIGHT_TAB_OPTS = [
     { value: 'ticket' as const, label: 'Ticket', icon: <ShoppingBag size={13} /> },
     { value: 'hoy'    as const, label: 'Hoy',    icon: <Clock size={13} /> },
@@ -364,42 +367,31 @@ export function MostradorApp(_props: AppProps) {
       {/* ── LEFT: Product Grid ───────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
 
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            {/* Módulo pill */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-nodo-primary-soft mb-2">
-              <Store size={12} className="text-nodo-primary" />
-              <span className="text-[11px] font-black text-nodo-primary uppercase tracking-wider">Mostrador</span>
-            </div>
-            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Punto de Venta</h1>
-            <p className="text-sm text-nodo-sub font-medium mt-0.5">
-              {products.length} productos disponibles
-            </p>
-            <DualClock className="mt-2" />
-          </div>
-
-          {/* Mobile: resumen carrito + botón historial */}
-          <div className="lg:hidden flex items-center gap-2 pt-1 shrink-0">
-            {cart.length > 0 && (
-              <div className="flex flex-col items-end">
-                <span className="text-xl font-black text-nodo-ink tabular-nums">Q{total.toFixed(2)}</span>
-                <span className="text-xs text-nodo-sub font-medium">{itemCount} {itemCount === 1 ? 'ítem' : 'ítems'}</span>
-              </div>
+        <ModuleActions>
+          <button
+            onClick={() => { setShowHistory(true); loadSales(); }}
+            className="nodo-appbar-action lg:hidden"
+            aria-label="Historial de ventas"
+          >
+            <Clock size={16} />
+            {sales.length > 0 && (
+              <span className="nodo-appbar-badge text-white" style={{ backgroundColor: 'var(--nodo-primary)' }}>
+                {sales.length > 9 ? '9+' : sales.length}
+              </span>
             )}
-            <button
-              onClick={() => { setShowHistory(true); loadSales(); }}
-              className="flex items-center justify-center relative w-11 h-11 rounded-full bg-nodo-primary-softer active:bg-nodo-primary-soft transition-colors"
-            >
-              <Clock size={18} className="text-nodo-primary" />
-              {sales.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-white text-[9px] font-black flex items-center justify-center"
-                  style={{ backgroundColor: 'var(--nodo-primary)' }}>
-                  {sales.length > 9 ? '9+' : sales.length}
-                </span>
-              )}
-            </button>
-          </div>
+          </button>
+        </ModuleActions>
+
+        {/* El reloj y el total del carrito se quedan en el cuerpo: son datos que se leen,
+            no controles, y en la barra competirían con el título. */}
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <DualClock />
+          {cart.length > 0 && (
+            <div className="lg:hidden flex flex-col items-end shrink-0">
+              <span className="text-xl font-black text-nodo-ink tabular-nums">Q{total.toFixed(2)}</span>
+              <span className="text-xs text-nodo-sub font-medium">{itemCount} {itemCount === 1 ? 'ítem' : 'ítems'}</span>
+            </div>
+          )}
         </div>
 
         {/* Freshness filter */}
@@ -420,7 +412,7 @@ export function MostradorApp(_props: AppProps) {
             <p className="text-xs text-nodo-dim/60">Crea recetas en el módulo Recetas</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 flex-1 overflow-y-auto pb-28 lg:pb-4 content-start">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 flex-1 overflow-y-auto pb-nav lg:pb-4 content-start">
             {products.map(product => {
               const inCartItem = cart.find(c => c.recipe.id === product.id && c.freshness === freshness);
               return (

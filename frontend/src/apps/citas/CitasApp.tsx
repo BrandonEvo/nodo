@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Check, Share2, X } from 'lucide-react';
 import type { AppProps } from '../index';
+import { useModuleChrome, ModuleActions } from '@/components/chrome/ModuleChrome';
 import {
   citasService,
   type BookingAgenda, type BookingService, type BookingSettings,
@@ -24,6 +25,9 @@ const VIEW_OPTS = [
 
 export function CitasApp(_props: AppProps) {
   const [view, setView] = useState<View>('agenda');
+
+  useModuleChrome('Citas', 'Agenda, servicios y reservas en línea');
+
   const [settings, setSettings] = useState<BookingSettings | null>(null);
   const [services, setServices] = useState<BookingService[]>([]);
   const [agendaDate, setAgendaDate] = useState(todayISO());
@@ -122,22 +126,18 @@ export function CitasApp(_props: AppProps) {
         </div>
       )}
 
-      <div className="flex flex-col gap-6 pb-6 max-w-4xl mx-auto">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="nodo-module-title">Citas</h1>
-            <p className="nodo-module-subtitle">Agenda, servicios y reservas en línea</p>
-          </div>
-          <button
-            onClick={handleShareAgenda}
-            disabled={!settings}
-            className="nodo-btn-secondary shrink-0 flex items-center gap-2 disabled:opacity-30"
-          >
-            <Share2 size={15} />
-            <span className="hidden sm:inline">Compartir agenda</span>
-          </button>
-        </div>
+      <ModuleActions>
+        <button
+          onClick={handleShareAgenda}
+          disabled={!settings}
+          className="nodo-appbar-action"
+          aria-label="Compartir agenda"
+        >
+          <Share2 size={16} />
+        </button>
+      </ModuleActions>
 
+      <div className="flex flex-col gap-6 max-w-4xl mx-auto">
         <SegmentedControl options={VIEW_OPTS} value={view} onChange={v => setView(v)} />
 
         {loading ? (

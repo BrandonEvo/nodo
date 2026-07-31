@@ -70,10 +70,6 @@ export function SubscriptionScreen() {
   return (
     <>
       <div className="flex flex-col gap-6 pb-6 max-w-3xl mx-auto">
-        <div>
-          <h1 className="nodo-module-title">Suscripción</h1>
-          <p className="nodo-module-subtitle">Tu plan, estado y pago</p>
-        </div>
 
         {/* Estado actual */}
         <StatusCard me={me} />

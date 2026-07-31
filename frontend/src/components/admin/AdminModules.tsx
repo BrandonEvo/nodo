@@ -173,11 +173,7 @@ export function AdminModules() {
       <div className="flex flex-col flex-1 overflow-hidden gap-6">
 
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 shrink-0">
-          <div>
-            <h1 className="text-[28px] font-black text-nodo-ink leading-tight">Módulos Globales</h1>
-            <p className="text-nodo-sub text-sm font-medium mt-0.5">Funcionalidades disponibles en el ecosistema.</p>
-          </div>
+        <div className="flex items-start justify-end gap-4 shrink-0">
           <button
             onClick={openCreate}
             className="h-11 px-5 rounded-2xl bg-nodo-ink text-nodo-canvas font-black text-sm flex items-center gap-2 active:scale-[0.97] transition-transform shadow-lg shrink-0"

@@ -23,7 +23,7 @@ export function ImportTabBar({
     <div
       className="lg:hidden fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-1
                  liquid-glass rounded-full p-1.5 shadow-lg
-                 bottom-[calc(72px+env(safe-area-inset-bottom,0px))]"
+                 bottom-[calc(var(--nodo-bottomnav-h)+12px)]"
     >
       {tabs.map(t => {
         const active = t.value === value;

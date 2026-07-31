@@ -384,15 +384,47 @@ class ShopperCatalogSettings(AuditBase, table=True):
     # Fase 2 IA (generación de copy al publicar) — apagada por defecto.
     ai_copy_enabled: bool = Field(default=False)
 
-    # Tienda en vivo (drop): sesión temporizada tipo subasta-flash. El dueño
+    # Venta en vivo: sesión temporizada tipo subasta-flash. El dueño
     # "abre tienda", publica rápido, y al cerrar (a mano o por reloj) se congela:
     # no entran más reservas y las hechas quedan firmes. store_session_id se
-    # regenera en cada apertura para que un drop cerrado no reviva al reabrir.
+    # regenera en cada apertura para que una venta cerrada no reviva al reabrir.
     store_status: str = Field(default="closed", max_length=10)   # closed | live
     store_name: Optional[str] = Field(default=None, max_length=100)
     store_opened_at: Optional[datetime] = Field(default=None)
     store_closes_at: Optional[datetime] = Field(default=None)   # target del countdown; null = a mano
     store_session_id: Optional[uuid.UUID] = Field(default=None)
+
+    # Foto de fondo del banner de la venta en vivo (la tienda donde está comprando:
+    # Target, Ross…). Text, no String: es un data URI redimensionado, igual que
+    # ShopperCatalogItem.image_url. Es lo único de la venta que ve el cliente antes
+    # de mirar precios, así que vive en settings (actual) y se copia a la sesión.
+    store_banner_url: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+
+
+class ShopperStoreSession(AuditBase, table=True):
+    """Histórico de cada venta en vivo. `settings.store_*` se sobrescribe en cada
+    apertura, así que sin esta tabla una venta cerrada no deja rastro consultable.
+
+    Guarda la IDENTIDAD y la VENTANA de la venta, no sus métricas: las cifras se
+    derivan de las reservas creadas entre `opened_at` y `closed_at`, de modo que el
+    histórico sigue diciendo la verdad cuando un pedido se entrega o se cancela
+    después del cierre. Un snapshot congelado mentiría a partir del día siguiente.
+    """
+    __tablename__ = "shopper_store_sessions"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    tenant_id: uuid.UUID = Field(foreign_key="tenants.id", index=True)
+    # Espeja settings.store_session_id: liga los ítems publicados en esta venta.
+    store_session_id: uuid.UUID = Field(index=True)
+
+    store_name: Optional[str] = Field(default=None, max_length=100)
+    # Copia de store_banner_url al abrir: la venta de la semana pasada tiene que
+    # seguir mostrando SU foto aunque hoy el dueño suba otra.
+    banner_url: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+
+    opened_at: datetime = Field()
+    closed_at: Optional[datetime] = Field(default=None)   # null = venta en curso
+    closes_at: Optional[datetime] = Field(default=None)   # target del reloj; null = a mano
 
 
 class ShopperCatalogItem(AuditBase, table=True):
