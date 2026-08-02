@@ -7,7 +7,7 @@ from .iam import TenantMember, TenantMemberModuleAccess
 from .webauthn import WebAuthnCredential
 from .audit import AuditLog
 from .invitations import Invitation
-from .platform_config import PlatformConfig
+from .platform_config import PlatformConfig, ErrorEvent
 from .importaciones import ImportCotizacion, ImportCliente, ImportPaquete
 from .import_catalog import ImportCatalogSettings, ImportCatalogItem, ImportReservation
 from .presence import UserPresence

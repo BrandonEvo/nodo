@@ -61,12 +61,21 @@ app.add_middleware(SlowAPIMiddleware)
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     logger.exception("Unhandled exception: %s", exc)
+    # Deja rastro en el panel del súper admin. Un 500 sólo existía si alguien abría
+    # `docker logs`; ahora queda registrado y avisa. Nunca propaga: si el monitoreo
+    # falla, el cliente igual recibe su 500.
+    from api.services.error_monitor import record_exception
+    await record_exception(request, exc)
+
     origin = request.headers.get("origin") or (origins[0] if origins else "*")
     if origins and origin not in origins:
         origin = origins[0]
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc)},
+        # `str(exc)` iba al cliente: un IntegrityError le mostraba nombres de tabla y
+        # constraints, y un fallo de conexión la cadena de la base. El detalle vive en
+        # el panel, no en la respuesta.
+        content={"detail": "Ocurrió un error inesperado. Ya quedó registrado."},
         headers={**_cors_headers(), "Access-Control-Allow-Origin": origin},
     )
 

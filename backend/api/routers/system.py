@@ -16,16 +16,20 @@ import json
 import os
 import shutil
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
 
 from api.deps import fastapi_users
 from core.config import settings
-from models import User
+from db.session import get_session
+from models import ErrorEvent, User
 
 router = APIRouter(tags=["Admin: System"])
 
@@ -131,6 +135,55 @@ def _ram_metrics(status: dict) -> RamMetrics:
 def _resolve_docker_version(status: dict) -> Optional[str]:
     version = status.get("docker_version") or settings.DOCKER_VERSION or ""
     return version if version and version != "unknown" else None
+
+
+class ErrorEventRead(BaseModel):
+    id: uuid.UUID
+    exc_type: str
+    message: str
+    method: str
+    path: str
+    traceback: str
+    count: int
+    first_seen_at: datetime
+    last_seen_at: datetime
+    resolved_at: Optional[datetime] = None
+    user_email: Optional[str] = None
+
+
+@router.get("/errors", response_model=List[ErrorEventRead])
+async def list_errors(
+    include_resolved: bool = False,
+    limit: int = Query(50, ge=1, le=200),
+    _user: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_session),
+):
+    """Los 500 agrupados por firma, el más reciente arriba."""
+    stmt = select(ErrorEvent)
+    if not include_resolved:
+        stmt = stmt.where(ErrorEvent.resolved_at == None)  # noqa: E711
+    rows = (await session.execute(
+        stmt.order_by(ErrorEvent.last_seen_at.desc()).limit(limit)
+    )).scalars().all()
+    return rows
+
+
+@router.post("/errors/{error_id}/resolve", response_model=ErrorEventRead)
+async def resolve_error(
+    error_id: uuid.UUID,
+    _user: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_session),
+):
+    """Marca la firma como atendida. Si vuelve a ocurrir se reabre sola y alerta de
+    nuevo — dar por cerrado algo que sigue pasando no debe silenciarlo."""
+    event = await session.get(ErrorEvent, error_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Error no encontrado.")
+    event.resolved_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    session.add(event)
+    await session.commit()
+    await session.refresh(event)
+    return event
 
 
 @router.get("/metrics", response_model=SystemMetrics)
