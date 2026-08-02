@@ -2828,19 +2828,30 @@ async def _coupon_share_by_line(
         )
     )).all()
 
+    return _prorate_coupons(
+        by_order,
+        [(rid, ot, Decimal(str(price or 0)) * (qty or 0)) for rid, ot, qty, price in rows],
+    )
+
+
+def _prorate_coupons(
+    disc_by_order: dict[uuid.UUID, Decimal],
+    lines: list[tuple[uuid.UUID, uuid.UUID, Decimal]],
+) -> dict[uuid.UUID, Decimal]:
+    """Aritmética pura del prorrateo (separada de la query para poder testearla):
+    `lines` es (reservation_id, order_token, bruto de la línea)."""
     gross: dict[uuid.UUID, Decimal] = {}
-    lines: dict[uuid.UUID, list[tuple[uuid.UUID, Decimal]]] = {}
-    for rid, ot, qty, price in rows:
-        g = Decimal(str(price or 0)) * (qty or 0)
+    by_order_lines: dict[uuid.UUID, list[tuple[uuid.UUID, Decimal]]] = {}
+    for rid, ot, g in lines:
         gross[ot] = gross.get(ot, Decimal("0")) + g
-        lines.setdefault(ot, []).append((rid, g))
+        by_order_lines.setdefault(ot, []).append((rid, g))
 
     share: dict[uuid.UUID, Decimal] = {}
-    for ot, disc in by_order.items():
+    for ot, disc in disc_by_order.items():
         total = gross.get(ot, Decimal("0"))
         if total <= 0:
             continue
-        for rid, g in lines[ot]:
+        for rid, g in by_order_lines[ot]:
             share[rid] = (disc * g / total).quantize(Decimal("0.01"))
     return share
 

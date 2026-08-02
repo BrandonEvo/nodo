@@ -67,13 +67,24 @@ async def _bootstrap() -> None:
         _TEST_USER_OBJ  = user
 
 
-# Ejecutar bootstrap antes de la colección
-asyncio.run(_bootstrap())
-
-# Descartar el pool de conexiones creado en el loop del bootstrap.
-# Los tests usarán su propio loop y crearán conexiones frescas.
 from db.session import engine as _sa_engine
-asyncio.run(_sa_engine.dispose())
+
+_BOOTSTRAPPED = False
+
+
+def _ensure_bootstrap() -> None:
+    """Bootstrap perezoso: crea el tenant de test sólo si algún test pide una fixture
+    que lo necesita. Corriéndolo al importar, la sola colección de tests le escribía a
+    la base configurada — que en este host es la de PRODUCCIÓN. Los tests puros (los
+    de aritmética de plata) ya no la tocan."""
+    global _BOOTSTRAPPED
+    if _BOOTSTRAPPED:
+        return
+    asyncio.run(_bootstrap())
+    # Descartar el pool de conexiones creado en el loop del bootstrap.
+    # Los tests usarán su propio loop y crearán conexiones frescas.
+    asyncio.run(_sa_engine.dispose())
+    _BOOTSTRAPPED = True
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -123,6 +134,7 @@ async def _generate_jwt() -> str:
 
 @pytest.fixture
 async def client():
+    _ensure_bootstrap()
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
@@ -132,6 +144,7 @@ async def client():
 
 @pytest.fixture
 async def auth_headers():
+    _ensure_bootstrap()
     token = await _generate_jwt()
     return {"Authorization": f"Bearer {token}"}
 

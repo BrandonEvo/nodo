@@ -3,7 +3,12 @@ services:
     volumes:
       - ./backend:/app
     ports:
-      - "8000:8000"
+      # Sólo loopback. Publicado en 0.0.0.0 dejaba el API entero alcanzable desde
+      # internet saltándose nginx: sin TLS, sin Cloudflare y sin los rate limits
+      # del proxy (login 10/min, reservas 60/min) — fuerza bruta contra el login
+      # por una puerta que además no aparece en ninguna métrica del edge.
+      # nginx no se entera: llega por la red interna de Docker (backend:8000).
+      - "127.0.0.1:8000:8000"
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=*
 
   frontend:
