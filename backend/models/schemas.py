@@ -1155,6 +1155,11 @@ class ShopperReservationCreate(BaseModel):
     quantity: int = 1
     deposit_amount: Optional[float] = None
     notes: Optional[str] = None
+    # Pedido que el cliente ya tiene abierto (lo guarda su navegador). Es lo que
+    # permite acumular en "mi maleta": sin él se abre un pedido nuevo. Nunca se
+    # agrupa sólo por teléfono — eso entregaba el pedido ajeno a quien supiera el
+    # número.
+    order_token: Optional[uuid.UUID] = None
 
 
 class ShopperManualSaleCreate(BaseModel):
@@ -1446,8 +1451,9 @@ class ShopperStoreSessionRead(BaseModel):
     clients: int = 0
     revenue_gtq: float = 0
     delivered_units: int = 0
-    delivered_revenue_gtq: float = 0
-    delivered_profit_gtq: float = 0
+    delivered_revenue_gtq: float = 0     # neto de cupón
+    delivered_profit_gtq: float = 0      # neto de cupón
+    delivered_coupon_gtq: float = 0      # cuánto se regaló en descuentos
     cancelled_lines: int = 0
     top_title: Optional[str] = None
     top_units: int = 0
@@ -1634,6 +1640,9 @@ class ImportReservationCreate(BaseModel):
     quantity: int = 1
     deposit_amount: Optional[float] = None
     notes: Optional[str] = None
+    # Ver ShopperReservationCreate.order_token: el pedido se acumula presentando el
+    # token, nunca agrupando por teléfono.
+    order_token: Optional[uuid.UUID] = None
 
 
 class ImportReservationUpdate(BaseModel):

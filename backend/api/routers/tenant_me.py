@@ -68,7 +68,8 @@ def create_tenant_me_router(
             "id": str(tenant.id),
             "name": tenant.name,
             "logo_url": tenant.logo_url,
-            "theme_color": tenant.theme_color
+            "theme_color": tenant.theme_color,
+            "og_image": tenant.og_image,
         }
 
     @router.put("/config", response_model=dict)
@@ -92,6 +93,10 @@ def create_tenant_me_router(
             tenant.logo_url = body["logo_url"]
         if "theme_color" in body:
             tenant.theme_color = body["theme_color"]
+        # Tarjeta del preview de links: la compone el navegador con el logo y el
+        # color, porque las imágenes son data URI y ningún scraper las consume.
+        if "og_image" in body:
+            tenant.og_image = body["og_image"]
 
         session.add(tenant)
         await session.commit()

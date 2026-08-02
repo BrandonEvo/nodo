@@ -49,8 +49,9 @@ export interface ShopperStoreSession {
   clients: number;
   revenue_gtq: number;            // apartado (bruto)
   delivered_units: number;
-  delivered_revenue_gtq: number;
-  delivered_profit_gtq: number;   // plata de verdad
+  delivered_revenue_gtq: number;  // neto de cupón
+  delivered_profit_gtq: number;   // plata de verdad, neto de cupón
+  delivered_coupon_gtq: number;   // cuánto se regaló en descuentos
   cancelled_lines: number;
   top_title?: string | null;
   top_units: number;
@@ -470,7 +471,7 @@ export const shopperCatalogService = {
   createReservation: (
     publicToken: string,
     itemId: string,
-    data: { client_name: string; client_phone: string; quantity: number; deposit_amount?: number | null; notes?: string | null },
+    data: { client_name: string; client_phone: string; quantity: number; deposit_amount?: number | null; notes?: string | null; order_token?: string | null },
   ): Promise<PublicShopperReservation> =>
     api.post(`${BASE}/public/${publicToken}/reserve/${itemId}`, data).then(r => r.data),
   getClientReservation: (clientToken: string): Promise<PublicShopperReservation> =>

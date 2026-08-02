@@ -427,9 +427,23 @@ export function PersonalShopperApp(_props: AppProps) {
   const publicUrl = settings ? `${window.location.origin}/catalogo/${settings.public_token}` : '';
   const share = useCallback(async () => {
     haptic.tap();
-    const ok = await navigator.share?.({ title: 'Mi tienda en vivo', url: publicUrl }).then(() => true).catch(() => false);
-    if (!ok) { await navigator.clipboard?.writeText(publicUrl); flash('ok', 'Enlace copiado'); }
-  }, [publicUrl, flash]);
+    // Un link pelado en WhatsApp se lee como spam. El mensaje da el contexto antes
+    // de que el cliente decida abrirlo, y el link va en la última línea para que la
+    // tarjeta del preview quede pegada al texto.
+    const live = settings?.store_status === 'live';
+    const biz = settings?.business_name?.trim();
+    const origen = settings?.origin_label?.trim();
+    const text = live
+      ? `Estoy comprando ahorita 🛒\nVoy subiendo todo lo que encuentro y se aparta al toque. Cuando cierro, ya no entra nadie más.`
+      : `¡Hola! Ya subí lo que traigo${origen ? ` ${origen}` : ''} ✈️\nPrecios en quetzales y apartás en 30 segundos, sin llamadas.`;
+    const shareUrl = `${publicUrl}?src=wa`;
+    const ok = await navigator.share?.({ title: biz || 'Mi catálogo', text, url: shareUrl })
+      .then(() => true).catch(() => false);
+    if (!ok) {
+      await navigator.clipboard?.writeText(`${text}\n${shareUrl}`);
+      flash('ok', 'Mensaje copiado. Pegalo en WhatsApp.');
+    }
+  }, [publicUrl, flash, settings]);
 
   const openStore = useCallback(async (storeName: string, minutes: number | null, bannerUrl: string | null) => {
     setBusy(true);

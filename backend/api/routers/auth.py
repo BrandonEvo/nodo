@@ -153,9 +153,11 @@ async def register_workspace(
         member_type="owner",
     ))
 
-    # Trial automático: acceso full a todos los módulos por N días (configurable).
-    from api.services.trial_service import start_trial, get_default_trial_days
-    await start_trial(session, new_tenant, await get_default_trial_days(session))
+    # Sin acceso automático. Un registro que llega solo (p. ej. desde un link de
+    # catálogo compartido) queda pendiente hasta que un superadmin le asigne plan
+    # o trial desde el panel de tenants. La cuenta existe y puede entrar; no ve
+    # módulos ni puede escribir hasta que se le habilite.
+    new_tenant.billing_status = "pending"
 
     await session.commit()
     await session.refresh(new_user)

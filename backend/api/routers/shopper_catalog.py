@@ -305,14 +305,29 @@ async def _has_active_substitute(reservation_id: uuid.UUID, session: AsyncSessio
 
 
 async def _resolve_order_token(
-    tenant_id: uuid.UUID, client_phone: str, session: AsyncSession
+    tenant_id: uuid.UUID,
+    client_phone: str,
+    session: AsyncSession,
+    claimed_token: uuid.UUID | None = None,
 ) -> tuple[uuid.UUID, str]:
-    """Reusa (order_token, order_pin) de una reserva reciente del mismo teléfono,
-    o crea uno nuevo. El PIN se comparte entre todas las reservas del pedido."""
+    """Reusa (order_token, order_pin) del pedido que el cliente YA tiene abierto, o
+    crea uno nuevo. El PIN se comparte entre todas las reservas del pedido.
+
+    Sólo se reusa si el cliente presenta su `order_token` (lo guarda su navegador)
+    y además el teléfono coincide. Agrupar sólo por teléfono era una puerta abierta:
+    cualquiera que apartara poniendo el número de otra persona recibía en la
+    respuesta el token y el PIN de ESE pedido — con eso veía el pedido completo del
+    otro y podía borrarle líneas. Quien pierde el link se reencuentra por
+    teléfono + PIN en /order/lookup, que sí exige las dos cosas.
+    """
+    if claimed_token is None:
+        return uuid.uuid4(), _gen_pin()
+
     since = _now() - timedelta(days=ORDER_GROUPING_DAYS)
     result = await session.execute(
         select(ShopperReservation).where(
             ShopperReservation.tenant_id == tenant_id,
+            ShopperReservation.order_token == claimed_token,
             ShopperReservation.is_active == True,
             ShopperReservation.created_at >= since,
         ).order_by(ShopperReservation.created_at.desc())
@@ -320,17 +335,11 @@ async def _resolve_order_token(
     digits = _phone_digits(client_phone)
     for prev in result.scalars().all():
         if _phone_digits(prev.client_phone) == digits:
-            if prev.order_token:
-                pin = prev.order_pin or _gen_pin()
-                if not prev.order_pin:
-                    prev.order_pin = pin
-                    session.add(prev)
-                return prev.order_token, pin
-            token, pin = uuid.uuid4(), prev.order_pin or _gen_pin()
-            prev.order_token = token
-            prev.order_pin = pin
-            session.add(prev)
-            return token, pin
+            pin = prev.order_pin or _gen_pin()
+            if not prev.order_pin:
+                prev.order_pin = pin
+                session.add(prev)
+            return claimed_token, pin
     return uuid.uuid4(), _gen_pin()
 
 
@@ -667,12 +676,23 @@ async def update_calc_settings(
     tenant_id: uuid.UUID = Depends(get_current_tenant_id),
     session: AsyncSession = Depends(get_session),
 ):
+    # Un campo vacío llega como 0 desde el front. Con exchange_rate=0 la calculadora
+    # devuelve costo 0, cada producto nuevo se publica con costo real 0 y el reporte
+    # cuenta el precio entero como ganancia — sin que nada avise.
+    data = body.model_dump(exclude_unset=True)
+    if data.get("exchange_rate") is not None and data["exchange_rate"] <= 0:
+        raise HTTPException(status_code=400, detail="El tipo de cambio tiene que ser mayor que cero.")
+    if data.get("tax_rate") is not None and not (0 <= data["tax_rate"] <= 100):
+        raise HTTPException(status_code=400, detail="El impuesto va entre 0 y 100.")
+    if data.get("default_markup_pct") is not None and data["default_markup_pct"] < 0:
+        raise HTTPException(status_code=400, detail="La ganancia no puede ser negativa.")
+
     calc = await _get_or_create_calc_settings(tenant_id, session)
     _decimal_fields = {
         "exchange_rate", "tax_rate", "default_markup_pct", "suitcase_cost_usd",
         "suitcase_capacity_lbs", "box_cost_usd", "box_length_in", "box_width_in", "box_height_in",
     }
-    for field, value in body.model_dump(exclude_unset=True).items():
+    for field, value in data.items():
         if field in _decimal_fields and value is not None:
             setattr(calc, field, Decimal(str(value)))
         else:
@@ -691,6 +711,11 @@ async def list_catalog(
     tenant_id: uuid.UUID = Depends(get_current_tenant_id),
     session: AsyncSession = Depends(get_session),
 ):
+    # El barrido de vencidas sólo corría cuando un cliente abría el catálogo público:
+    # terminada la venta, el stock de las reservas que expiraron quedaba comprometido
+    # para siempre y el producto se veía agotado sin estarlo. Abrir el módulo es el
+    # otro momento natural para reconciliar.
+    await _expire_tenant_pending_reservations(tenant_id, session)
     result = await session.execute(
         select(ShopperCatalogItem).where(
             ShopperCatalogItem.tenant_id == tenant_id,
@@ -904,6 +929,7 @@ async def list_reservations(
     tenant_id: uuid.UUID = Depends(get_current_tenant_id),
     session: AsyncSession = Depends(get_session),
 ):
+    await _expire_tenant_pending_reservations(tenant_id, session)
     result = await session.execute(
         select(ShopperReservation, ShopperCatalogItem).join(
             ShopperCatalogItem, ShopperReservation.catalog_item_id == ShopperCatalogItem.id
@@ -1425,7 +1451,9 @@ async def create_reservation(
             "remaining": available,
         })
 
-    order_token, order_pin = await _resolve_order_token(settings.tenant_id, body.client_phone, session)
+    order_token, order_pin = await _resolve_order_token(
+        settings.tenant_id, body.client_phone, session, body.order_token
+    )
 
     # Doble toque sobre el mismo producto → sumamos a la reserva que ya existe en vez de
     # abrir otra línea. Corre bajo el FOR UPDATE del ítem, así que está serializado por
@@ -1600,7 +1628,10 @@ async def _build_order(order_token: uuid.UUID, session: AsyncSession) -> PublicS
             suggested_items=suggestions,
             resolved_by_substitute=(r.id in resolved_ids),
         ))
-    active = [l for l in lines if l.status in ACTIVE_STATUSES]
+    # "Total a pagar" es lo que todavía está en vuelo. Sumar las entregadas convertía
+    # el pedido en un acumulado eterno: quien ya te pagó Q1,000 y volvía a apartar
+    # Q100 leía "Total a pagar Q1,100" — y el cupón se calculaba sobre ese monto.
+    active = [l for l in lines if l.status in IN_FLIGHT_STATUSES]
     subtotal = sum((l.item_price_gtq or 0) * l.quantity for l in active)
 
     # Cupón del pedido: se recomputa en vivo sobre el subtotal actual (el snapshot
@@ -1620,7 +1651,7 @@ async def _build_order(order_token: uuid.UUID, session: AsyncSession) -> PublicS
     )).first()
     if red_row is not None:
         redemption, coupon = red_row
-        active_pairs = [(i, r.quantity) for r, i in rows if r.status in ACTIVE_STATUSES]
+        active_pairs = [(i, r.quantity) for r, i in rows if r.status in IN_FLIGHT_STATUSES]
         assumed = await _assumed_cost_ratio(tenant_id, session)
         disc, note, hard_invalid = _evaluate_coupon(coupon, active_pairs, assumed, now)
         if hard_invalid:
@@ -1633,6 +1664,26 @@ async def _build_order(order_token: uuid.UUID, session: AsyncSession) -> PublicS
             session.add(coupon)
             await session.commit()
         else:
+            # El snapshot del canje es lo que leen /stats y el histórico de ventas.
+            # Como el descuento se recomputa en vivo pero el snapshot no se tocaba,
+            # un pedido editado después de canjear le restaba al dueño un descuento
+            # que nunca existió (o le inflaba la ganancia si el pedido creció).
+            disc_q = Decimal(str(disc)).quantize(Decimal("0.01"))
+            sub_q = Decimal(str(subtotal)).quantize(Decimal("0.01"))
+            # …pero el recálculo corre sobre lo que sigue EN VUELO, y una entrega saca
+            # la línea de ahí. Un pedido ya entregado no tiene nada en vuelo → disc 0 →
+            # el snapshot se borraba solo la próxima vez que el cliente abría su link,
+            # y la ganancia de esa venta saltaba como si nunca hubiera habido descuento.
+            # Entregar sella el trato: desde la primera entrega el snapshot es histórico.
+            delivered = any(r.status == "entregada" for r, _ in rows)
+            if not delivered and (
+                redemption.discount_gtq != disc_q or redemption.subtotal_gtq != sub_q
+            ):
+                redemption.discount_gtq = disc_q
+                redemption.subtotal_gtq = sub_q
+                redemption.updated_at = now
+                session.add(redemption)
+                await session.commit()
             coupon_code = coupon.code
             coupon_discount = float(disc)
             coupon_note = note
@@ -2536,8 +2587,6 @@ async def remove_coupon(
 _STATS_POTENTIAL = ("pendiente",)
 _STATS_COMMITTED = ("confirmada", "comprada", "en_camino")
 _STATS_REALIZED = ("entregada",)
-# Rango para atribuir el cupón (por pedido) al balde más avanzado que alcanzó.
-_STATS_RANK = {"entregada": 3, "confirmada": 2, "comprada": 2, "en_camino": 2, "pendiente": 1}
 
 
 @router.get("/stats", response_model=ShopperStatsRead)
@@ -2581,9 +2630,9 @@ async def shopper_stats(
 
     buckets = {"potential": _blank(), "committed": _blank(), "realized": _blank()}
     cancelled_lines = unavailable_lines = expired_lines = 0
-    order_rank: dict[uuid.UUID, tuple[int, str]] = {}   # order_token -> (rank, bucket_key)
     phones: dict[str, set] = {}
     prod: dict[uuid.UUID, dict] = {}                     # item_id -> aporte realizado+firme
+    coupon_share = await _coupon_share_by_line(tenant_id, session)
 
     for r, item in rows:
         qty = r.quantity or 0
@@ -2613,18 +2662,21 @@ async def shopper_stats(
                     cancelled_lines += 1
             continue
 
+        # El descuento va prorrateado a la línea, no entero al balde más avanzado del
+        # pedido: si de dos ítems uno se entregó y el otro no se consiguió, cargarle
+        # todo el cupón al entregado hunde la ganancia por plata que nunca se regaló.
+        # La parte de las líneas caídas no entra a ningún balde: no se otorgó.
+        line_coupon = coupon_share.get(r.id, Decimal("0"))
+
         b = buckets[key]
         b["revenue"] += line_rev
         b["cost"] += line_cost
+        b["coupon"] += line_coupon
         b["units"] += qty
         b["lines"] += 1
         b["assumed"] += assumed
         if r.order_token:
             b["orders"].add(r.order_token)
-            rank = _STATS_RANK.get(r.status, 0)
-            cur = order_rank.get(r.order_token)
-            if cur is None or rank > cur[0]:
-                order_rank[r.order_token] = (rank, key)
         if r.client_phone:
             phones.setdefault(r.client_phone, set())
             if r.order_token:
@@ -2636,23 +2688,12 @@ async def shopper_stats(
                 "units": 0, "revenue": Decimal("0"), "profit": Decimal("0"),
             })
             p["units"] += qty
-            p["revenue"] += line_rev
-            p["profit"] += line_rev - line_cost
+            # El campo se llama net_revenue: que lo sea. Traía bruto y no reconciliaba
+            # con la utilidad de los baldes.
+            p["revenue"] += line_rev - line_coupon
+            p["profit"] += line_rev - line_cost - line_coupon
 
-    # Cupones 'held' vivos → atribuir el descuento de cada pedido a su balde más avanzado.
-    redemptions = (await session.execute(
-        select(ShopperCouponRedemption.order_token, ShopperCouponRedemption.discount_gtq).where(
-            ShopperCouponRedemption.tenant_id == tenant_id,
-            ShopperCouponRedemption.status == "held",
-        )
-    )).all()
-    total_coupon = Decimal("0")
-    for ot, disc in redemptions:
-        d = Decimal(str(disc or 0))
-        total_coupon += d
-        target = order_rank.get(ot)
-        if target is not None:
-            buckets[target[1]]["coupon"] += d
+    total_coupon = sum((b["coupon"] for b in buckets.values()), Decimal("0"))
 
     def _bucket_out(b: dict) -> ShopperStatsBucket:
         revenue = b["revenue"]
@@ -2742,11 +2783,13 @@ async def list_store_sessions(
         )
     )).all()
 
+    coupon_share = await _coupon_share_by_line(tenant_id, session)
+
     out: list[ShopperStoreSessionRead] = []
     for s in sessions:
         # La venta en curso no tiene closed_at: su ventana llega hasta ahora.
         end = s.closed_at or _now()
-        agg = _summarize_window(rows, s.opened_at, end, assumed_ratio)
+        agg = _summarize_window(rows, s.opened_at, end, assumed_ratio, coupon_share)
         out.append(ShopperStoreSessionRead(
             id=s.id, store_name=s.store_name, banner_url=s.banner_url,
             opened_at=s.opened_at, closed_at=s.closed_at, closes_at=s.closes_at,
@@ -2755,15 +2798,67 @@ async def list_store_sessions(
     return out
 
 
-def _summarize_window(rows, start: datetime, end: datetime, assumed_ratio: Decimal) -> dict:
+async def _coupon_share_by_line(
+    tenant_id: uuid.UUID, session: AsyncSession
+) -> dict[uuid.UUID, Decimal]:
+    """Reparte el descuento de cada pedido entre SUS líneas, proporcional al bruto de
+    cada una. Sin prorrateo el descuento entero recae sobre las líneas que sobreviven:
+    el pedido de dos ítems donde uno no se consiguió le cargaba a la única línea
+    entregada un descuento que se otorgó sobre las dos."""
+    redemptions = (await session.execute(
+        select(ShopperCouponRedemption.order_token, ShopperCouponRedemption.discount_gtq).where(
+            ShopperCouponRedemption.tenant_id == tenant_id,
+            ShopperCouponRedemption.status == "held",
+        )
+    )).all()
+    by_order = {ot: Decimal(str(d)) for ot, d in redemptions if ot and d}
+    if not by_order:
+        return {}
+
+    rows = (await session.execute(
+        select(
+            ShopperReservation.id, ShopperReservation.order_token,
+            ShopperReservation.quantity, ShopperCatalogItem.price_gtq,
+        ).join(
+            ShopperCatalogItem, ShopperReservation.catalog_item_id == ShopperCatalogItem.id
+        ).where(
+            ShopperReservation.tenant_id == tenant_id,
+            ShopperReservation.is_active == True,
+            ShopperReservation.order_token.in_(list(by_order)),
+        )
+    )).all()
+
+    gross: dict[uuid.UUID, Decimal] = {}
+    lines: dict[uuid.UUID, list[tuple[uuid.UUID, Decimal]]] = {}
+    for rid, ot, qty, price in rows:
+        g = Decimal(str(price or 0)) * (qty or 0)
+        gross[ot] = gross.get(ot, Decimal("0")) + g
+        lines.setdefault(ot, []).append((rid, g))
+
+    share: dict[uuid.UUID, Decimal] = {}
+    for ot, disc in by_order.items():
+        total = gross.get(ot, Decimal("0"))
+        if total <= 0:
+            continue
+        for rid, g in lines[ot]:
+            share[rid] = (disc * g / total).quantize(Decimal("0.01"))
+    return share
+
+
+def _summarize_window(
+    rows, start: datetime, end: datetime, assumed_ratio: Decimal,
+    coupon_share: dict[uuid.UUID, Decimal] | None = None,
+) -> dict:
     """Métricas de las reservas creadas dentro de [start, end]. Separa lo APARTADO
     (bruto, aún puede evaporarse) de lo ENTREGADO (plata de verdad) — meterlos en un
     solo número es exactamente la mentira que el endpoint /stats vino a matar."""
+    coupon_share = coupon_share or {}
     units = reservations = clients_n = 0
     delivered_units = cancelled = 0
     revenue = Decimal("0")
     delivered_revenue = Decimal("0")
     delivered_profit = Decimal("0")
+    delivered_coupon = Decimal("0")
     phones: set[str] = set()
     per_item: dict[uuid.UUID, dict] = {}
 
@@ -2785,9 +2880,14 @@ def _summarize_window(rows, start: datetime, end: datetime, assumed_ratio: Decim
                 Decimal(str(item.calc_total_cost_gtq))
                 if item.calc_total_cost_gtq is not None else price * assumed_ratio
             )
+            # El cupón se descuenta de lo entregado: sin esto la venta declaraba como
+            # ganancia plata que el dueño regaló, y el mismo cierre daba una utilidad
+            # distinta acá que en /stats.
+            line_coupon = coupon_share.get(r.id, Decimal("0"))
             delivered_units += qty
-            delivered_revenue += price * qty
-            delivered_profit += (price - unit_cost) * qty
+            delivered_coupon += line_coupon
+            delivered_revenue += price * qty - line_coupon
+            delivered_profit += (price - unit_cost) * qty - line_coupon
         p = per_item.setdefault(r.catalog_item_id, {"title": item.title, "units": 0})
         p["units"] += qty
 
@@ -2804,6 +2904,7 @@ def _summarize_window(rows, start: datetime, end: datetime, assumed_ratio: Decim
         "delivered_units": delivered_units,
         "delivered_revenue_gtq": q(delivered_revenue),
         "delivered_profit_gtq": q(delivered_profit),
+        "delivered_coupon_gtq": q(delivered_coupon),
         "cancelled_lines": cancelled,
         "top_title": top_title, "top_units": top_units,
     }

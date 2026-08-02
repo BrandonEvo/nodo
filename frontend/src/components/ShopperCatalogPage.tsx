@@ -429,7 +429,9 @@ export function ShopperCatalogPage({ token }: Props) {
   const doReserve = async (item: PublicShopperItem, name: string, phone: string, qty = 1, silent = false) => {
     setBusyId(item.id);
     try {
-      const res = await svc.createReservation(token, item.id, { client_name: name, client_phone: phone, quantity: qty });
+      const res = await svc.createReservation(token, item.id, {
+        client_name: name, client_phone: phone, quantity: qty, order_token: orderToken,
+      });
       reservedIds.current.add(item.id);
       saveClient({ name, phone }); client.current = { name, phone };
       if (res.order_token) { setOrderToken(res.order_token); try { localStorage.setItem(orderKey(token), res.order_token); } catch { /* */ } }

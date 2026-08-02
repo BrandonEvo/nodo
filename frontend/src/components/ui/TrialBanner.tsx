@@ -1,7 +1,7 @@
 import { Clock, AlertTriangle, Lock } from 'lucide-react';
 
 interface TrialBannerProps {
-  accessState?: 'active' | 'trialing' | 'grace' | 'locked' | null;
+  accessState?: 'pending' | 'active' | 'trialing' | 'grace' | 'locked' | null;
   trialDaysRemaining?: number | null;
   graceDaysRemaining?: number | null;
 }
@@ -15,6 +15,18 @@ const dayWord = (n: number) => (n === 1 ? 'día' : 'días');
  */
 export function TrialBanner({ accessState, trialDaysRemaining, graceDaysRemaining }: TrialBannerProps) {
   if (!accessState || accessState === 'active') return null;
+
+  if (accessState === 'pending') {
+    return (
+      <div className="flex items-center gap-3 px-4 py-3 rounded-2xl border bg-nodo-primary-soft border-nodo-line text-nodo-ink">
+        <Clock size={18} className="shrink-0" />
+        <p className="flex-1 min-w-0 text-sm">
+          <span className="font-black">Tu cuenta está en revisión</span>
+          <span className="opacity-80"> — te habilitamos los módulos apenas la aprobemos. Escríbenos si necesitas apurarlo.</span>
+        </p>
+      </div>
+    );
+  }
 
   if (accessState === 'trialing') {
     const n = trialDaysRemaining ?? 0;

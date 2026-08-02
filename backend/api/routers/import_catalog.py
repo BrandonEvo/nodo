@@ -282,14 +282,26 @@ async def _upsert_cliente_from_reservation(
 
 
 async def _resolve_order_token(
-    tenant_id: uuid.UUID, client_phone: str, session: AsyncSession
+    tenant_id: uuid.UUID,
+    client_phone: str,
+    session: AsyncSession,
+    claimed_token: uuid.UUID | None = None,
 ) -> tuple[uuid.UUID, str]:
-    """Reusa (order_token, order_pin) de una reserva reciente del mismo teléfono,
-    o crea uno nuevo. El PIN se comparte entre todas las reservas del pedido."""
+    """Reusa (order_token, order_pin) del pedido que el cliente YA tiene abierto, o
+    crea uno nuevo. El PIN se comparte entre todas las reservas del pedido.
+
+    Sólo se reusa si el cliente presenta su `order_token` y el teléfono coincide.
+    Agrupar sólo por teléfono entregaba el pedido (y el PIN) de otra persona a
+    quien supiera su número. Ver el gemelo en shopper_catalog.py.
+    """
+    if claimed_token is None:
+        return uuid.uuid4(), _gen_pin()
+
     since = _now() - timedelta(days=ORDER_GROUPING_DAYS)
     result = await session.execute(
         select(ImportReservation).where(
             ImportReservation.tenant_id == tenant_id,
+            ImportReservation.order_token == claimed_token,
             ImportReservation.is_active == True,
             ImportReservation.created_at >= since,
         ).order_by(ImportReservation.created_at.desc())
@@ -297,17 +309,11 @@ async def _resolve_order_token(
     digits = _phone_digits(client_phone)
     for prev in result.scalars().all():
         if _phone_digits(prev.client_phone) == digits:
-            if prev.order_token:
-                pin = prev.order_pin or _gen_pin()
-                if not prev.order_pin:
-                    prev.order_pin = pin
-                    session.add(prev)
-                return prev.order_token, pin
-            token, pin = uuid.uuid4(), prev.order_pin or _gen_pin()
-            prev.order_token = token
-            prev.order_pin = pin
-            session.add(prev)
-            return token, pin
+            pin = prev.order_pin or _gen_pin()
+            if not prev.order_pin:
+                prev.order_pin = pin
+                session.add(prev)
+            return claimed_token, pin
     return uuid.uuid4(), _gen_pin()
 
 
@@ -1078,7 +1084,9 @@ async def create_reservation(
         )
 
     now = _now()
-    order_token, order_pin = await _resolve_order_token(settings.tenant_id, body.client_phone, session)
+    order_token, order_pin = await _resolve_order_token(
+        settings.tenant_id, body.client_phone, session, body.order_token
+    )
     cliente_id = await _upsert_cliente_from_reservation(
         tenant_id=settings.tenant_id,
         name=body.client_name,

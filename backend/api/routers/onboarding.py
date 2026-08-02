@@ -1,10 +1,10 @@
 """
 GET   /api/onboarding/plans   — Planes activos disponibles (público, rate limited).
-PATCH /api/onboarding/complete — Completa el onboarding con el plan elegido.
+PATCH /api/onboarding/complete — Cierra el onboarding (nombre de empresa). No
+                                 habilita módulos: eso lo hace un superadmin.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import delete as sa_delete
 from sqlmodel import select
 from pydantic import BaseModel
 import uuid
@@ -14,7 +14,7 @@ from db.session import get_session
 from api.deps import current_active_user
 from models import User, Tenant, TenantMember
 from models.core import Module
-from models.tenants import Subscription, SubscriptionPlan, PlanModule
+from models.tenants import SubscriptionPlan, PlanModule
 from core.limiter import limiter
 
 router = APIRouter(tags=["Onboarding"])
@@ -36,8 +36,10 @@ class PlanPublicOut(BaseModel):
     modules: list[PlanModuleOut]
 
 class PlanSelectBody(BaseModel):
-    plan_id: uuid.UUID
     company_name: Optional[str] = None
+    # Informativo: qué plan le interesó. NO habilita nada — el acceso lo asigna
+    # un superadmin desde el panel de tenants.
+    plan_id: Optional[uuid.UUID] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -83,18 +85,17 @@ async def complete_onboarding(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Finaliza el onboarding con el plan elegido:
-    1. Resuelve o crea el tenant.
-    2. Activa los módulos del plan en la tabla subscriptions.
-    3. Asigna plan_id y billing_status='active' al tenant.
-    4. Marca onboarding_completed=True en el usuario.
+    Cierra el onboarding:
+    1. Resuelve o crea el tenant con el nombre de la empresa.
+    2. Marca onboarding_completed=True en el usuario.
+
+    Deliberadamente NO habilita módulos ni cambia billing_status: el acceso lo
+    otorga un superadmin (PUT /tenants/{id}/plan o POST /tenants/{id}/grant-trial).
+    Antes este endpoint activaba el plan que mandara el cliente, así que cualquier
+    registro podía regalarse un plan de pago.
     """
     if current_user.onboarding_completed:
         raise HTTPException(status_code=400, detail="El onboarding ya fue completado.")
-
-    plan = await session.get(SubscriptionPlan, body.plan_id)
-    if not plan or not plan.is_active:
-        raise HTTPException(status_code=404, detail="Plan no encontrado o inactivo.")
 
     # Resolver o crear tenant
     mem_result = await session.execute(
@@ -114,7 +115,7 @@ async def complete_onboarding(
     else:
         # Google OAuth orgánico sin workspace previo
         name = (body.company_name or "").strip() or f"Empresa de {current_user.email}"
-        tenant = Tenant(name=name, is_active=True)
+        tenant = Tenant(name=name, is_active=True, billing_status="pending")
         session.add(tenant)
         await session.flush()
         membership = TenantMember(
@@ -125,19 +126,6 @@ async def complete_onboarding(
         session.add(membership)
         await session.flush()
 
-    # Módulos del plan
-    pm_result = await session.execute(
-        select(PlanModule).where(PlanModule.plan_id == plan.id)
-    )
-    module_ids = [pm.module_id for pm in pm_result.scalars().all()]
-
-    # Reemplazar suscripciones previas
-    await session.execute(sa_delete(Subscription).where(Subscription.tenant_id == tenant.id))
-    for mid in module_ids:
-        session.add(Subscription(tenant_id=tenant.id, module_id=mid, status="active"))
-
-    tenant.plan_id = plan.id
-    tenant.billing_status = "active"
     session.add(tenant)
 
     current_user.onboarding_completed = True
@@ -149,5 +137,5 @@ async def complete_onboarding(
         "detail": "Onboarding completado.",
         "tenant_name": tenant.name,
         "onboarding_completed": True,
-        "modules_activated": len(module_ids),
+        "access_state": "pending" if tenant.billing_status == "pending" else "active",
     }

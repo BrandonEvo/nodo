@@ -300,6 +300,7 @@ export const importCatalogService = {
       quantity: number;
       deposit_amount?: number | null;
       notes?: string | null;
+      order_token?: string | null;
     },
     src?: string | null,
   ): Promise<PublicImportReservation> =>

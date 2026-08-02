@@ -493,9 +493,9 @@ function DetailSheet({
 
 // ─── Sheet de datos (solo primera vez) ──────────────────────────────────────────
 function ReserveSheet({
-  item, token, src, onClose, onSuccess,
+  item, token, src, orderToken, onClose, onSuccess,
 }: {
-  item: PublicImportCatalogItem; token: string; src?: string | null;
+  item: PublicImportCatalogItem; token: string; src?: string | null; orderToken?: string;
   onClose: () => void; onSuccess: (r: PublicImportReservation, name: string, phone: string) => void;
 }) {
   const [name, setName] = useState('');
@@ -511,7 +511,7 @@ function ReserveSheet({
     haptic.tap(); setSaving(true); setErr(null);
     try {
       const res = await importCatalogService.createReservation(token, item.id, {
-        client_name: name.trim(), client_phone: phone.trim(), quantity: qty,
+        client_name: name.trim(), client_phone: phone.trim(), quantity: qty, order_token: orderToken,
       }, src);
       haptic.confirm();
       onSuccess(res, name.trim(), phone.trim());
@@ -866,7 +866,7 @@ export function ImportCatalogPage({ token }: Props) {
     haptic.tap();
     try {
       const res = await importCatalogService.createReservation(token, item.id, {
-        client_name: client.name, client_phone: client.phone, quantity: 1,
+        client_name: client.name, client_phone: client.phone, quantity: 1, order_token: client.order_token,
       }, attributionSrc);
       haptic.confirm();
       registerReserved(res);
@@ -1174,7 +1174,7 @@ export function ImportCatalogPage({ token }: Props) {
           onPick={setDetailItem} />
       )}
       {reserveItem && (
-        <ReserveSheet item={reserveItem} token={token} src={attributionSrc}
+        <ReserveSheet item={reserveItem} token={token} src={attributionSrc} orderToken={client?.order_token}
           onClose={() => setReserveItem(null)} onSuccess={handleSheetSuccess} />
       )}
       {celebrate && (

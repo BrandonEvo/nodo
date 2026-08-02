@@ -15,6 +15,10 @@ class Tenant(AuditBase, table=True):
     # Apariencia y Branding
     logo_url: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     theme_color: Optional[str] = Field(default="#69E7A8", max_length=50)
+    # Tarjeta 1200x630 (JPEG en data URI) para el preview de los links que el dueño
+    # comparte por WhatsApp. La compone el navegador con el logo y el color; el
+    # router /og la sirve como bytes porque ningún scraper consume un data URI.
+    og_image: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
 
     # Control de Facturación (Stripe)
     stripe_customer_id: Optional[str] = Field(default=None, max_length=255, unique=True, index=True)

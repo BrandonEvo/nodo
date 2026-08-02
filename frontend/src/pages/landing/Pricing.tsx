@@ -115,7 +115,8 @@ export function Pricing() {
           Cuesta menos que una venta perdida.
         </h2>
         <p className="mt-4 text-base font-medium leading-relaxed text-nodo-sub">
-          Empiezas con 14 días completos. Sin tarjeta, sin compromiso, sin llamada de ventas.
+          Creas tu cuenta y nosotros te la activamos con la prueba incluida. Sin tarjeta, sin
+          compromiso, sin llamada de ventas.
         </p>
       </div>
 
@@ -131,10 +132,10 @@ export function Pricing() {
           precios — mandamos al portal, donde el precio real sí está. */}
       {empty && (
         <div className="liquid-glass mx-auto max-w-lg rounded-nodo-lg p-10 text-center">
-          <h3 className="text-xl font-black text-nodo-ink">Empieza con 14 días gratis</h3>
+          <h3 className="text-xl font-black text-nodo-ink">Empieza con tu prueba gratis</h3>
           <p className="mt-2 text-sm font-medium leading-relaxed text-nodo-sub">
-            Crea tu cuenta y elige el plan que te sirva desde el panel, con todos los módulos
-            activos durante la prueba.
+            Crea tu cuenta y dinos qué plan te sirve. Revisamos tu registro y te habilitamos los
+            módulos para que los pruebes. No pedimos tarjeta.
           </p>
           <a
             href="/portal?registro=1"

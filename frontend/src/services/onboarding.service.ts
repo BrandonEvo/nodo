@@ -21,10 +21,11 @@ export const onboardingService = {
     return data;
   },
 
-  async selectPlan(opts: { planId: string; companyName?: string }) {
+  /** Cierra el onboarding. `planId` es el plan que le interesó: no habilita nada. */
+  async complete(opts: { companyName?: string; planId?: string }) {
     const { data } = await api.patch('/api/onboarding/complete', {
-      plan_id: opts.planId,
       company_name: opts.companyName ?? null,
+      plan_id: opts.planId ?? null,
     });
     return data;
   },

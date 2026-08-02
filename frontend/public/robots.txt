@@ -1,7 +1,10 @@
+# Los links públicos por token (catálogos, pedidos, citas) NO se listan acá a
+# propósito: se dejan rastreables para que WhatsApp y Facebook puedan armar el
+# preview — facebookexternalhit respeta robots.txt y un Disallow mataría la
+# tarjeta. Que no se indexen lo dice el <meta name="robots" content="noindex">
+# del HTML que devuelve el prerender.
 User-agent: *
 Allow: /
-Allow: /catalogo/
-Allow: /pedido/
 
 # Bloquear rutas de app autenticada y API
 Disallow: /api/

@@ -15,12 +15,12 @@ export interface TenantUser {
 }
 
 export const tenantMeService = {
-  async getMyTenant(): Promise<{ id: string; name: string; logo_url?: string | null; theme_color?: string | null }> {
-    const { data } = await api.get<{ id: string; name: string; logo_url?: string | null; theme_color?: string | null }>('/api/me/tenant/');
+  async getMyTenant(): Promise<{ id: string; name: string; logo_url?: string | null; theme_color?: string | null; og_image?: string | null }> {
+    const { data } = await api.get<{ id: string; name: string; logo_url?: string | null; theme_color?: string | null; og_image?: string | null }>('/api/me/tenant/');
     return data;
   },
 
-  async updateConfig(payload: { name?: string; logo_url?: string; theme_color?: string }): Promise<any> {
+  async updateConfig(payload: { name?: string; logo_url?: string; theme_color?: string; og_image?: string | null }): Promise<any> {
     const { data } = await api.put('/api/me/tenant/config', payload);
     return data;
   },

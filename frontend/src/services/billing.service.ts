@@ -19,7 +19,7 @@ export interface BillingRequestInfo {
 
 export interface BillingMe {
   billing_status: string | null;
-  access_state: 'active' | 'trialing' | 'grace' | 'locked' | null;
+  access_state: 'pending' | 'active' | 'trialing' | 'grace' | 'locked' | null;
   trial_ends_at: string | null;
   trial_days_remaining: number | null;
   grace_days_remaining: number | null;

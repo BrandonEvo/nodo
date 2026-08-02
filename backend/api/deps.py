@@ -46,11 +46,17 @@ async def get_current_tenant_id(
     tenant_id = membership.tenant_id
 
     # Enforcement de trial (medio con gracia). Los superadmin nunca se bloquean.
-    # locked → todo bloqueado; grace → solo lectura (se bloquean las escrituras).
+    # pending → aún no habilitado por el admin, solo lectura; locked → todo
+    # bloqueado; grace → solo lectura (se bloquean las escrituras).
     if not current_user.is_superuser:
         tenant = await session.get(Tenant, tenant_id)
         if tenant:
             state = compute_access(tenant)["access_state"]
+            if state == "pending" and request.method in _WRITE_METHODS:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail="Tu cuenta está en revisión. Te avisamos apenas quede habilitada.",
+                )
             if state == "locked":
                 raise HTTPException(
                     status_code=status.HTTP_402_PAYMENT_REQUIRED,

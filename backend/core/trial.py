@@ -2,11 +2,15 @@
 Política de acceso por periodo de prueba (trial) — fuente única de verdad.
 
 Modelo "medio con gracia":
-    trialing → (vence trial_ends_at) → grace (GRACE_DAYS solo-lectura) → locked
+    pending → (el admin habilita) → trialing → (vence trial_ends_at)
+            → grace (GRACE_DAYS solo-lectura) → locked
 
-Solo aplica si el tenant tiene `trial_ends_at`. Un tenant 'active' (pagado) o sin
-trial fijado tiene acceso pleno. La usan la sesión (para el banner) y
-get_current_tenant_id (para el enforcement), así nunca se desincronizan.
+`pending` es el estado de un registro que llegó solo y todavía nadie habilitó:
+entra a su cuenta pero no puede escribir hasta que un superadmin le asigne plan
+o trial. Fuera de eso, la política solo aplica si el tenant tiene `trial_ends_at`;
+un tenant 'active' (pagado) o sin trial fijado tiene acceso pleno. La usan la
+sesión (para el banner) y get_current_tenant_id (para el enforcement), así nunca
+se desincronizan.
 """
 import math
 from datetime import datetime, timezone, timedelta
@@ -26,11 +30,13 @@ def _days_up(target: datetime, now: datetime) -> int:
 
 
 def compute_access(tenant) -> dict:
-    """access_state: active | trialing | grace | locked."""
+    """access_state: pending | active | trialing | grace | locked."""
     now = _now()
     ends = tenant.trial_ends_at
 
-    if tenant.billing_status == "active" or ends is None:
+    if tenant.billing_status == "pending":
+        state, t_days, g_days = "pending", None, None
+    elif tenant.billing_status == "active" or ends is None:
         state, t_days, g_days = "active", None, None
     elif now < ends:
         state, t_days, g_days = "trialing", _days_up(ends, now), None

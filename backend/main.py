@@ -278,6 +278,7 @@ from api.routers import reportes as reportes_router
 from api.routers import personal_shopper as personal_shopper_router
 from api.routers import shopper_trips as shopper_trips_router
 from api.routers import shopper_catalog as shopper_catalog_router
+from api.routers import og as og_router
 from api.routers import public_tracking as public_tracking_router
 from api.routers import ventas as ventas_router
 from api.routers import store_public as store_public_router
@@ -295,6 +296,8 @@ app.include_router(reportes_router.router, prefix="/api/reportes")
 app.include_router(personal_shopper_router.router, prefix="/api/personal-shopper")
 app.include_router(shopper_trips_router.router, prefix="/api/shopper-trips")
 app.include_router(shopper_catalog_router.router, prefix="/api/shopper-catalog")
+# Sin /api adelante: la URL de la imagen se ve en el HTML que lee el scraper.
+app.include_router(og_router.router, prefix="/og")
 app.include_router(public_tracking_router.router, prefix="/api/tracking")
 app.include_router(ventas_router.router, prefix="/api/ventas")
 app.include_router(store_public_router.router, prefix="/api/store")

@@ -12,7 +12,7 @@ export const HERO = {
   ctaPrimary: 'Crear mi cuenta gratis',
   ctaPrimaryReturning: 'Entrar al panel',
   ctaSecondary: 'Ver cómo funciona',
-  reassurance: ['14 días gratis', 'Sin tarjeta', 'Cancelas cuando quieras'],
+  reassurance: ['Prueba gratis', 'Sin tarjeta', 'Cancelas cuando quieras'],
 } as const;
 
 export const PROBLEM = {
@@ -99,7 +99,11 @@ export const FAQ = [
     a: 'Sí. Cada empresa vive aislada a nivel de base de datos, las sesiones usan cookies que el navegador no puede leer, y hay respaldos automáticos cifrados. Nadie de otra empresa puede ver tu información, aunque quisiera.',
   },
   {
-    q: '¿Qué pasa cuando terminan los 14 días?',
+    q: '¿Cuánto tardan en activarme la cuenta?',
+    a: 'Revisamos cada registro a mano, así nadie entra por error y tu información queda donde debe. En cuanto aprobamos tu cuenta te avisamos y ya puedes usar los módulos de tu plan.',
+  },
+  {
+    q: '¿Qué pasa cuando termina la prueba?',
     a: 'Te avisamos antes. Si no eliges un plan, tu cuenta queda unos días en modo lectura: sigues viendo todo lo tuyo, pero no puedes registrar nuevos movimientos. No borramos nada ni te cobramos sin avisar.',
   },
   {
@@ -118,6 +122,6 @@ export const FAQ = [
 
 export const FINAL_CTA = {
   title: 'Empieza hoy.\nEl primer cierre de caja te va a sorprender.',
-  subtitle: '14 días completos, con todos los módulos. Sin tarjeta.',
+  subtitle: 'Creas tu cuenta, la activamos y pruebas todos los módulos. Sin tarjeta.',
   cta: 'Crear mi cuenta gratis',
 } as const;

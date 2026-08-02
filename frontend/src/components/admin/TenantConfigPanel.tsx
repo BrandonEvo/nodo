@@ -6,6 +6,7 @@ import { tenantMeService } from '@/services/tenantMe.service';
 import { usePushPermission } from '@/hooks/usePushPermission';
 import { PrivacyPolicyModal } from '@/components/PrivacyPolicyModal';
 import { irisFromTenant, luminance } from '@/lib/utils';
+import { composeOgCard } from '@/utils/image';
 
 const COLOR_PRESETS = [
   '#E01B24', '#FF7E5F', '#F59E0B', '#69E7A8',
@@ -42,6 +43,18 @@ export function TenantConfigPanel() {
         };
         setForm(loaded);
         setInitial(loaded);
+
+        // Backfill silencioso: los tenants que ya existían no tienen tarjeta de
+        // preview, y sin ella el link compartido sale sin imagen. Se genera una
+        // sola vez, sin molestar al dueño ni cambiar nada que él vea.
+        if (!tenant.og_image && loaded.name) {
+          const card = await composeOgCard({
+            name: loaded.name,
+            logoDataUrl: loaded.logo_url || null,
+            color: loaded.theme_color,
+          }).catch(() => null);
+          if (card) await tenantMeService.updateConfig({ og_image: card }).catch(() => {});
+        }
       } catch (err) {
         console.error('Error loading tenant config', err);
       } finally {
@@ -104,10 +117,18 @@ export function TenantConfigPanel() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // La tarjeta del preview se recompone con cada cambio de marca: es lo que
+      // ve quien recibe por WhatsApp el link del catálogo, antes de abrirlo.
+      const ogImage = await composeOgCard({
+        name: form.name,
+        logoDataUrl: form.logo_url || null,
+        color: form.theme_color,
+      }).catch(() => null);
       await tenantMeService.updateConfig({
         name: form.name,
         logo_url: form.logo_url,
-        theme_color: form.theme_color
+        theme_color: form.theme_color,
+        ...(ogImage ? { og_image: ogImage } : {}),
       });
       toast.success('Guardado — aplicando tu nueva identidad…');
       // El color/nombre/logo viven en la sesión que carga AppShell:

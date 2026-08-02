@@ -37,3 +37,6 @@ Thumbs.db
 
 # Archivos accidentales
 =*
+
+# Respaldo del build vivo (rollback manual, no va al repo)
+frontend/dist.bak/
