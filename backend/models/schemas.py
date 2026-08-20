@@ -1,9 +1,20 @@
 import uuid
 from typing import Optional, List, Literal
 from datetime import datetime, date, time
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi_users import schemas
 from models.bakery import ExpenseCategory
+
+# Las fotos viajan como data URI DENTRO del JSON (no hay storage de objetos), así que
+# un campo de imagen es lo único que puede hacer explotar el tamaño de un request. El
+# tope da 422 con mensaje en vez del 413 mudo del proxy, que el front no sabe explicar.
+#
+# 1.2 MB, no el presupuesto del compresor (120 KB): este límite también lo cruza lo que
+# el sistema YA guardó. Antes del fallback JPEG, iOS produjo banners de 802 KB y fotos de
+# 1.00 MB que siguen en la base, y el cliente los reenvía intactos al reabrir la tienda.
+# Un tope calibrado contra el compresor nuevo rechaza esos datos legítimos y deja al
+# dueño sin poder abrir. Acá el techo real lo pone nginx (2m); esto sólo ataja el absurdo.
+MAX_IMAGE_CHARS = 1_200_000
 
 # ==========================================
 # USERS (Identidad Global)
@@ -920,7 +931,7 @@ class ShopperStoreOpen(BaseModel):
     closes_at: Optional[datetime] = None
     # Foto de fondo del banner (data URI redimensionado). Omitir = conserva la
     # anterior; "" = quitarla.
-    banner_url: Optional[str] = None
+    banner_url: Optional[str] = Field(default=None, max_length=MAX_IMAGE_CHARS)
 
 
 class ShopperCatalogSettingsUpdate(BaseModel):
@@ -937,7 +948,7 @@ class ShopperCatalogSettingsUpdate(BaseModel):
     bank_account_number: Optional[str] = None
     bank_account_type: Optional[str] = None
     ai_copy_enabled: Optional[bool] = None
-    store_banner_url: Optional[str] = None
+    store_banner_url: Optional[str] = Field(default=None, max_length=MAX_IMAGE_CHARS)
 
 
 # ── Config PRIVADA de la calculadora (nunca pública) ──────────────────────────
@@ -976,7 +987,7 @@ class ShopperCalcSettingsUpdate(BaseModel):
 # ── Snapshot de cálculo congelado al publicar un ítem ─────────────────────────
 
 class ShopperItemCalcSnapshot(BaseModel):
-    calc_mode: Optional[str] = None       # maleta | caja
+    calc_mode: Optional[str] = None       # maleta | caja | directo
     weight_lbs: Optional[float] = None
     volume_in3: Optional[float] = None
     cost_per_lb: Optional[float] = None
@@ -1003,14 +1014,16 @@ class ShopperCatalogItemCreate(BaseModel):
     offer_ends_at: Optional[datetime] = None
     amazon_url: Optional[str] = None
     amazon_asin: Optional[str] = None
-    image_url: Optional[str] = None
+    image_url: Optional[str] = Field(default=None, max_length=MAX_IMAGE_CHARS)
     notes: Optional[str] = None
     source: str = "manual"                # manual | trip | amazon | foto
     # Canal: 'live' (exige tienda abierta, se publica ya y se sella a la sesión) o
     # 'catalog' (Amazon/evergreen, disponible hasta expires_at).
     listing: str = "catalog"              # live | catalog
     expires_at: Optional[datetime] = None
-    cost_gtq: Optional[float] = None      # costo manual (lo que te costó) → calc_total_cost_gtq
+    # costo manual (lo que te costó) → calc_total_cost_gtq. Un costo negativo fabrica
+    # utilidad de la nada y se filtra hasta el cierre de la venta.
+    cost_gtq: Optional[float] = Field(default=None, ge=0)
     calc: Optional[ShopperItemCalcSnapshot] = None
 
 
@@ -1031,9 +1044,9 @@ class ShopperCatalogItemUpdate(BaseModel):
     expires_at: Optional[datetime] = None
     amazon_url: Optional[str] = None
     amazon_asin: Optional[str] = None
-    image_url: Optional[str] = None
+    image_url: Optional[str] = Field(default=None, max_length=MAX_IMAGE_CHARS)
     notes: Optional[str] = None
-    cost_gtq: Optional[float] = None      # costo manual → calc_total_cost_gtq
+    cost_gtq: Optional[float] = Field(default=None, ge=0)   # costo manual → calc_total_cost_gtq
     calc: Optional[ShopperItemCalcSnapshot] = None
 
 
@@ -1147,6 +1160,17 @@ class PublicShopperPulse(BaseModel):
     closes_at: Optional[datetime] = None
 
 
+class PublicShopperItemAvailability(BaseModel):
+    """Disponibilidad de UN ítem, para el cliente que tiene el sheet de reserva abierto.
+    Existe para no bajar el catálogo entero (con todas las fotos) sólo para saber si
+    todavía queda: son unos bytes contra cientos de KB. Mismos campos que ya publica
+    la card — nunca costos ni capacidad interna."""
+    id: uuid.UUID
+    remaining: Optional[int] = None
+    closed: bool = False
+    stock_available: int = 0
+
+
 # ── Reservas ──────────────────────────────
 
 class ShopperReservationCreate(BaseModel):
@@ -1220,6 +1244,10 @@ class ShopperReservationRead(BaseModel):
     item_image_url: Optional[str] = None
     item_price_gtq: Optional[float] = None
     item_amazon_url: Optional[str] = None
+    # El costo viaja con la reserva y no se cruza contra el catálogo: un producto
+    # borrado (o filtrado de la lista del dueño) hacía que la línea dijera "no sé qué
+    # costó" teniendo el costo guardado.
+    item_cost_gtq: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -1252,6 +1280,9 @@ class PublicShopperOrderLine(BaseModel):
     status: str
     editable: bool = False
     stock_available: int = 0
+    # El cliente tiene que poder distinguir "es el último que hay" de "se encarga":
+    # con el mismo tope numérico son dos mensajes opuestos.
+    is_made_to_order: bool = False
     expires_at: datetime
     created_at: datetime
     resolution: Optional[str] = None

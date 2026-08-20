@@ -59,7 +59,8 @@ from models.schemas import (
     ShopperCatalogSettingsRead, ShopperCatalogSettingsUpdate, ShopperStoreOpen,
     ShopperCalcSettingsRead, ShopperCalcSettingsUpdate,
     ShopperCatalogItemCreate, ShopperCatalogItemUpdate, ShopperCatalogItemRead,
-    PublicShopperCatalog, PublicShopperCatalogItem, PublicShopperPulse, ShopperPayInfo,
+    PublicShopperCatalog, PublicShopperCatalogItem, PublicShopperPulse,
+    PublicShopperItemAvailability, ShopperPayInfo,
     ShopperReservationCreate, ShopperReservationUpdate, ShopperReservationRead,
     ShopperManualSaleCreate,
     PublicShopperReservationRead, PublicShopperOrder, PublicShopperOrderLine,
@@ -417,6 +418,10 @@ def _reservation_read(
         item_image_url=item.image_url if item else None,
         item_price_gtq=float(item.price_gtq) if item and item.price_gtq is not None else None,
         item_amazon_url=item.amazon_url if item else None,
+        item_cost_gtq=(
+            float(item.calc_total_cost_gtq)
+            if item and item.calc_total_cost_gtq is not None else None
+        ),
     )
 
 
@@ -484,14 +489,27 @@ async def _expire_tenant_pending_reservations(
     if stale is None:
         return
 
+    # `victims` toma el lock del ÍTEM antes de tocar la reserva: el mismo orden que
+    # create_reservation (ítem → reserva). Al revés — reserva primero, ítem después —
+    # este barrido y una reserva en curso se bloquean cruzados y Postgres mata a una de
+    # las dos por deadlock: el dueño publicando mientras un cliente aparta.
+    # SKIP LOCKED además hace que nunca espere: lo que esté ocupado lo barre la pasada
+    # siguiente (o el propio reserve, que corre su barrido bajo el mismo lock).
     await session.execute(
         text("""
-            WITH expired AS (
+            WITH victims AS (
+                SELECT r.id
+                  FROM shopper_reservations r
+                  JOIN shopper_catalog_items i ON i.id = r.catalog_item_id
+                 WHERE r.tenant_id=:tid AND r.status='pendiente'
+                   AND r.expires_at<=:now AND r.is_active=true
+                 ORDER BY r.catalog_item_id
+                   FOR UPDATE OF i SKIP LOCKED
+            ), expired AS (
                 UPDATE shopper_reservations
                    SET status='cancelada', resolution='expiro',
                        cancelada_at=:now, updated_at=:now
-                 WHERE tenant_id=:tid AND status='pendiente'
-                   AND expires_at<=:now AND is_active=true
+                 WHERE id IN (SELECT id FROM victims) AND status='pendiente'
                 RETURNING catalog_item_id, quantity
             ), agg AS (
                 SELECT catalog_item_id, SUM(quantity) AS q
@@ -793,8 +811,11 @@ async def create_catalog_item(
         notes=body.notes,
     )
     _apply_calc_snapshot(item, body.calc)
-    # Costo manual (modo 'manual', sin calculadora) → alimenta margen y ganancias.
-    if body.cost_gtq is not None:
+    # Costo a mano: la fuente cuando no hubo calculadora → alimenta margen y ganancias.
+    # Si llegaran los dos, manda el snapshot (igual que en el PATCH): es el único que
+    # trae el desglose que respalda el total, y pisarlo con un número suelto deja un
+    # ítem donde flete + tax + producto no cuadran con su propio costo, o sea inauditable.
+    if body.cost_gtq is not None and body.calc is None:
         item.calc_total_cost_gtq = Decimal(str(body.cost_gtq))
     session.add(item)
     await session.commit()
@@ -874,6 +895,14 @@ async def update_catalog_item(
     if "cost_gtq" in changes:
         cost = changes.pop("cost_gtq")
         item.calc_total_cost_gtq = Decimal(str(cost)) if cost is not None else None
+        # Un número suelto reemplaza al total, pero el desglose viejo seguía ahí: quedaba
+        # un ítem cuyo producto + tax + flete no suman su propio costo. Si no viene un
+        # snapshot que lo respalde, el costo pasa a ser un hecho sin derivación.
+        if calc is None:
+            item.calc_mode = "directo" if cost is not None else None
+            item.calc_shipping_usd = item.calc_tax_usd = item.calc_tax_rate = None
+            item.calc_weight_lbs = item.calc_volume_in3 = None
+            item.calc_cost_per_lb = item.calc_cost_per_in3 = None
     was_published = item.is_published
     _decimal_fields = ("price_gtq", "price_usd", "compare_at_price_gtq")
     _dt_fields = ("expires_at", "offer_ends_at")
@@ -1103,6 +1132,89 @@ async def update_reservation(
 
     resolved = await _has_active_substitute(reservation.id, session)
     return _reservation_read(reservation, item, resolved)
+
+
+@router.delete("/reservations/{reservation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_reservation(
+    reservation_id: uuid.UUID,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """Saca la línea de la bandeja del dueño. Soft-delete (`is_active=False`), que es
+    borrado de verdad para todo lo que mira: /stats, "Cómo te fue" y el pedido del
+    cliente filtran por activas, así que la línea también sale de los indicadores —
+    ese es el punto de limpiar la bandeja.
+
+    Devuelve al inventario lo que la línea tenía tomado: `stock_reserved` si seguía en
+    vuelo, `stock_sold` si ya se había entregado. Dejar el contador puesto sin una
+    reserva viva que lo explique es la trampa del producto invendible — nada vuelve a
+    barrerlo nunca. Es la misma cuenta que hace `_apply_stock_transition` al sacar una
+    línea del flujo, sólo que acá la línea desaparece en vez de quedar cancelada.
+    """
+    reservation = (await session.execute(
+        select(ShopperReservation).where(
+            ShopperReservation.id == reservation_id,
+            ShopperReservation.tenant_id == tenant_id,
+            ShopperReservation.is_active == True,
+        )
+    )).scalar_one_or_none()
+    if not reservation:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada.")
+
+    # FOR UPDATE por lo mismo que el PATCH: liberar stock concurrente con un reserve
+    # público corrompe el contador.
+    item = (await session.execute(
+        select(ShopperCatalogItem).where(
+            ShopperCatalogItem.id == reservation.catalog_item_id,
+        ).with_for_update()
+    )).scalar_one_or_none()
+
+    now = _now()
+    if item:
+        if reservation.status == "entregada":
+            item.stock_sold = max(0, item.stock_sold - reservation.quantity)
+        elif reservation.status in IN_FLIGHT_STATUSES:
+            item.stock_reserved = max(0, item.stock_reserved - reservation.quantity)
+        item.updated_at = now
+        session.add(item)
+
+    reservation.is_active = False
+    reservation.updated_at = now
+    session.add(reservation)
+
+    # Si era la última línea viva del pedido, el cupón nunca se otorgó: hay que soltarlo.
+    # Si no, el canje queda contado contra `max_redemptions` sin una venta que lo respalde
+    # y un cupón de un solo uso queda quemado para siempre.
+    if reservation.order_token:
+        still_alive = (await session.execute(
+            select(ShopperReservation.id).where(
+                ShopperReservation.order_token == reservation.order_token,
+                ShopperReservation.tenant_id == tenant_id,
+                ShopperReservation.id != reservation.id,
+                ShopperReservation.is_active == True,
+            ).limit(1)
+        )).first()
+        if still_alive is None:
+            red_row = (await session.execute(
+                select(ShopperCouponRedemption).where(
+                    ShopperCouponRedemption.order_token == reservation.order_token,
+                    ShopperCouponRedemption.tenant_id == tenant_id,
+                    ShopperCouponRedemption.status == "held",
+                )
+            )).scalar_one_or_none()
+            if red_row is not None:
+                red_row.status = "released"
+                red_row.released_at = now
+                red_row.updated_at = now
+                session.add(red_row)
+                coupon = await session.get(ShopperCoupon, red_row.coupon_id)
+                if coupon is not None:
+                    coupon.redeemed_count = max(0, coupon.redeemed_count - 1)
+                    coupon.updated_at = now
+                    session.add(coupon)
+
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/reservations/{reservation_id}/suggestions", response_model=list[ShopperCatalogItemRead])
@@ -1378,6 +1490,58 @@ async def get_public_pulse(
     return payload
 
 
+@router.get(
+    "/public/{public_token}/item/{item_id}/availability",
+    response_model=PublicShopperItemAvailability,
+)
+@limiter.limit("120/minute")
+async def get_public_item_availability(
+    request: Request,
+    response: Response,
+    public_token: uuid.UUID,
+    item_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    """¿Todavía queda? Lo consulta el cliente que tiene abierto el sheet de reserva.
+
+    El catálogo completo trae las fotos embebidas (cientos de KB); preguntar por un solo
+    ítem cuesta unos bytes, así que el sheet puede mantenerse al día sin castigar el
+    teléfono de nadie. No reemplaza al POST de reserva: la carrera real la resuelve el
+    FOR UPDATE de `create_reservation`. Esto sólo evita que el cliente escriba su nombre
+    y su teléfono para chocar contra un "ya no queda".
+    """
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    settings = (await session.execute(
+        select(ShopperCatalogSettings).where(
+            ShopperCatalogSettings.public_token == public_token,
+            ShopperCatalogSettings.is_active == True,
+        )
+    )).scalar_one_or_none()
+    if not settings:
+        raise HTTPException(status_code=404, detail="Catálogo no encontrado.")
+
+    item = (await session.execute(
+        select(ShopperCatalogItem).where(
+            ShopperCatalogItem.id == item_id,
+            ShopperCatalogItem.tenant_id == settings.tenant_id,
+            ShopperCatalogItem.is_published == True,
+            ShopperCatalogItem.is_active == True,
+        )
+    )).scalar_one_or_none()
+    # Despublicado o borrado mientras el sheet estaba abierto: para el cliente es lo
+    # mismo que agotado, y decirlo así evita un 404 que la pantalla no sabría explicar.
+    if not item:
+        return PublicShopperItemAvailability(id=item_id, remaining=0, closed=True)
+
+    pub = _public_item(item, closed=not _listing_open(item, settings, _now()))
+    return PublicShopperItemAvailability(
+        id=item.id, remaining=pub.remaining, closed=pub.closed,
+        stock_available=pub.stock_available,
+    )
+
+
 @router.post(
     "/public/{public_token}/reserve/{item_id}",
     response_model=PublicShopperReservationRead,
@@ -1563,12 +1727,19 @@ async def _build_order(order_token: uuid.UUID, session: AsyncSession) -> PublicS
     if expired_pairs:
         await session.execute(
             text("""
-                WITH expired AS (
+                WITH victims AS (
+                    SELECT r.id
+                      FROM shopper_reservations r
+                      JOIN shopper_catalog_items i ON i.id = r.catalog_item_id
+                     WHERE r.order_token=:ot AND r.status='pendiente'
+                       AND r.expires_at<=:now AND r.is_active=true
+                     ORDER BY r.catalog_item_id
+                       FOR UPDATE OF i SKIP LOCKED
+                ), expired AS (
                     UPDATE shopper_reservations
                        SET status='cancelada', resolution='expiro',
                            cancelada_at=:now, updated_at=:now
-                     WHERE order_token=:ot AND status='pendiente'
-                       AND expires_at<=:now AND is_active=true
+                     WHERE id IN (SELECT id FROM victims) AND status='pendiente'
                     RETURNING catalog_item_id, quantity
                 ), agg AS (
                     SELECT catalog_item_id, SUM(quantity) AS q
@@ -1621,6 +1792,7 @@ async def _build_order(order_token: uuid.UUID, session: AsyncSession) -> PublicS
             status=r.status,
             editable=(r.status == "pendiente" and r.expires_at > now),
             stock_available=_max_qty(i, r.quantity),
+            is_made_to_order=i.is_made_to_order,
             expires_at=r.expires_at,
             created_at=r.created_at,
             resolution=r.resolution,
@@ -1812,9 +1984,15 @@ async def update_order_line(
     new_qty = body.quantity
     if new_qty < 1:
         raise HTTPException(status_code=400, detail="La cantidad debe ser al menos 1.")
+    # El cliente ve el tope como un botón que no responde; el mensaje es lo único que
+    # le explica por qué. Que diga qué pasó, no cuánto hay en un inventario que no ve.
     max_qty = _max_qty(item, reservation.quantity)
     if new_qty > max_qty:
-        raise HTTPException(status_code=409, detail=f"Solo hay {max_qty} unidad(es) disponible(s).")
+        raise HTTPException(status_code=409, detail=(
+            "Ya tenés apartado todo lo que queda de este producto."
+            if max_qty <= reservation.quantity
+            else f"Solo quedan {max_qty} disponibles."
+        ))
 
     now = _now()
     delta = new_qty - reservation.quantity

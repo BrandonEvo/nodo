@@ -20,21 +20,33 @@ import random
 import asyncio
 import urllib.parse
 
-import httpx
 import uvicorn
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
+try:
+    from curl_cffi.requests import AsyncSession as CurlSession, RequestsError
+except ImportError:  # dependencia nueva: el venv viejo del relay no la tiene
+    raise SystemExit(
+        "ERROR: falta curl_cffi. Actualizá las dependencias del relay:\n"
+        "    pip install -r requirements.txt"
+    )
+
 RELAY_TOKEN = os.environ.get("RELAY_TOKEN", "")
 RELAY_PORT = int(os.environ.get("RELAY_PORT", "8799"))
 
-_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
-]
+# Amazon no mira sólo el User-Agent: lee el handshake TLS y el perfil HTTP/2. Un cliente
+# HTTP de Python disfrazado con headers de Chrome se detecta igual. curl_cffi reproduce la
+# huella completa del navegador; se rota entre intentos.
+_IMPERSONATE = ["chrome124", "chrome131", "safari180"]
+
+# El perfil impersonado ya manda User-Agent, Accept, Accept-Encoding y sec-ch-ua coherentes
+# con su huella. Acá sólo va lo que traería alguien que llega desde una búsqueda.
+_EXTRA_HEADERS = {
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.google.com/",
+}
 
 _PRICE_SELECTORS = [
     ".apexPriceToPay .a-offscreen",
@@ -85,26 +97,7 @@ def _extract_asin(url_or_asin: str) -> str | None:
     return None
 
 
-def _browser_headers() -> dict:
-    return {
-        "User-Agent": random.choice(_USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": "https://www.google.com/",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-        "Sec-Fetch-User": "?1",
-        "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-    }
-
-
-def _is_blocked(r: httpx.Response) -> bool:
+def _is_blocked(r) -> bool:
     if r.status_code != 200:
         return True
     low = r.text.lower()
@@ -146,13 +139,51 @@ def _parse_price(html: str, soup: BeautifulSoup) -> float | None:
     return _parse_price_from_json(html)
 
 
-async def _resolve_shortlink(url: str, headers: dict) -> str | None:
-    timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
+def _parse_image(soup: BeautifulSoup, html: str) -> str | None:
+    img = soup.select_one("#landingImage[data-old-hires]")
+    if img and img.get("data-old-hires", "").startswith("http"):
+        return img["data-old-hires"]
+    img = soup.select_one("#landingImage, #imgTagWrapperId img, #main-image-container img")
+    if img:
+        src = str(img.get("src") or "")
+        if src.startswith("http") and "transparent-pixel" not in src and src.endswith((".jpg", ".png", ".webp")):
+            return src
+    m = re.search(r'"hiRes"\s*:\s*"(https://m\.media-amazon\.com/images/I/[^"]+\.jpg)"', html)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _parse_bullets(soup: BeautifulSoup) -> str | None:
+    bullets: list[str] = []
+    for el in soup.select("#feature-bullets ul li span.a-list-item"):
+        t = el.get_text(" ", strip=True)
+        if not t or len(t) < 12:
+            continue
+        low = t.lower()
+        if "make sure this fits" in low or "see more product details" in low:
+            continue
+        if len(t) > 90:
+            t = t[:88].rstrip() + "…"
+        bullets.append(t)
+        if len(bullets) >= 3:
+            break
+    if not bullets:
+        return None
+    return "\n".join(f"• {b}" for b in bullets)[:240]
+
+
+async def _resolve_shortlink(url: str) -> str | None:
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
-            resp = await client.get(url, headers=headers)
-            return _extract_asin(str(resp.url))
-    except (httpx.RequestError, httpx.TimeoutException):
+        async with CurlSession(impersonate=random.choice(_IMPERSONATE), timeout=15) as s:
+            resp = await s.get(url, headers=_EXTRA_HEADERS)
+            asin = _extract_asin(str(resp.url))
+            if asin:
+                return asin
+            m = (re.search(r'"asin"\s*:\s*"(B0[A-Z0-9]{8})"', resp.text, re.I)
+                 or re.search(r'id="ASIN"[^>]*value="(B0[A-Z0-9]{8})"', resp.text))
+            return m.group(1) if m else None
+    except RequestsError:
         return None
 
 
@@ -168,6 +199,10 @@ class ScrapeOut(BaseModel):
     name: str | None
     price_usd: float | None
     url: str
+    # El backend guarda estos dos en su cache: sin ellos, un producto traído por el relay
+    # nacía sin foto ni descripción y así quedaba cacheado 24h para todos los tenants.
+    image_url: str | None = None
+    description: str | None = None
 
 
 @app.get("/health")
@@ -180,30 +215,33 @@ async def scrape(body: ScrapeIn, x_relay_token: str = Header(default="")):
     if not RELAY_TOKEN or x_relay_token != RELAY_TOKEN:
         raise HTTPException(status_code=401, detail="Token de relay inválido.")
 
-    base_headers = _browser_headers()
-    asin = _extract_asin(body.url)
+    # Compartir desde la app de Amazon pega texto, no una URL pelada.
+    m_url = re.search(r"https?://\S+", body.url.strip())
+    link = m_url.group(0).rstrip(").,;\"'") if m_url else body.url.strip()
+
+    asin = _extract_asin(link)
     if not asin:
-        host = (urllib.parse.urlparse(body.url.strip()).hostname or "").lower()
+        host = (urllib.parse.urlparse(link).hostname or "").lower()
         host = host[4:] if host.startswith("www.") else host
         if host in _SHORTLINK_HOSTS:
-            asin = await _resolve_shortlink(body.url.strip(), base_headers)
+            asin = await _resolve_shortlink(link)
     if not asin:
         raise HTTPException(status_code=422, detail="No se pudo extraer el ASIN de la URL.")
 
     product_url = f"https://www.amazon.com/dp/{asin}"
-    timeout = httpx.Timeout(connect=6.0, read=12.0, write=6.0, pool=6.0)
     last_detail = "Amazon bloqueó la solicitud (anti-bot)."
+    missing = 0   # veces que Amazon dijo 404: el producto no existe, no es bloqueo
 
     for attempt in range(_MAX_ATTEMPTS):
-        headers = {**base_headers, "User-Agent": random.choice(_USER_AGENTS)}
+        # Perfil distinto por intento; sesión/cookies frescas (un intento bloqueado deja
+        # cookies marcadas, por eso una sesión nueva cada vez).
         try:
-            async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
-                await client.get("https://www.amazon.com/", headers=headers)
+            async with CurlSession(impersonate=random.choice(_IMPERSONATE), timeout=25) as client:
+                await client.get("https://www.amazon.com/", headers=_EXTRA_HEADERS)
                 await asyncio.sleep(random.uniform(0.5, 1.4))
                 await client.post(
                     "https://www.amazon.com/portal-migration/hz/glow/address-change",
                     headers={
-                        **headers,
                         "Content-Type": "application/x-www-form-urlencoded",
                         "x-requested-with": "XMLHttpRequest",
                         "Accept": "*/*",
@@ -213,22 +251,30 @@ async def scrape(body: ScrapeIn, x_relay_token: str = Header(default="")):
                     data="locationType=LOCATION_INPUT&zipCode=10001&deviceType=desktop&stateOrRegion=NY&countryCode=US&pageType=Detail&actionSource=glow",
                 )
                 await asyncio.sleep(random.uniform(0.5, 1.4))
-                r = await client.get(product_url, headers=headers)
-        except httpx.TimeoutException:
-            last_detail = "Amazon tardó demasiado en responder."
-        except httpx.RequestError:
-            last_detail = "Error de red al conectar con Amazon."
+                r = await client.get(product_url, headers=_EXTRA_HEADERS)
+        except RequestsError as exc:
+            last_detail = "Amazon tardó demasiado en responder." if "timed out" in str(exc).lower() \
+                else "Error de red al conectar con Amazon."
         else:
             if not _is_blocked(r):
                 soup = BeautifulSoup(r.text, "html.parser")
                 title_el = soup.select_one("#productTitle")
                 name = title_el.get_text(strip=True) if title_el else None
-                price = _parse_price(r.text, soup)
-                return ScrapeOut(asin=asin, name=name, price_usd=price, url=product_url)
+                return ScrapeOut(
+                    asin=asin, name=name, price_usd=_parse_price(r.text, soup),
+                    url=product_url, image_url=_parse_image(soup, r.text),
+                    description=_parse_bullets(soup),
+                )
+            if r.status_code == 404:
+                missing += 1
             last_detail = f"Amazon devolvió una página anti-bot (status {r.status_code})."
 
         if attempt < _MAX_ATTEMPTS - 1:
             await asyncio.sleep(random.uniform(1.2, 2.5) * (attempt + 1))
+
+    # Un 404 en todos los intentos no es bloqueo: ese producto ya no está en Amazon.
+    if missing == _MAX_ATTEMPTS:
+        raise HTTPException(status_code=404, detail="Ese producto ya no está en Amazon. Revisá el enlace.")
 
     raise HTTPException(status_code=503, detail=f"{last_detail} Reintentá en unos segundos.")
 

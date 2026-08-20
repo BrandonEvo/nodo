@@ -14,8 +14,17 @@
  */
 
 export type FreightMode = 'maleta' | 'caja';
+/**
+ * Cómo se capturó el costo, para que el reporte sepa qué tan completo es:
+ *  maleta | caja — precio en USA + tax + su parte del flete del viaje.
+ *  usa            — precio en USA + tax, sin prorrateo de flete (ya viajó, se compró suelto).
+ *  directo        — un hecho en quetzales (compra local), sin derivación.
+ */
+export type CalcMode = FreightMode | 'usa' | 'directo';
 export type ProfitMode = 'markup' | 'fixed';
 export type DimUnit = 'in' | 'cm';
+/** Moneda en la que el dueño escribe el costo del producto. */
+export type CostCurrency = 'usd' | 'gtq';
 
 export interface CalcConfig {
   freightMode: FreightMode;
@@ -51,6 +60,9 @@ export interface CalcInputs {
   priceUsd: number;
   weightLbs: number;                 // modo maleta
   dims: { l: number; w: number; h: number };  // modo caja (en config.dimUnit)
+  /** Tax de ESTA compra. El impuesto es del estado donde compró, no del tenant:
+   *  New Hampshire cobra 0 y California 9.5. Sin override cae al ajuste del dueño. */
+  taxPct?: number;
   profitMode: ProfitMode;
   markupPct: number;
   fixedSaleGtq: number;
@@ -58,6 +70,7 @@ export interface CalcInputs {
 
 export interface CalcResult {
   mode: FreightMode;
+  taxRate: number;            // % efectivamente aplicado
   costPerLb: number;
   costPerVol: number;         // por unidad de volumen (config.dimUnit)
   itemWeightLbs: number;
@@ -106,11 +119,18 @@ export function calcShipping(cfg: CalcConfig, inputs: CalcInputs): {
 
 export function calculate(cfg: CalcConfig, inputs: CalcInputs): CalcResult {
   const price = Math.max(0, inputs.priceUsd || 0);
-  const { shippingUsd, costPerLb, costPerVol, itemVolume, itemVolumeIn3 } = calcShipping(cfg, inputs);
+  const raw = calcShipping(cfg, inputs);
+  const { costPerLb, costPerVol, itemVolume, itemVolumeIn3 } = raw;
 
-  const taxUsd = price * (Math.max(0, cfg.taxRate || 0) / 100);
-  const totalCostUsd = price + taxUsd + shippingUsd;
-  const totalCostGtq = totalCostUsd * Math.max(0, cfg.exchangeRate || 0);
+  // Cada componente en dólares es plata que se paga en dólares, así que se redondea
+  // a centavo ANTES de sumar, y el total en quetzales sale de los componentes ya
+  // redondeados. Al revés (redondear sólo al final) el snapshot guardado no cuadra
+  // con su propio desglose y el ítem queda inauditable por un centavo.
+  const taxRate = Math.max(0, inputs.taxPct ?? cfg.taxRate ?? 0);
+  const shippingUsd = round(raw.shippingUsd, 2);
+  const taxUsd = round(price * (taxRate / 100), 2);
+  const totalCostUsd = round(price + taxUsd + shippingUsd, 2);
+  const totalCostGtq = round(totalCostUsd * Math.max(0, cfg.exchangeRate || 0), 2);
 
   let saleGtq: number;
   if (inputs.profitMode === 'markup') {
@@ -123,6 +143,7 @@ export function calculate(cfg: CalcConfig, inputs: CalcInputs): CalcResult {
 
   return {
     mode: cfg.freightMode,
+    taxRate,
     costPerLb,
     costPerVol,
     itemWeightLbs: cfg.freightMode === 'maleta' ? Math.max(0, inputs.weightLbs || 0) : 0,
@@ -140,7 +161,7 @@ export function calculate(cfg: CalcConfig, inputs: CalcInputs): CalcResult {
 
 /** Snapshot que se manda al backend al publicar (se congela en el ítem). */
 export interface CalcSnapshotPayload {
-  calc_mode: FreightMode;
+  calc_mode: CalcMode;
   weight_lbs: number | null;
   volume_in3: number | null;
   cost_per_lb: number | null;
@@ -152,22 +173,60 @@ export interface CalcSnapshotPayload {
   total_cost_gtq: number;
 }
 
-export function toSnapshot(cfg: CalcConfig, r: CalcResult): CalcSnapshotPayload {
+/**
+ * @param withFreight  false cuando el costo es sólo producto + tax: el ítem no
+ *   consumió capacidad de este viaje (se compró suelto y ya está acá). Guardar
+ *   igual un `cost_per_lb` con 0 libras dejaría un desglose que insinúa un flete
+ *   que nunca se prorrateó.
+ */
+export function toSnapshot(cfg: CalcConfig, r: CalcResult, withFreight = true): CalcSnapshotPayload {
   const inCaja = cfg.freightMode === 'caja';
   const costPerIn3 = inCaja
     ? (cfg.dimUnit === 'cm' ? r.costPerVol * CM3_PER_IN3 : r.costPerVol)
     : null;
+  if (!withFreight) {
+    return {
+      calc_mode: 'usa',
+      weight_lbs: null, volume_in3: null, cost_per_lb: null, cost_per_in3: null,
+      tax_rate: r.taxRate,
+      exchange_rate: cfg.exchangeRate,
+      shipping_usd: 0,
+      tax_usd: round(r.taxUsd, 2),
+      total_cost_gtq: round(r.totalCostGtq, 2),
+    };
+  }
   return {
     calc_mode: cfg.freightMode,
     weight_lbs: inCaja ? null : r.itemWeightLbs,
     volume_in3: inCaja ? round(r.itemVolumeIn3, 2) : null,
     cost_per_lb: inCaja ? null : round(r.costPerLb, 4),
     cost_per_in3: costPerIn3 != null ? round(costPerIn3, 6) : null,
-    tax_rate: cfg.taxRate,
+    tax_rate: r.taxRate,
     exchange_rate: cfg.exchangeRate,
     shipping_usd: round(r.shippingUsd, 2),
     tax_usd: round(r.taxUsd, 2),
     total_cost_gtq: round(r.totalCostGtq, 2),
+  };
+}
+
+/**
+ * Costo capturado como hecho en quetzales (compra local, o algo que ya se pagó acá).
+ * No es "sin datos": es un costo sin derivación, y guardarlo con `calc_mode: 'directo'`
+ * lo distingue del ítem al que simplemente nunca le pusieron costo — y de los que se
+ * cargaron cuando el campo pedía quetzales y el dueño escribía dólares.
+ */
+export function directSnapshot(cfg: CalcConfig, costGtq: number): CalcSnapshotPayload {
+  return {
+    calc_mode: 'directo',
+    weight_lbs: null,
+    volume_in3: null,
+    cost_per_lb: null,
+    cost_per_in3: null,
+    tax_rate: 0,
+    exchange_rate: cfg.exchangeRate,
+    shipping_usd: 0,
+    tax_usd: 0,
+    total_cost_gtq: round(Math.max(0, costGtq), 2),
   };
 }
 
@@ -191,6 +250,8 @@ export function suggestPrices(minPrice: number): number[] {
   ];
   return [...new Set(opts)].filter(p => p >= minPrice).sort((a, b) => a - b).slice(0, 3);
 }
+
+export const round2 = (n: number) => round(n, 2);
 
 export const fmtGTQ = (n: number) =>
   'Q' + (isFinite(n) ? n : 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

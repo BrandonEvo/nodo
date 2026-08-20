@@ -1,6 +1,12 @@
 # Relay residencial de scraping de Amazon
 
-Amazon bloquea la IP del servidor de producción (datacenter) con páginas anti-bot.
+> **¿Hace falta? Hoy no.** El bloqueo anti-bot que motivó este relay no venía de la
+> IP del datacenter: Amazon lee la **huella TLS/HTTP2** del cliente. Desde 2026-08-04
+> el backend usa `curl_cffi` imitando a Chrome y scrapea bien desde el servidor, sin
+> relay (`AMAZON_RELAY_URL` vacío en el `.env`). Esto queda como respaldo por si
+> algún día sí bloquean la IP: si el scraping falla, medí primero cuál de las dos
+> cosas es antes de montar el túnel.
+
 Este relay corre en **tu PC / una conexión residencial** y hace el fetch a Amazon
 desde ahí; el backend de producción le reenvía los pedidos por un túnel.
 
@@ -36,8 +42,13 @@ curl -s -X POST http://localhost:8799/scrape \
   -d '{"url":"https://www.amazon.com/dp/B08N5WRWNW"}'
 ```
 
-Si te devuelve `{"asin": ..., "name": ..., "price_usd": ...}` → tu IP residencial
-funciona. (Si da 503 anti-bot, tu IP también está flageada; probá desde otra red.)
+Si te devuelve `{"asin": ..., "name": ..., "price_usd": ..., "image_url": ...}` → tu
+IP residencial funciona. (Si da 503 anti-bot, tu IP también está flageada; probá desde
+otra red. Un 404 no es bloqueo: ese producto ya no existe en Amazon.)
+
+> Si venías corriendo el relay de antes, **reinstalá las dependencias**
+> (`pip install -r requirements.txt`): ahora necesita `curl_cffi`, y sin él el relay
+> se niega a arrancar con un mensaje que te lo dice.
 
 ---
 

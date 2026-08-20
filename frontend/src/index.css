@@ -90,6 +90,19 @@
     --nodo-warn-bd:    #FDE68A;
     --nodo-warn-tx:    #D97706;
 
+    /* Texto legible ENCIMA de un *-tx usado como fondo. Los *-tx son colores de
+       texto: puestos de fondo, el blanco de siempre no alcanza (en dark, blanco
+       sobre warn #FFD60A da 1.41:1). */
+    --nodo-on-danger:  #FFFFFF;
+    --nodo-on-warn:    #111111;
+    --nodo-on-success: #FFFFFF;
+
+    /* Tinta legible ENCIMA de un *-bg pastel. Los *-tx están calibrados contra el
+       canvas: sobre su propio fondo de estado, un texto de 11px cae a ~3:1. */
+    --nodo-danger-ink:  #B91C1C;
+    --nodo-success-ink: #0E7A38;
+    --nodo-warn-ink:    #92400E;
+
     /* ── Manual de Diseño — Primary dinámico (sobreescrito por AppShell via tenantColor) ── */
     --nodo-primary:          #69E7A8;
     --nodo-primary-soft:     rgba(105,231,168,0.12);
@@ -219,6 +232,16 @@
     --nodo-warn-bg:    rgba(245,158,11,0.12);
     --nodo-warn-bd:    rgba(245,158,11,0.28);
     --nodo-warn-tx:    #FFD60A;
+
+    /* En dark los *-tx son los iOS saturados: piden tinta negra encima, no blanca. */
+    --nodo-on-danger:  #111111;
+    --nodo-on-warn:    #111111;
+    --nodo-on-success: #111111;
+
+    /* En dark los *-bg son tintes translúcidos: el *-tx saturado ya rinde >7:1. */
+    --nodo-danger-ink:  var(--nodo-danger-tx);
+    --nodo-success-ink: var(--nodo-success-tx);
+    --nodo-warn-ink:    var(--nodo-warn-tx);
 
     /* ── Manual de Diseño — Pasteles funcionales (dark – tinted surfaces) ── */
     --nodo-pastel-blue:      #1a2744;
@@ -374,6 +397,21 @@
     var(--nodo-shadow-hero);
 }
 
+/* Hero saturado con el color del tenant. Existe porque `nodo-card-hero bg-nodo-primary`
+   NO funciona: los component tokens viven fuera de @layer y salen después de las
+   utilidades, así que el `background` del shorthand pisa a `.bg-nodo-primary` — pero no
+   al `text-nodo-on-primary`. Quedaba tinta on-primary sobre superficie de tarjeta:
+   invisible (1.01:1 con primario claro en dark, y al revés con primario oscuro en light). */
+.nodo-card-hero-primary {
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 28px;
+  background: var(--nodo-primary);
+  border-color: var(--nodo-hairline, transparent);
+  color: var(--nodo-on-primary);
+  box-shadow: var(--nodo-shadow-hero);
+}
+
 /* ── Botones ── */
 .nodo-btn-primary {
   width: 100%;
@@ -405,8 +443,8 @@
   border-radius: 1rem;
   border-width: 2px;
   border-style: solid;
-  border-color: var(--nodo-line);
-  color: var(--nodo-sub);
+  border-color: var(--nodo-line-s);
+  color: var(--nodo-ink);
   font-weight: 700;
   font-size: 0.875rem;
   transition-property: transform, background-color;
@@ -420,7 +458,7 @@
   height: 3.5rem;
   border-radius: 1rem;
   background-color: var(--nodo-danger-tx);
-  color: white;
+  color: var(--nodo-on-danger);
   font-weight: 700;
   font-size: 0.875rem;
   display: flex;

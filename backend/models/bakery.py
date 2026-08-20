@@ -479,7 +479,9 @@ class ShopperCatalogItem(AuditBase, table=True):
     price_usd: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(12, 2), nullable=True))
 
     # Snapshot de la calculadora congelado al publicar (auditable/reproducible).
-    calc_mode:           Optional[str]     = Field(default=None, max_length=10)   # maleta | caja
+    # maleta | caja = costo derivado del precio en USA. directo = costo dado en quetzales
+    # como hecho (compra local). NULL = costo sin origen conocido (carga vieja).
+    calc_mode:           Optional[str]     = Field(default=None, max_length=10)
     calc_weight_lbs:     Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(8, 3),   nullable=True))
     calc_volume_in3:     Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(10, 2),  nullable=True))
     calc_cost_per_lb:    Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(8, 4),   nullable=True))

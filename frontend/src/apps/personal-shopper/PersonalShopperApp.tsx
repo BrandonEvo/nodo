@@ -21,8 +21,9 @@ import {
 } from '@/services/shopper_catalog.service';
 import { shopperAmazonService } from '@/services/shopper_amazon.service';
 import {
-  calculate, toSnapshot, suggestPrices,
-  fmtGTQ, fmtUSD, type CalcConfig, type FreightMode,
+  calculate, toSnapshot, directSnapshot, suggestPrices, round2,
+  fmtGTQ, fmtUSD,
+  type CalcConfig, type FreightMode, type CostCurrency,
 } from './shopperPricing';
 
 // ── Estados de reserva ──────────────────────────────────────────────────────────
@@ -156,7 +157,10 @@ function SaleResultModal({ data, onClose, onNewSale }: {
   const empty = data.reservations === 0;
   return createPortal(
     <div className="fixed inset-0 z-[80] bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-5 animate-in fade-in duration-200">
-      <div className="w-full max-w-sm nodo-card-hero p-6 text-center animate-in zoom-in-95 duration-300">
+      {/* Opaco a propósito: `nodo-card-hero` es glass, y sobre el scrim negro la
+          tarjeta se disolvía en el fondo — el cierre de la venta quedaba sin contenedor. */}
+      <div className="w-full max-w-sm bg-nodo-card border border-nodo-line rounded-nodo-lg p-6 text-center animate-in zoom-in-95 duration-300"
+        style={{ boxShadow: 'var(--nodo-shadow-hero)' }}>
         <div className="text-5xl mb-2">{empty ? '🌱' : '🏁'}</div>
         <h2 className="text-[26px] font-black text-nodo-ink leading-tight">
           {empty ? 'Venta cerrada' : '¡Cerraste la venta!'}
@@ -209,6 +213,7 @@ export function PersonalShopperApp(_props: AppProps) {
   const [items, setItems] = useState<ShopperCatalogItem[]>([]);
   const [settings, setSettings] = useState<ShopperCatalogSettings | null>(null);
   const [calc, setCalc] = useState<ShopperCalcSettings | null>(null);
+  const calcConfig = useMemo(() => (calc ? toConfig(calc) : null), [calc]);
   const [reservations, setReservations] = useState<ShopperReservation[]>([]);
   const [coupons, setCoupons] = useState<ShopperCoupon[]>([]);
   const [stats, setStats] = useState<ShopperStats | null>(null);
@@ -293,7 +298,12 @@ export function PersonalShopperApp(_props: AppProps) {
         .filter(r => r.is_active && (FLOW as string[]).includes(r.status))
         .map(r => r.catalog_item_id),
     );
-    return items.filter(i => i.calc_total_cost_gtq == null && counted.has(i.id));
+    // Sin `calc_mode` el costo no tiene origen conocido. O falta (y entonces sólo
+    // importa cuando el ítem ya movió plata), o se cargó cuando el campo pedía
+    // quetzales y el dueño escribía el precio en dólares: un costo 7.75× más chico
+    // que el real, que infla la ganancia y afloja el piso de descuento del cupón.
+    return items.filter(i =>
+      i.calc_mode == null && (i.calc_total_cost_gtq != null || counted.has(i.id)));
   }, [items, reservations]);
 
   // Ítems de la venta actual = publicados 'live' durante esta sesión.
@@ -305,9 +315,12 @@ export function PersonalShopperApp(_props: AppProps) {
       && (!openedMs || (toMs(i.published_at) ?? Infinity) >= openedMs - 5000)),
     [items, openedMs],
   );
+  // Con la tienda cerrada, un ítem que quedó en 'live' no lo ve nadie: ni el cliente ni el
+  // dueño, que sólo administra el catálogo. Existía pero no había forma de borrarlo nunca.
   const catalogAll = useMemo(
-    () => items.filter(i => i.listing === 'catalog' && i.is_active),
-    [items],
+    () => items.filter(i => i.is_active
+      && (i.listing === 'catalog' || (i.listing === 'live' && !storeLive))),
+    [items, storeLive],
   );
   const liveItems = useMemo(() => liveAll.filter(i => !ghosts.has(i.id)), [liveAll, ghosts]);
   const catalogItems = useMemo(() => catalogAll.filter(i => !ghosts.has(i.id)), [catalogAll, ghosts]);
@@ -339,10 +352,11 @@ export function PersonalShopperApp(_props: AppProps) {
       r.forEach((x, k) => { if (x.status === 'rejected') fails.push(chunk[k]); });
     }
     if (!alive.current) return;
-    // Se limpian sólo los ids de ESTE lote: si mientras tanto entró otro borrado, sus
-    // fantasmas tienen que seguir en pie.
-    setGhosts(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+    // Recargar ANTES de soltar el fantasma, o la fila ya borrada reaparece un instante
+    // (sigue en `items` y nada la tapa). Se limpian sólo los ids de ESTE lote: si mientras
+    // tanto entró otro borrado, sus fantasmas tienen que seguir en pie.
     await load();
+    setGhosts(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
     if (fails.length) flash('err', `No se pudo quitar ${fails.length}. Siguen en tu catálogo.`);
   }, [load, flash]);
 
@@ -448,16 +462,27 @@ export function PersonalShopperApp(_props: AppProps) {
   const openStore = useCallback(async (storeName: string, minutes: number | null, bannerUrl: string | null) => {
     setBusy(true);
     try {
-      // banner_url: '' quita la foto, el data URI la reemplaza. Nunca omitido acá — el
-      // sheet siembra su estado con la foto actual, así que lo que mande es la intención.
-      const st = await svc.openStore({ store_name: storeName || null, minutes, banner_url: bannerUrl ?? '' });
+      // banner_url: '' quita la foto, un data URI la reemplaza, omitirlo la conserva.
+      // El sheet siembra su estado con la foto actual, así que reabrir sin tocarla
+      // reenviaba la MISMA imagen entera — cientos de KB de subida desde el teléfono
+      // del dueño, en cada reapertura, para dejar todo igual.
+      const untouched = bannerUrl === (settings?.store_banner_url ?? null);
+      const st = await svc.openStore({
+        store_name: storeName || null, minutes,
+        ...(untouched ? {} : { banner_url: bannerUrl ?? '' }),
+      });
       setSettings(st); setShowOpen(false);
       haptic.done();
       flash('ok', '¡Estás en vivo! 🔴');
-    } catch {
-      flash('err', 'No se pudo abrir la venta.');
+    } catch (e) {
+      // Lo único que puede pasarse de tamaño acá es la portada. Decirlo, en vez de
+      // dejar al dueño tocando ABRIR contra un mensaje que no explica nada.
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      flash('err', status === 413 || status === 422
+        ? 'La foto de portada pesa demasiado. Elegí otra o abrí sin foto.'
+        : errMsg(e) ?? 'No se pudo abrir la venta.');
     } finally { setBusy(false); }
-  }, [flash]);
+  }, [flash, settings]);
 
   const closeStore = useCallback(async () => {
     if (!confirm('¿Cerrar la venta? Ya nadie va a poder apartar más. Lo que ya te apartaron no se pierde.')) return;
@@ -512,7 +537,7 @@ export function PersonalShopperApp(_props: AppProps) {
             className="nodo-appbar-action" aria-label="Cupones">
             <Ticket size={16} />
             {activeCoupons > 0 && (
-              <span className="nodo-appbar-badge bg-nodo-success-tx text-white">{activeCoupons}</span>
+              <span className="nodo-appbar-badge bg-nodo-success-tx text-[color:var(--nodo-on-success)]">{activeCoupons}</span>
             )}
           </button>
           <button onClick={() => { haptic.tap(); setShowSettings(true); }}
@@ -571,11 +596,11 @@ export function PersonalShopperApp(_props: AppProps) {
           /* ══════════ TIENDA CERRADA ══════════ */
           <>
             {timedOut && (
-              <div className="nodo-card p-4 flex items-center gap-3 bg-nodo-warn-bg border-nodo-warn-bd">
+              <div className="rounded-nodo-md border p-4 flex items-center gap-3 bg-nodo-warn-bg border-nodo-warn-bd">
                 <Clock size={20} className="text-nodo-warn-tx shrink-0" />
                 <p className="flex-1 text-sm font-bold text-nodo-warn-tx">Se acabó el tiempo de tu última venta.</p>
                 <button onClick={closeStore} disabled={busy}
-                  className="h-9 px-3 rounded-xl bg-nodo-warn-tx text-white text-xs font-black active:scale-95 disabled:opacity-40">
+                  className="h-9 px-3 rounded-xl bg-nodo-warn-tx text-[color:var(--nodo-on-warn)] text-xs font-black active:scale-95 disabled:opacity-40">
                   Cerrar
                 </button>
               </div>
@@ -583,8 +608,7 @@ export function PersonalShopperApp(_props: AppProps) {
 
             {/* Hero: abrir tienda en vivo */}
             <button onClick={() => { haptic.tap(); setShowOpen(true); }}
-              className="nodo-card-hero p-6 bg-nodo-primary text-nodo-on-primary text-left active:scale-[0.98] transition-transform"
-              style={{ boxShadow: 'var(--nodo-shadow-hero)' }}>
+              className="nodo-card-hero-primary p-6 text-left active:scale-[0.98] transition-transform">
               <div className="flex items-center gap-2 text-nodo-on-primary/90 mb-2">
                 <Radio size={18} />
                 <span className="text-[11px] font-black uppercase tracking-[0.14em]">Venta en vivo</span>
@@ -819,12 +843,12 @@ export function PersonalShopperApp(_props: AppProps) {
       )}
 
       {/* Sheets */}
-      {calc && createListing && settings && (
+      {calcConfig && createListing && settings && (
         <CreateSheet
           listing={createListing}
           open={!!createListing}
           onClose={() => setCreateListing(null)}
-          config={toConfig(calc)}
+          config={calcConfig}
           onCreated={async () => { setCreateListing(null); await load(); haptic.done(); flash('ok', '¡Publicado! 🎉'); }}
           onError={(m) => flash('err', m)}
         />
@@ -833,7 +857,8 @@ export function PersonalShopperApp(_props: AppProps) {
         currentBanner={settings?.store_banner_url} />
       <ReservasSheet open={showReservas} onClose={() => setShowReservas(false)}
         reservations={reservations} items={items} whatsapp={settings?.whatsapp_number}
-        onChanged={load} onError={(m) => flash('err', m)} />
+        onChanged={load} flash={flash}
+        onFixCost={() => { setShowReservas(false); setShowCostFix(true); }} />
       {settings && calc && (
         <SettingsSheet open={showSettings} onClose={() => setShowSettings(false)}
           settings={settings} calc={calc}
@@ -846,8 +871,10 @@ export function PersonalShopperApp(_props: AppProps) {
         coupons={coupons} markupPct={calc?.default_markup_pct ?? 30}
         publicUrl={publicUrl} totalRedeemed={couponRedeemed}
         onChanged={load} flash={flash} />
-      <CostFixSheet open={showCostFix} onClose={() => setShowCostFix(false)}
-        items={costlessItems} onSaved={load} onError={(m) => flash('err', m)} />
+      {calcConfig && (
+        <CostFixSheet open={showCostFix} onClose={() => setShowCostFix(false)}
+          items={costlessItems} config={calcConfig} onSaved={load} onError={(m) => flash('err', m)} />
+      )}
       <SaleHistorySheet open={showHistory} onClose={() => setShowHistory(false)} flash={flash} />
       <ManualSaleSheet open={showManualSale} onClose={() => setShowManualSale(false)}
         items={items.filter(i => i.is_active)}
@@ -879,8 +906,7 @@ function LiveHero({ storeName, bannerUrl, closesMs, now, items, reserving, onClo
   ) as React.CSSProperties;
 
   return (
-    <div className="nodo-card-hero relative overflow-hidden p-5 bg-nodo-primary"
-      style={{ boxShadow: 'var(--nodo-shadow-hero)', ...skin }}>
+    <div className="nodo-card-hero-primary relative overflow-hidden p-5" style={skin}>
       {photo && (<>
         <img src={bannerUrl!} alt="" aria-hidden="true" decoding="async"
           className="s-hero-photo absolute inset-0 w-full h-full object-cover object-[center_35%]" />
@@ -907,7 +933,7 @@ function LiveHero({ storeName, bannerUrl, closesMs, now, items, reserving, onClo
         {clock ? (
           <div className="mt-3 flex items-end gap-3">
             <span className={`font-black tabular-nums tracking-tighter leading-none text-[clamp(42px,13.5vw,56px)] lg:text-[68px]
-              ${urgent ? 's-clock-urgent text-red-200' : ''}`}>
+              ${urgent ? 's-clock-urgent' : ''}`}>
               {clock.big}
             </span>
             <span className="text-sm font-bold mb-2" style={{ color: 'var(--sc-fg-2)' }}>{clock.small}</span>
@@ -959,7 +985,12 @@ const SWIPE_OPEN = 88;     // ancho de la capa "Quitar"
 const SWIPE_COMMIT = 132;  // pasado esto, soltar borra directo
 const SWIPE_LOCK = 8;      // px de intención antes de decidir eje
 
-function useSwipeDelete(onDelete: () => void, registerOpen: (close: () => void) => void) {
+// `commitOnSwipe=false` para las filas cuyo borrado abre un sheet de confirmación: al
+// soltar, el navegador todavía tiene un click pendiente de ese mismo gesto, y lo despacha
+// contra el elemento que esté abajo EN ESE MOMENTO — el backdrop recién montado. El sheet
+// se cerraba solo y no se borraba nada. Esas filas se piden con el botón «Quitar».
+function useSwipeDelete(onDelete: () => void, registerOpen: (close: () => void) => void,
+                        commitOnSwipe = true) {
   const rowRef = useRef<HTMLDivElement>(null);
   const st = useRef({ x0: 0, y0: 0, dx: 0, lock: null as null | 'x' | 'y', open: false, armed: false });
 
@@ -1016,11 +1047,14 @@ function useSwipeDelete(onDelete: () => void, registerOpen: (close: () => void) 
     const s = st.current;
     if (s.lock !== 'x') { s.lock = null; return; }
     s.lock = null;
-    if (Math.abs(s.dx) >= SWIPE_COMMIT) { settle(-window.innerWidth, 180); onDelete(); return; }
+    if (Math.abs(s.dx) >= SWIPE_COMMIT) {
+      if (commitOnSwipe) { settle(-window.innerWidth, 180); onDelete(); return; }
+      settle(-SWIPE_OPEN); return;
+    }
     settle(Math.abs(s.dx) >= SWIPE_OPEN * 0.5 ? -SWIPE_OPEN : 0);
   };
 
-  return { rowRef, onPointerDown, onPointerMove, onPointerUp, isOpen: () => st.current.open };
+  return { rowRef, onPointerDown, onPointerMove, onPointerUp, close, isOpen: () => st.current.open };
 }
 
 function ManageList({ rows, ghosts, now, selected, reservedCount, onToggle, onDelete, registerOpen }: {
@@ -1057,7 +1091,7 @@ function ManageRow({ item, now, selected, reserved, onToggle, onDelete, register
     <div className="relative overflow-hidden rounded-2xl bg-nodo-danger-tx">
       {/* Capa revelada por el swipe — estática, no anima */}
       <button onClick={onDelete} tabIndex={-1} aria-hidden="true"
-        className="absolute inset-y-0 right-0 w-[88px] flex flex-col items-center justify-center gap-0.5 text-white">
+        className="absolute inset-y-0 right-0 w-[88px] flex flex-col items-center justify-center gap-0.5 text-[color:var(--nodo-on-danger)]">
         <Trash2 size={18} />
         <span className="text-[10px] font-black uppercase tracking-wide">Quitar</span>
       </button>
@@ -1208,9 +1242,9 @@ function OpenStoreSheet({ open, onClose, busy, onOpen, currentBanner }: {
       // Más chica y más comprimida que la foto de un producto (720/0.7): ésta va scrimeada
       // detrás de texto gigante, así que la blandura no se ve — pero los bytes se pagan en
       // CADA espectador y en cada rotación de `v`, no una sola vez.
-      let d = await fileToResizedDataUrl(f, { maxSize: 800, quality: 0.5 });
-      if (d.length > 200_000) d = await fileToResizedDataUrl(f, { maxSize: 640, quality: 0.42 });
-      setBanner(d);
+      setBanner(await fileToResizedDataUrl(f, {
+        maxSize: 800, quality: 0.5, maxBytes: 120_000, photo: true,
+      }));
     } catch { /* la foto es opcional: no bloquea abrir */ }
     finally { setPhotoBusy(false); }
   };
@@ -1299,6 +1333,71 @@ function OpenStoreSheet({ open, onClose, busy, onOpen, currentBanner }: {
 // ── Alta de producto (foto → precio → cantidad → publicar) ──────────────────────
 type CreateMode = 'amazon' | 'foto' | 'manual';
 
+// Todo lo que Amazon reparte como enlace de producto: dominio largo (amazon.com,
+// amazon.com.mx), los cortos de compartir (a.co, amzn.to) o el ASIN pelado.
+const isAmazonLink = (s: string) =>
+  /(?:amazon\.[a-z.]+|amzn\.[a-z]+|a\.co)\//i.test(s) || /^[A-Z0-9]{10}$/.test(s.trim());
+
+/**
+ * El número por el que existe la pantalla: cuánto le queda si lo vende a ese precio.
+ * Antes era una línea de 11px debajo del input — el dato de la decisión era el más
+ * chico de todo el panel. Reserva su alto siempre: si apareciera y desapareciera
+ * mientras el dueño teclea, el contenido saltaría bajo el pulgar.
+ */
+function Verdict({ cost, sale, qty, goalPct }: {
+  cost: number; sale: number; qty: number; goalPct: number;
+}) {
+  const ready = cost > 0 && sale > 0;
+  const profit = round2(sale - cost);
+  const marginPct = ready && sale > 0 ? (profit / sale) * 100 : 0;
+
+  let skin = 'bg-nodo-inset border-nodo-line text-nodo-dim';
+  let label = 'TE QUEDA';
+  let detail = cost <= 0
+    ? 'Poné cuánto te costó y a cuánto lo vendés.'
+    : 'Ponele precio y te digo cuánto ganás.';
+  let warn = false;
+
+  if (ready) {
+    if (profit <= 0) {
+      skin = 'bg-nodo-danger-bg border-nodo-danger-bd text-nodo-danger-ink';
+      label = 'ESTÁS PERDIENDO'; warn = true;
+      detail = `Lo vendés más barato de lo que te costó (${fmtGTQ(cost)}).`;
+    } else if (marginPct < 15) {
+      skin = 'bg-nodo-warn-bg border-nodo-warn-bd text-nodo-warn-ink';
+      label = 'TE QUEDA POQUITO'; warn = true;
+      detail = `${fmtGTQ(sale)} − ${fmtGTQ(cost)} de costo. Con cualquier descuento quedás en cero.`;
+    } else {
+      skin = 'bg-nodo-success-bg border-nodo-success-bd text-nodo-success-ink';
+      label = 'TE QUEDA LIMPIO';
+      // La resta a la vista: el número grande es exactamente lo que escribió menos lo
+      // que le costó, y verlo escrito evita tener que confiar en la cuenta.
+      detail = `${fmtGTQ(sale)} − ${fmtGTQ(cost)} · ${Math.round(marginPct)}% de margen`
+        + (qty > 1 ? ` · los ${qty}: ${fmtGTQ(profit * qty)}` : '');
+    }
+  }
+
+  return (
+    <div role="status" aria-live="polite"
+      className={`mt-3 min-h-[89px] rounded-nodo-sm border p-3 ${skin}`}>
+      <p className="text-[10px] font-black uppercase tracking-[0.12em] flex items-center gap-1.5">
+        {warn && <AlertTriangle size={14} className="shrink-0" />}
+        {label}
+        {ready && profit > 0 && marginPct >= goalPct && (
+          <span className="ml-auto px-2 py-0.5 rounded-full bg-nodo-success-tx text-[9px] font-black"
+            style={{ color: 'var(--nodo-on-success)' }}>
+            🔥 Arriba de tu meta
+          </span>
+        )}
+      </p>
+      <p className="text-[30px] font-black tabular-nums tracking-tight leading-none mt-0.5">
+        {ready ? `${profit < 0 ? '−' : ''}${fmtGTQ(Math.abs(profit))}` : '—'}
+      </p>
+      <p className="text-[11px] font-bold mt-1">{detail}</p>
+    </div>
+  );
+}
+
 function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
   listing: ShopperListing; open: boolean; onClose: () => void; config: CalcConfig;
   onCreated: () => void; onError: (m: string) => void;
@@ -1307,6 +1406,7 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
   const [mode, setMode] = useState<CreateMode>(isLive ? 'foto' : 'amazon');
   const [amazonUrl, setAmazonUrl] = useState('');
   const [scraping, setScraping] = useState(false);
+  const scrapingRef = useRef(false);   // el blur del input y el click del botón llegan juntos
   const [saving, setSaving] = useState(false);
 
   const [title, setTitle] = useState('');
@@ -1316,11 +1416,9 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
   const [amazonMeta, setAmazonMeta] = useState<{ url?: string; asin?: string }>({});
 
   const [priceUsd, setPriceUsd] = useState('');
-  const [weight, setWeight] = useState('1');
-  const [dimL, setDimL] = useState(''); const [dimW, setDimW] = useState(''); const [dimH, setDimH] = useState('');
+  const [taxPct, setTaxPct] = useState(String(config.taxRate));
+  const [applyTax, setApplyTax] = useState(true);
   const [priceGtq, setPriceGtq] = useState('');
-  const [priceTouched, setPriceTouched] = useState(false);
-  const [costGtq, setCostGtq] = useState('');        // costo manual (modo manual)
   const [qty, setQty] = useState(1);
   const [inHand, setInHand] = useState(isLive);      // en vivo siempre es en mano
   const [days, setDays] = useState(3);               // catálogo: días disponible
@@ -1331,36 +1429,66 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
 
   const reset = () => {
     setMode(isLive ? 'foto' : 'amazon'); setAmazonUrl(''); setTitle(''); setDescription(''); setCategory('');
-    setImageUrl(null); setAmazonMeta({}); setPriceUsd(''); setWeight('1');
-    setDimL(''); setDimW(''); setDimH(''); setPriceGtq(''); setPriceTouched(false); setCostGtq('');
+    setImageUrl(null); setAmazonMeta({}); setPriceUsd(''); setTaxPct(String(config.taxRate));
+    setApplyTax(true); setPriceGtq('');
     setQty(1); setInHand(isLive); setDays(3); setIsOffer(false); setCompareAt('');
   };
   useEffect(() => { if (open) reset(); /* eslint-disable-next-line */ }, [open, listing]);
 
-  const result = useMemo(() => calculate(config, {
-    priceUsd: num(priceUsd), weightLbs: num(weight),
-    dims: { l: num(dimL), w: num(dimW), h: num(dimH) },
-    profitMode: 'markup', markupPct: config.defaultMarkupPct, fixedSaleGtq: 0,
-  }), [config, priceUsd, weight, dimL, dimW, dimH]);
-  const suggestions = useMemo(() => suggestPrices(result.totalCostGtq), [result.totalCostGtq]);
+  // El dueño compra en Estados Unidos, en dólares, y vende acá en quetzales. Antes la
+  // conversión existía sólo en el modo Amazon y en foto/manual se pedía el costo "en Q":
+  // parado en la tienda con el precio en dólares enfrente, escribía 100 y el sistema
+  // guardaba Q100 en vez de Q829 — para siempre, porque ese número es la única fuente
+  // de costo del módulo. La moneda ahora es explícita y la cuenta es la misma en los
+  // tres modos; sólo el flete distingue al que se pidió por Amazon para este viaje.
+  const brokenFx = !(config.exchangeRate > 0);
 
-  useEffect(() => {
-    if (!priceTouched && suggestions.length > 0) setPriceGtq(String(suggestions[0]));
-  }, [suggestions, priceTouched]);
+  // Sin flete: el costo es el precio pagado en USA más su impuesto, pasado a quetzales.
+  // El prorrateo de maleta/caja existe en el motor, pero pedir peso o medidas mientras
+  // se publica en vivo cuesta más de lo que aporta hasta que haya una maleta cargada.
+  const result = useMemo(() => calculate(config, {
+    priceUsd: num(priceUsd),
+    weightLbs: 0, dims: { l: 0, w: 0, h: 0 },
+    taxPct: applyTax ? num(taxPct) : 0,
+    profitMode: 'markup', markupPct: config.defaultMarkupPct, fixedSaleGtq: 0,
+  }), [config, priceUsd, taxPct, applyTax]);
+
+  // Lo que se guarda es el número verde, nunca lo tecleado.
+  const costFinal = result.totalCostGtq;
+  const saleGtq = num(priceGtq);
+  const profit = costFinal > 0 && saleGtq > 0 ? round2(saleGtq - costFinal) : null;
+
+  // Los precios se sugieren desde el precio que deja TU ganancia, no desde el costo:
+  // sugerirlos desde el costo proponía vender casi al costo (Q899.99 sobre Q898) y el
+  // primero se autocargaba en el campo, así que el default del formulario era ese.
+  const suggestions = useMemo(
+    () => (costFinal > 0 ? suggestPrices(costFinal * (1 + Math.max(0, config.defaultMarkupPct) / 100)) : []),
+    [costFinal, config.defaultMarkupPct],
+  );
 
   const doScrape = useCallback(async (url: string) => {
-    if (!/amazon|amzn|\/dp\/|\/gp\//i.test(url)) return;
+    const raw = url.trim();
+    if (!raw || scrapingRef.current) return;
+    // El botón «Compartir» de la app de Amazon da un a.co/d/…, muchas veces con texto
+    // alrededor. Antes se exigía la palabra "amazon" y esos links se descartaban en
+    // silencio: el dueño pegaba y tocaba buscar sin que pasara absolutamente nada.
+    if (!isAmazonLink(raw)) {
+      onError('Ese enlace no parece de Amazon. Pegá el link del producto.');
+      return;
+    }
+    scrapingRef.current = true;
     setScraping(true);
     try {
-      const p = await shopperAmazonService.scrape(url);
+      const p = await shopperAmazonService.scrape(raw);
       if (p.name) setTitle(p.name);
       if (p.description) setDescription(p.description);
       if (p.image_url) setImageUrl(p.image_url);
-      if (p.price_usd != null) { setPriceUsd(String(p.price_usd)); setPriceTouched(false); }
+      if (p.price_usd != null) setPriceUsd(String(p.price_usd));
       setAmazonMeta({ url: p.url, asin: p.asin });
-    } catch {
-      onError('No se pudo leer ese enlace de Amazon.');
+    } catch (e) {
+      onError(errMsg(e) ?? 'No se pudo leer ese enlace de Amazon.');
     } finally {
+      scrapingRef.current = false;
       setScraping(false);
     }
   }, [onError]);
@@ -1368,26 +1496,33 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
   const onPhoto = async (f: File | null) => {
     if (!f) return;
     try {
-      const dataUrl = await fileToResizedDataUrl(f, { maxSize: 720, quality: 0.7 });
-      setImageUrl(dataUrl);
+      // El tope de bytes no es cosmético: la foto viaja como data URI dentro del JSON
+      // del producto, y el request entero tiene que caber en el límite de body del proxy.
+      setImageUrl(await fileToResizedDataUrl(f, {
+        maxSize: 720, quality: 0.7, maxBytes: 120_000, photo: true,
+      }));
     } catch {
       onError('No se pudo procesar la foto.');
     }
   };
 
-  const canSave = title.trim().length > 0 && num(priceGtq) > 0;
+  // Publicar sin costo es publicar a ciegas: el módulo entero existe para decirle al
+  // dueño cuánto ganó, y sin este dato los reportes le imputan un costo supuesto y le
+  // muestran una utilidad que es aritmética del supuesto, no plata medida.
+  const canSave = title.trim().length > 0 && saleGtq > 0 && costFinal > 0;
 
   const save = async () => {
     if (!canSave) return;
     setSaving(true);
     try {
-      const usesCalc = mode !== 'manual' && num(priceUsd) > 0;
       const madeToOrder = isLive ? false : !inHand;
       await svc.create({
         title: title.trim(),
         description: description || null,
         category: category.trim() || null,
-        price_gtq: num(priceGtq),
+        price_gtq: saleGtq,
+        // El costo en dólares es el hecho que tecleó: sin él, cambiar el tipo de cambio
+        // en Ajustes reescribiría la historia de lo que pagó.
         price_usd: num(priceUsd) || null,
         is_made_to_order: madeToOrder,
         stock_total: madeToOrder ? 1 : Math.max(1, qty),
@@ -1400,28 +1535,48 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
         amazon_asin: amazonMeta.asin || null,
         image_url: imageUrl,
         source: mode,
-        cost_gtq: mode === 'manual' && num(costGtq) > 0 ? num(costGtq) : null,
-        calc: usesCalc ? toSnapshot(config, result) : null,
+        // Siempre snapshot, nunca un número suelto: guarda de dónde salió el costo
+        // (tax, tipo de cambio, flete) para que el reporte siga siendo auditable
+        // aunque mañana cambien los ajustes.
+        calc: toSnapshot(config, result, false),
       });
       reset();
       onCreated();
-    } catch {
-      onError('No se pudo publicar el producto.');
+    } catch (e) {
+      // 413 = el proxy cortó el request por tamaño; 422 con una foto pasada de tope es
+      // el mismo problema visto por el backend. Lo único que puede pesar así es la foto,
+      // y sin decirlo el dueño reintenta el mismo producto para siempre.
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      const heavyPhoto = status === 413
+        || (status === 422 && (imageUrl?.length ?? 0) > 250_000);
+      onError(heavyPhoto
+        ? 'La foto pesa demasiado. Probá con otra o publicá sin foto.'
+        : errMsg(e) ?? 'No se pudo publicar el producto.');
     } finally {
       setSaving(false);
     }
   };
 
-  const isCaja = config.freightMode === 'caja';
   const showQty = isLive || inHand;
+
+  // El footer es lo único que se ve siempre: que cargue el número de la decisión vale
+  // más que cualquier otro centímetro del panel. Y leer "Perdés Q129" justo antes de
+  // tocar frena mejor que un botón muerto — vender a pérdida a veces es a propósito.
+  const ctaHint = costFinal <= 0 ? 'Falta cuánto te costó'
+    : saleGtq <= 0 ? 'Falta el precio de venta'
+    : profit != null && profit < 0 ? `⚠️ Perdés ${fmtGTQ(Math.abs(profit))}`
+    : profit != null ? `Ganás ${fmtGTQ(profit)}` : null;
 
   return (
     <BottomSheet open={open} onClose={onClose} title={isLive ? 'Publicar en vivo ⚡' : 'Agregar al catálogo'}
       footer={
         <button onClick={save} disabled={!canSave || saving}
-          className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black text-base active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2">
-          {saving ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
-          {isLive ? 'PUBLICAR A LA VENTA' : 'PUBLICAR EN CATÁLOGO'}
+          className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black active:scale-[0.97] transition-transform disabled:opacity-30 flex flex-col items-center justify-center leading-none gap-0.5">
+          <span className="flex items-center gap-2 text-[15px] tracking-wide">
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+            {isLive ? 'PUBLICAR A LA VENTA' : 'PUBLICAR EN CATÁLOGO'}
+          </span>
+          {ctaHint && <span className="text-[11px] font-bold tabular-nums">{ctaHint}</span>}
         </button>
       }>
       <div className="flex flex-col gap-4">
@@ -1446,13 +1601,22 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
           </div>
         )}
 
-        {mode === 'foto' && (
+        {/* Con la foto ya tomada el recuadro grande no informa nada y empuja la cuenta
+            fuera de pantalla justo cuando importa: se encoge a una miniatura. */}
+        {mode === 'foto' && (imageUrl ? (
+          <div className="flex items-center gap-3">
+            <img src={imageUrl} className="w-24 h-24 rounded-2xl object-cover shrink-0" alt="" />
+            <button onClick={() => fileRef.current?.click()}
+              className="nodo-btn-secondary !h-11 flex items-center gap-2">
+              <Camera size={16} /> Cambiar foto
+            </button>
+          </div>
+        ) : (
           <button onClick={() => fileRef.current?.click()}
             className="h-44 rounded-2xl border-2 border-dashed border-nodo-line bg-nodo-inset flex flex-col items-center justify-center gap-2 text-nodo-sub active:scale-[0.98] transition-transform overflow-hidden">
-            {imageUrl ? <img src={imageUrl} className="w-full h-full object-cover" alt="" />
-              : <><Camera size={30} /><span className="text-sm font-bold">Tomar o subir foto</span><span className="text-[11px] text-nodo-dim">Cámara o galería del teléfono</span></>}
+            <Camera size={30} /><span className="text-sm font-bold">Tomar o subir foto</span><span className="text-[11px] text-nodo-dim">Cámara o galería del teléfono</span>
           </button>
-        )}
+        ))}
         {/* Sin `capture`: el teléfono ofrece cámara O galería (subir una foto existente). */}
         <input ref={fileRef} type="file" accept="image/*" hidden
           onChange={e => onPhoto(e.target.files?.[0] || null)} />
@@ -1466,82 +1630,92 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
               <label className="nodo-label">Nombre</label>
               <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Nombre del producto" className="nodo-input" />
             </div>
-            <div>
-              <label className="nodo-label">Categoría (opcional)</label>
-              <input value={category} onChange={e => setCategory(e.target.value)} placeholder="ej. Belleza, Tecnología" className="nodo-input" />
-            </div>
+            {/* En vivo un producto dura lo que dura la venta: nadie lo filtra por
+                categoría, y son 89px que la cuenta necesita más. */}
+            {!isLive && (
+              <div>
+                <label className="nodo-label">Categoría (opcional)</label>
+                <input value={category} onChange={e => setCategory(e.target.value)} placeholder="ej. Belleza, Tecnología" className="nodo-input" />
+              </div>
+            )}
 
-            {mode !== 'manual' && (
-              <div className="nodo-card p-4 bg-nodo-inset flex flex-col gap-3">
-                <p className="nodo-section-label !mb-0 flex items-center gap-1.5">
-                  <Sparkles size={12} /> Calculadora ({isCaja ? 'caja' : 'maleta'})
+            {/* ── La cuenta ─────────────────────────────────────────────────────
+                Lo que pagaste va en dólares, y el costo en quetzales aparece en
+                verde apenas soltás el número: es el que hay que restarle al precio
+                de venta, y verlo debajo del campo lo deja claro sin explicarlo. */}
+            <div className="nodo-card p-4">
+              <label className="nodo-label">
+                {mode === 'amazon' ? '¿Cuánto cuesta allá? (dólares)' : '¿Cuánto te costó? (dólares)'}
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-black text-nodo-ink pointer-events-none">$</span>
+                <input value={priceUsd} onChange={e => setPriceUsd(e.target.value)} disabled={scraping}
+                  inputMode="decimal" placeholder="0.00" className="nodo-input-number nodo-input-prefixed" />
+              </div>
+
+              {/* El costo real, en la moneda en la que vende. */}
+              {costFinal > 0 && !scraping && (
+                <p aria-live="polite"
+                  className="text-[26px] font-black tabular-nums tracking-tight leading-none text-nodo-success-tx mt-2">
+                  {fmtGTQ(costFinal)}
+                  <span className="text-[11px] font-bold text-nodo-sub ml-2 tracking-normal">
+                    te cuesta{applyTax ? ' con impuesto' : ''}
+                  </span>
                 </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="nodo-label">¿Cuánto cuesta allá? ($)</label>
-                    <input value={priceUsd} onChange={e => { setPriceUsd(e.target.value); setPriceTouched(false); }}
-                      inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
-                  </div>
-                  {!isCaja ? (
-                    <div>
-                      <label className="nodo-label">¿Cuánto pesa? (libras)</label>
-                      <input value={weight} onChange={e => setWeight(e.target.value)} inputMode="decimal" className="nodo-input-number" />
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="nodo-label">Medidas ({config.dimUnit})</label>
-                      <div className="flex gap-1">
-                        <input value={dimL} onChange={e => setDimL(e.target.value)} placeholder="L" inputMode="decimal" className="nodo-input-number !px-2" />
-                        <input value={dimW} onChange={e => setDimW(e.target.value)} placeholder="A" inputMode="decimal" className="nodo-input-number !px-2" />
-                        <input value={dimH} onChange={e => setDimH(e.target.value)} placeholder="H" inputMode="decimal" className="nodo-input-number !px-2" />
-                      </div>
+              )}
+
+              {brokenFx ? (
+                <p className="text-[11px] font-bold text-nodo-warn-tx mt-2">
+                  Falta el tipo de cambio en Ajustes: sin eso no puedo pasarlo a quetzales.
+                </p>
+              ) : (
+                <div className="flex items-center gap-2 mt-2">
+                  <button type="button" role="switch" aria-checked={applyTax}
+                    onClick={() => { haptic.tap(); setApplyTax(v => !v); }}
+                    className={`flex items-center gap-2 h-9 pl-1 pr-3 rounded-full border transition-colors ${applyTax ? 'bg-nodo-primary-soft border-nodo-primary' : 'bg-nodo-inset border-nodo-line'}`}>
+                    <span className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${applyTax ? 'bg-nodo-primary text-nodo-on-primary' : 'bg-nodo-card text-nodo-dim'}`}>
+                      {applyTax ? <Check size={14} /> : <X size={14} />}
+                    </span>
+                    <span className={`text-xs font-bold ${applyTax ? 'text-nodo-ink' : 'text-nodo-sub'}`}>Sumar impuesto</span>
+                  </button>
+                  {/* El impuesto es del estado donde compró, no del dueño: New Hampshire
+                      cobra 0 y California 9.5. Se edita donde se lee y se guarda con el ítem. */}
+                  {applyTax && (
+                    <div className="flex items-center gap-1">
+                      <input value={taxPct} onChange={e => setTaxPct(e.target.value)} inputMode="decimal"
+                        aria-label="Impuesto de esta compra en porcentaje"
+                        className="w-12 h-9 px-1 text-center rounded-xl bg-nodo-inset border border-nodo-line text-nodo-ink font-bold tabular-nums" />
+                      <span className="text-xs font-bold text-nodo-sub">%</span>
                     </div>
                   )}
+                  <span className="text-[11px] font-semibold text-nodo-dim ml-auto tabular-nums">
+                    $1 = {fmtGTQ(config.exchangeRate)}
+                  </span>
                 </div>
-                {num(priceUsd) > 0 && (
-                  <div className="flex items-center justify-between text-xs font-semibold text-nodo-sub">
-                    <span>Flete {fmtUSD(result.shippingUsd)} + tax {fmtUSD(result.taxUsd)}</span>
-                    <span className="text-nodo-ink font-black">Costo {fmtGTQ(result.totalCostGtq)}</span>
-                  </div>
-                )}
-                {suggestions.length > 0 && (
-                  <div className="flex gap-2 flex-wrap">
-                    {suggestions.map(s => (
-                      <button key={s} onClick={() => { setPriceGtq(String(s)); setPriceTouched(true); }}
-                        className={`px-3 py-1.5 rounded-xl text-sm font-black tabular-nums active:scale-95 transition-transform ${num(priceGtq) === s ? 'bg-nodo-primary text-nodo-on-primary' : 'bg-nodo-card border border-nodo-line text-nodo-ink'}`}>
-                        {fmtGTQ(s)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              )}
 
-            {/* Costo manual: sin calculadora, capturarlo para margen y ganancias */}
-            {mode === 'manual' && (
-              <div>
-                <label className="nodo-label">¿Cuánto te costó a vos? (Q)</label>
-                <input value={costGtq} onChange={e => setCostGtq(e.target.value)}
-                  inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
-                <p className="text-[11px] text-nodo-sub mt-1">Solo vos lo ves. Sirve para saber cuánto ganás.</p>
+              <label className="nodo-label mt-4 block">¿A cuánto lo vendés? (quetzales)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-black text-nodo-ink pointer-events-none">Q</span>
+                <input value={priceGtq} onChange={e => setPriceGtq(e.target.value)}
+                  inputMode="decimal" placeholder="0.00" className="nodo-input-number nodo-input-prefixed" />
               </div>
-            )}
 
-            <div>
-              <label className="nodo-label">¿A cuánto lo vendés? (Q)</label>
-              <input value={priceGtq} onChange={e => { setPriceGtq(e.target.value); setPriceTouched(true); }}
-                inputMode="decimal" placeholder="0.00" className="nodo-input-number" />
-              {(() => {
-                const cost = mode === 'manual' ? num(costGtq) : result.totalCostGtq;
-                if (!(num(priceGtq) > 0 && cost > 0)) return null;
-                const profit = num(priceGtq) - cost;
-                return (
-                  <p className={`text-[11px] font-semibold mt-1 tabular-nums ${profit >= 0 ? 'text-nodo-success-tx' : 'text-nodo-danger-tx'}`}>
-                    {profit >= 0 ? 'Ganancia' : 'Pérdida'} {fmtGTQ(Math.abs(profit))}
-                    {config.exchangeRate > 0 ? ` · ${fmtUSD(Math.abs(profit) / config.exchangeRate)}` : ''}
-                  </p>
-                );
-              })()}
+              {/* Se ofrecen mientras no hay precio, y no se autocompleta ninguno: llenar
+                  el campo solo hacía publicar una cifra que el dueño nunca eligió. */}
+              {saleGtq <= 0 && suggestions.length > 0 && (
+                <div className="flex gap-2 flex-wrap mt-2">
+                  {suggestions.map(s => (
+                    <button key={s} onClick={() => { haptic.tap(); setPriceGtq(String(s)); }}
+                      className="px-3 h-11 rounded-xl text-sm font-black tabular-nums bg-nodo-inset border border-nodo-line text-nodo-ink active:scale-95 transition-transform">
+                      {fmtGTQ(s)}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <Verdict cost={costFinal} sale={saleGtq} qty={showQty ? qty : 1}
+                goalPct={config.defaultMarkupPct} />
             </div>
 
             {/* Cantidad / disponibilidad */}
@@ -1558,7 +1732,7 @@ function CreateSheet({ listing, open, onClose, config, onCreated, onError }: {
             )}
 
             {showQty && (
-              <div className="flex items-center justify-between nodo-card p-3 bg-nodo-inset">
+              <div className="flex items-center justify-between rounded-nodo-md border border-nodo-line p-3 bg-nodo-inset">
                 <div>
                   <p className="text-sm font-black text-nodo-ink">¿Cuántas tenés?</p>
                   <p className="text-[11px] text-nodo-sub">Cuando se aparten todas, se marca agotado</p>
@@ -1712,7 +1886,7 @@ function ManualSaleSheet({ open, onClose, items, onSaved, onError }: {
           </div>
         </div>
 
-        <div className="flex items-center justify-between nodo-card p-3 bg-nodo-inset">
+        <div className="flex items-center justify-between rounded-nodo-md border border-nodo-line p-3 bg-nodo-inset">
           <p className="text-sm font-black text-nodo-ink">¿Cuántos se llevó?</p>
           <div className="flex items-center gap-2">
             <button onClick={() => setQty(q => Math.max(1, q - 1))}
@@ -1789,7 +1963,7 @@ function SaleHistorySheet({ open, onClose, flash }: {
         {rows?.length === 0 && (
           <div className="nodo-empty-state py-10">
             <History size={30} className="text-nodo-dim mb-2" />
-            <p className="text-sm font-bold text-nodo-dim">Todavía no cerraste ninguna venta</p>
+            <p className="text-sm font-bold text-nodo-ink">Todavía no cerraste ninguna venta</p>
             <p className="text-xs text-nodo-sub mt-1">Cuando abrás y cerrés una, queda guardada acá</p>
           </div>
         )}
@@ -1864,20 +2038,53 @@ function SaleHistorySheet({ open, onClose, flash }: {
 // El "N sin costo real" de antes era un diagnóstico sin cura. Esto es la cura: la
 // lista corta de productos que rompen el número, con un campo cada uno. Guarda de a
 // uno (no todo-o-nada): arreglar 3 de 5 ya deja el reporte más cerca de la verdad.
-function CostFixSheet({ open, onClose, items, onSaved, onError }: {
-  open: boolean; onClose: () => void; items: ShopperCatalogItem[];
+function CostFixSheet({ open, onClose, items, config, onSaved, onError }: {
+  open: boolean; onClose: () => void; items: ShopperCatalogItem[]; config: CalcConfig;
   onSaved: () => Promise<void>; onError: (m: string) => void;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  useEffect(() => { if (open) setDrafts({}); }, [open]);
+  // Reparar el costo con la misma ambigüedad de moneda que lo rompió no repara nada.
+  const [ccy, setCcy] = useState<CostCurrency>('usd');
+  const brokenFx = !(config.exchangeRate > 0);
+  const inUsd = ccy === 'usd' && !brokenFx;
+  // El costo que ya está cargado se precarga: si eran dólares, alcanza con cambiar el
+  // selector y guardar. Volver a teclear un número que la pantalla ya sabe es la clase
+  // de fricción por la que estos siete quedaron mal durante un mes.
+  useEffect(() => {
+    if (!open) return;
+    setCcy(brokenFx ? 'gtq' : 'usd');
+    setDrafts(Object.fromEntries(
+      items.filter(i => i.calc_total_cost_gtq != null)
+        .map(i => [i.id, String(i.calc_total_cost_gtq)]),
+    ));
+  }, [open, brokenFx, items]);
+
+  const costOf = (raw: string): number => {
+    const v = num(raw);
+    if (v <= 0) return 0;
+    return inUsd
+      ? calculate(config, {
+          priceUsd: v, weightLbs: 0, dims: { l: 0, w: 0, h: 0 },
+          profitMode: 'markup', markupPct: 0, fixedSaleGtq: 0,
+        }).totalCostGtq
+      : round2(v);
+  };
 
   const save = async (it: ShopperCatalogItem) => {
-    const cost = num(drafts[it.id] ?? '');
+    const raw = drafts[it.id] ?? '';
+    const cost = costOf(raw);
     if (cost <= 0) return;
     setBusy(it.id);
     try {
-      await svc.update(it.id, { cost_gtq: cost });
+      const result = calculate(config, {
+        priceUsd: num(raw), weightLbs: 0, dims: { l: 0, w: 0, h: 0 },
+        profitMode: 'markup', markupPct: 0, fixedSaleGtq: 0,
+      });
+      await svc.update(it.id, {
+        price_usd: inUsd ? num(raw) : null,
+        calc: inUsd ? toSnapshot(config, result, false) : directSnapshot(config, cost),
+      });
       await onSaved();
       haptic.done();
     } catch {
@@ -1889,20 +2096,37 @@ function CostFixSheet({ open, onClose, items, onSaved, onError }: {
     <BottomSheet open={open} onClose={onClose} title="¿Qué te costaron?">
       <div className="flex flex-col gap-3">
         <p className="text-sm font-semibold text-nodo-sub">
-          De estos productos no sabemos cuánto pagaste, así que tu ganancia es un cálculo
-          aproximado. Escribí lo que te costó cada uno y los números se vuelven exactos.
+          De estos productos no sabemos en qué moneda pagaste, así que su ganancia puede
+          estar inflada. Decinos si fue en dólares o en quetzales y los números se
+          vuelven exactos.
         </p>
+        {items.length > 0 && !brokenFx && (
+          <div>
+            <label className="nodo-label">¿En qué los pagaste?</label>
+            <SegmentedControl<CostCurrency>
+              options={[
+                { value: 'usd', label: `$ En Estados Unidos` },
+                { value: 'gtq', label: 'Q Acá' },
+              ]}
+              value={ccy} onChange={setCcy} />
+            {inUsd && (
+              <p className="text-[11px] font-semibold text-nodo-sub mt-1.5">
+                Le sumo {config.taxRate}% de impuesto y lo paso a quetzales a {fmtGTQ(config.exchangeRate)}.
+              </p>
+            )}
+          </div>
+        )}
         {items.length === 0 && (
           <div className="nodo-empty-state py-10">
             <Check size={30} className="text-nodo-success-tx mb-2" />
-            <p className="text-sm font-bold text-nodo-dim">Todo tiene su costo ✓</p>
+            <p className="text-sm font-bold text-nodo-ink">Todo tiene su costo ✓</p>
           </div>
         )}
         {items.map(it => {
           const draft = drafts[it.id] ?? '';
-          const cost = num(draft);
+          const cost = costOf(draft);
           const price = it.price_gtq ?? 0;
-          const profit = price - cost;
+          const profit = round2(price - cost);
           return (
             <div key={it.id} className="nodo-card p-3 flex flex-col gap-2.5">
               <div className="flex items-center gap-3">
@@ -1911,15 +2135,23 @@ function CostFixSheet({ open, onClose, items, onSaved, onError }: {
                   : <div className="w-12 h-12 rounded-xl bg-nodo-inset flex items-center justify-center text-nodo-dim shrink-0"><Package size={18} /></div>}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-nodo-ink line-clamp-2 leading-tight">{it.title}</p>
-                  <p className="text-[11px] font-bold text-nodo-sub tabular-nums">Lo vendés a {fmtGTQ(price)}</p>
+                  <p className="text-[11px] font-bold text-nodo-sub tabular-nums">
+                    Lo vendés a {fmtGTQ(price)}
+                    {it.calc_total_cost_gtq != null && ` · tenías cargado ${it.calc_total_cost_gtq}`}
+                  </p>
                 </div>
               </div>
               <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <label className="nodo-label">Te costó (Q)</label>
-                  <input value={draft} inputMode="decimal" placeholder="0.00" className="nodo-input-number"
-                    onChange={e => setDrafts(d => ({ ...d, [it.id]: e.target.value }))}
-                    onKeyDown={e => { if (e.key === 'Enter') void save(it); }} />
+                <div className="flex-1 min-w-0">
+                  <label className="nodo-label">Te costó</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-black text-nodo-ink pointer-events-none">
+                      {inUsd ? '$' : 'Q'}
+                    </span>
+                    <input value={draft} inputMode="decimal" placeholder="0.00" className="nodo-input-number nodo-input-prefixed"
+                      onChange={e => setDrafts(d => ({ ...d, [it.id]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') void save(it); }} />
+                  </div>
                 </div>
                 <button onClick={() => save(it)} disabled={cost <= 0 || busy === it.id}
                   className="h-12 px-4 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black active:scale-95 transition-transform disabled:opacity-30 flex items-center gap-1.5 shrink-0">
@@ -1928,6 +2160,7 @@ function CostFixSheet({ open, onClose, items, onSaved, onError }: {
               </div>
               {cost > 0 && price > 0 && (
                 <p className={`text-[11px] font-bold tabular-nums ${profit >= 0 ? 'text-nodo-success-tx' : 'text-nodo-danger-tx'}`}>
+                  {inUsd && <span className="text-nodo-sub font-semibold">Te cuesta {fmtGTQ(cost)} · </span>}
                   {profit >= 0
                     ? `Ganás ${fmtGTQ(profit)} por cada uno`
                     : `⚠️ Perdés ${fmtGTQ(Math.abs(profit))} por cada uno`}
@@ -1965,98 +2198,309 @@ function waConfirmLink(phone: string | null | undefined, r: ShopperReservation):
 }
 
 // ── Reservas (máquina de estados) ──────────────────────────────────────────────
-function ReservasSheet({ open, onClose, reservations, items, whatsapp, onChanged, onError }: {
+// Una reserva cerrada ya no espera nada de nadie: se va con el swipe y el Deshacer.
+// Las vivas y las entregadas paran en una confirmación — quitar una viva deja al
+// cliente esperando algo que el dueño dejó de ver, y quitar una entregada saca plata
+// ya cobrada de "Cómo te fue".
+const isClosedRes = (r: ShopperReservation) =>
+  r.status === 'cancelada' || r.status === 'no_disponible';
+
+function ReservasSheet({ open, onClose, reservations, items, whatsapp, onChanged, flash, onFixCost }: {
   open: boolean; onClose: () => void; reservations: ShopperReservation[];
   items: ShopperCatalogItem[]; whatsapp?: string | null;
-  onChanged: () => Promise<void>; onError: (m: string) => void;
+  onChanged: () => Promise<void>; flash: (k: 'ok' | 'err', m: string, undo?: () => void) => void;
+  onFixCost: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [zoom, setZoom] = useState<{ src: string; title?: string | null } | null>(null);
+  const [ask, setAsk] = useState<ShopperReservation | null>(null);
+  // Mismo trato que el modo Editar del catálogo: la fila se va en pantalla y el DELETE
+  // sale 6s después. El backend no tiene restore, así que el Deshacer sólo puede vivir
+  // en la ventana previa a que el request salga.
+  const [ghosts, setGhosts] = useState<Set<string>>(() => new Set());
+  const pending = useRef<{ ids: string[]; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+
+  // `active` se renderiza ENTERA — con fantasmas incluidos — porque `nodo-row-slot`
+  // necesita la fila montada para animarle la salida y para que Deshacer la devuelva.
+  // `visible` es lo que ya no cuenta: alimenta el conteo, el vacío y "Limpiar cerradas".
   const active = reservations.filter(r => r.is_active);
+  const visible = active.filter(r => !ghosts.has(r.id));
+  const closedIds = visible.filter(isClosedRes).map(r => r.id);
+  // Fallback: la reserva ya trae su propio `item_cost_gtq`; el mapa sólo cubre las
+  // reservas viejas que un cliente tenga cacheadas antes de recargar.
   const costById = useMemo(
     () => new Map(items.map(i => [i.id, i.calc_total_cost_gtq ?? null])),
     [items],
   );
 
+  const openSwipe = useRef<(() => void) | null>(null);
+  const registerOpen = useCallback((close: () => void) => {
+    if (openSwipe.current && openSwipe.current !== close) openSwipe.current();
+    openSwipe.current = close;
+  }, []);
+
   const move = async (r: ShopperReservation, status: string) => {
     setBusy(r.id);
     try { await svc.updateReservation(r.id, { status }); await onChanged(); }
-    catch { onError('No se pudo actualizar la reserva.'); }
+    catch { flash('err', 'No se pudo actualizar la reserva.'); }
     finally { setBusy(null); }
   };
 
+  const flushDelete = useCallback(async () => {
+    const p = pending.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pending.current = null;
+    // De a 4, como el borrado del catálogo: una tanda entera en paralelo pega contra
+    // el rate-limit desde el celular.
+    const fails: string[] = [];
+    for (let i = 0; i < p.ids.length; i += 4) {
+      const chunk = p.ids.slice(i, i + 4);
+      const r = await Promise.allSettled(chunk.map(id => svc.deleteReservation(id)));
+      r.forEach((x, k) => { if (x.status === 'rejected') fails.push(chunk[k]); });
+    }
+    if (!alive.current) return;
+    // Recargar ANTES de soltar el fantasma: al revés hay una ventana en la que la línea
+    // ya borrada sigue en `reservations` y nada la tapa, así que reaparece y parpadea.
+    await onChanged();
+    setGhosts(prev => { const n = new Set(prev); p.ids.forEach(id => n.delete(id)); return n; });
+    if (fails.length) flash('err', `No se pudo quitar ${fails.length}. Siguen en tu bandeja.`);
+  }, [onChanged, flash]);
+
+  // Cerrar el panel o mandar la app a background confirma lo pendiente: el dueño ya
+  // decidió. Si iOS mata la pestaña antes, la reserva simplemente sigue viva.
+  useEffect(() => { if (!open) { openSwipe.current = null; void flushDelete(); } }, [open, flushDelete]);
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') void flushDelete(); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => { document.removeEventListener('visibilitychange', onHide); void flushDelete(); };
+  }, [flushDelete]);
+
+  const commitDelete = useCallback((ids: string[], msg: string) => {
+    if (!ids.length) return;
+    void flushDelete();                     // nunca dos lotes en vuelo
+    setGhosts(prev => new Set([...prev, ...ids]));
+    setAsk(null);
+    haptic.confirm();
+    const timer = setTimeout(() => { void flushDelete(); }, 6000);
+    pending.current = { ids, timer };
+    flash('ok', msg, () => {
+      clearTimeout(timer);
+      pending.current = null;
+      setGhosts(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+      haptic.tap();
+      flash('ok', 'Listo, sigue en tu bandeja');
+    });
+  }, [flushDelete, flash]);
+
+  // La fila que pide confirmación quedó deslizada: si el dueño dice «Dejarla» hay que
+  // devolverla a su lugar, o se queda corrida y parece borrada sin estarlo.
+  const askRow = useRef<(() => void) | null>(null);
+  const requestDelete = useCallback((r: ShopperReservation, closeRow: () => void) => {
+    if (isClosedRes(r)) { commitDelete([r.id], 'Reserva quitada'); return; }
+    haptic.reject();
+    askRow.current = closeRow;
+    setAsk(r);
+  }, [commitDelete]);
+  const dismissAsk = useCallback(() => {
+    askRow.current?.(); askRow.current = null; setAsk(null);
+  }, []);
+
+  const askSale = ask?.item_price_gtq != null ? ask.item_price_gtq * ask.quantity : null;
+
   return (
-    <BottomSheet open={open} onClose={onClose} title="Reservas">
-      {zoom && <ImageLightbox src={zoom.src} title={zoom.title} onClose={() => setZoom(null)} />}
-      <div className="flex flex-col gap-3">
-        {active.length === 0 && (
-          <div className="nodo-empty-state py-10"><Bell size={30} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-dim">Todavía nadie te apartó nada</p></div>
-        )}
-        {active.map(r => {
-          const meta = RES_META[r.status];
-          const idx = FLOW.indexOf(r.status);
-          const next = idx >= 0 && idx < FLOW.length - 1 ? FLOW[idx + 1] : null;
-          const unitCost = costById.get(r.catalog_item_id) ?? null;
-          const sale = r.item_price_gtq != null ? r.item_price_gtq * r.quantity : null;
-          const cost = unitCost != null ? unitCost * r.quantity : null;
-          return (
-            <div key={r.id} className="nodo-card p-3 flex flex-col gap-2.5">
-              <div className="flex items-center gap-3">
-                {r.item_image_url
-                  ? <button onClick={() => setZoom({ src: r.item_image_url!, title: r.item_title })}
-                      className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 active:scale-95 transition-transform group">
-                      <img src={r.item_image_url} className="w-full h-full object-cover" alt="" />
-                      <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-active:bg-black/25 transition-colors">
-                        <Maximize2 size={13} className="text-white opacity-0 group-active:opacity-100" />
-                      </span>
-                    </button>
-                  : <div className="w-12 h-12 rounded-xl bg-nodo-inset flex items-center justify-center text-nodo-dim shrink-0"><Package size={18} /></div>}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-nodo-ink truncate">{r.item_title}</p>
-                  <p className="text-xs text-nodo-sub truncate">{r.client_name} · {r.quantity}u</p>
-                  {sale != null && (
-                    <p className="text-[11px] font-bold tabular-nums mt-0.5">
-                      <span className="text-nodo-ink">Venta {fmtGTQ(sale)}</span>
-                      {cost != null
-                        ? <span className="text-nodo-sub"> · Costo {fmtGTQ(cost)}</span>
-                        : <span className="text-nodo-warn-tx"> · no sé qué costó</span>}
-                    </p>
+    <>
+      <BottomSheet open={open} onClose={onClose} title="Reservas">
+        {zoom && <ImageLightbox src={zoom.src} title={zoom.title} onClose={() => setZoom(null)} />}
+        {visible.length === 0 ? (
+          <div className="nodo-empty-state py-10"><Bell size={30} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-ink">Todavía nadie te apartó nada</p></div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <p className="nodo-section-label !mb-0">
+                {visible.length} en tu bandeja
+                <span className="ml-1.5 font-semibold normal-case tracking-normal text-nodo-sub">
+                  deslizá para quitar
+                </span>
+              </p>
+              {closedIds.length > 0 && (
+                <button
+                  onClick={() => commitDelete(
+                    closedIds,
+                    closedIds.length === 1 ? 'Reserva quitada' : `${closedIds.length} reservas quitadas`,
                   )}
-                </div>
-                <span className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-black ${meta.cls}`}>{meta.emoji} {meta.label}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {r.item_amazon_url && (
-                  <a href={r.item_amazon_url} target="_blank" rel="noopener"
-                    className="h-9 px-3 rounded-xl bg-nodo-pastel-yellow text-amber-700 dark:text-amber-300 text-xs font-black flex items-center gap-1 active:scale-95">
-                    <Tag size={13} /> Comprar
-                  </a>
-                )}
-                {whatsapp && (
-                  <a href={waConfirmLink(r.client_phone, r)} target="_blank" rel="noopener"
-                    className="h-9 px-3 rounded-xl bg-nodo-success-bg text-nodo-success-tx text-xs font-black flex items-center gap-1 active:scale-95">
-                    <MessageCircle size={15} /> Confirmar
-                  </a>
-                )}
-                <div className="flex-1" />
-                {!['entregada', 'cancelada', 'no_disponible'].includes(r.status) && (
-                  <button onClick={() => move(r, 'cancelada')} disabled={busy === r.id}
-                    className="h-9 px-3 rounded-xl bg-nodo-inset text-nodo-sub text-xs font-bold active:scale-95 disabled:opacity-40">
-                    <X size={14} />
-                  </button>
-                )}
-                {next && (
-                  <button onClick={() => move(r, next)} disabled={busy === r.id}
-                    className="h-9 px-3 rounded-xl bg-nodo-primary text-nodo-on-primary text-xs font-black flex items-center gap-1 active:scale-95 disabled:opacity-40">
-                    {busy === r.id ? <Loader2 size={14} className="animate-spin" /> : <>{RES_META[next].emoji} {RES_META[next].label} <ArrowRight size={13} /></>}
-                  </button>
-                )}
-              </div>
+                  className="shrink-0 text-[11px] font-black text-nodo-danger-tx flex items-center gap-1 active:scale-95 transition-transform">
+                  <Trash2 size={12} /> Limpiar {closedIds.length} cerrada{closedIds.length === 1 ? '' : 's'}
+                </button>
+              )}
             </div>
-          );
-        })}
+            <div>
+              {active.map(r => (
+                <div key={r.id} className="nodo-row-slot" data-out={ghosts.has(r.id) ? '1' : undefined}>
+                  <div>
+                    <ReservaRow
+                      r={r} unitCost={r.item_cost_gtq ?? costById.get(r.catalog_item_id) ?? null}
+                      whatsapp={whatsapp} busy={busy === r.id}
+                      onMove={move} onZoom={setZoom} onFixCost={onFixCost}
+                      onDelete={requestDelete} registerOpen={registerOpen} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </BottomSheet>
+
+      {/* Confirmación de las delicadas: lo que se pierde, dicho con nombre y apellido.
+          La salida segura es la que se ve; quitar es texto. En una confirmación
+          destructiva el bloque sólido tiene que ser el "no". */}
+      <BottomSheet open={!!ask} onClose={dismissAsk} title="Ojo con esta"
+        footer={ask ? (
+          <div className="flex flex-col gap-2">
+            <button onClick={dismissAsk} className="nodo-btn-primary">
+              Dejarla
+            </button>
+            <button onClick={() => commitDelete([ask.id], 'Reserva quitada')}
+              className="h-12 w-full rounded-2xl text-sm font-black text-nodo-danger-tx active:scale-95 transition-transform">
+              Quitarla igual
+            </button>
+          </div>
+        ) : null}>
+        {ask && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm font-semibold text-nodo-sub">
+              {ask.status === 'entregada'
+                ? `Esta ya se la entregaste a ${ask.client_name}. Si la quitás, esa venta sale de «Cómo te fue» y la unidad vuelve a tu inventario. Sirve para borrar algo que cargaste por error, no para archivar una venta de verdad.`
+                : `${ask.client_name} está esperando este producto. Si la quitás desaparece de tu bandeja y también del pedido que ${ask.client_name} ve, y la unidad vuelve a quedar disponible. Avisale antes por WhatsApp.`}
+            </p>
+            <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-nodo-warn-bg">
+              <AlertTriangle size={15} className="text-nodo-warn-tx shrink-0" />
+              <p className="flex-1 text-[13px] font-bold text-nodo-warn-tx line-clamp-1">
+                {ask.quantity}× {ask.item_title}
+              </p>
+              {askSale != null && (
+                <span className="text-[11px] font-black text-nodo-warn-tx tabular-nums">{fmtGTQ(askSale)}</span>
+              )}
+            </div>
+            {whatsapp && ask.status !== 'entregada' && (
+              <a href={waConfirmLink(ask.client_phone, ask)} target="_blank" rel="noopener"
+                className="h-11 rounded-2xl bg-nodo-success-bg text-nodo-success-tx text-sm font-black flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                <MessageCircle size={16} /> Avisarle por WhatsApp
+              </a>
+            )}
+          </div>
+        )}
+      </BottomSheet>
+    </>
+  );
+}
+
+// Fila de reserva: el gesto del correo. Deslizar revela «Quitar». Una reserva cerrada se
+// va con el gesto; una viva o entregada sólo queda abierta y se confirma con el botón.
+// El tap con el swipe abierto cierra en vez de disparar la acción de abajo — si no, el
+// dedo que va a cerrar termina cambiando un estado.
+function ReservaRow({ r, unitCost, whatsapp, busy, onMove, onZoom, onDelete, onFixCost, registerOpen }: {
+  r: ShopperReservation; unitCost: number | null; whatsapp?: string | null; busy: boolean;
+  onMove: (r: ShopperReservation, status: string) => void;
+  onZoom: (z: { src: string; title?: string | null }) => void;
+  onDelete: (r: ShopperReservation, closeRow: () => void) => void;
+  onFixCost: () => void;
+  registerOpen: (close: () => void) => void;
+}) {
+  const { rowRef, onPointerDown, onPointerMove, onPointerUp, close, isOpen } =
+    useSwipeDelete(() => onDelete(r, close), registerOpen, isClosedRes(r));
+  const meta = RES_META[r.status];
+  const idx = FLOW.indexOf(r.status);
+  const next = idx >= 0 && idx < FLOW.length - 1 ? FLOW[idx + 1] : null;
+  const sale = r.item_price_gtq != null ? r.item_price_gtq * r.quantity : null;
+  const cost = unitCost != null ? unitCost * r.quantity : null;
+
+  return (
+    <div className="relative overflow-hidden rounded-[20px] bg-nodo-danger-tx">
+      {/* Capa revelada por el swipe — estática, no anima */}
+      <button onClick={() => onDelete(r, close)} aria-label="Quitar de la bandeja"
+        className="absolute inset-y-0 right-0 w-[88px] flex flex-col items-center justify-center gap-0.5 text-[color:var(--nodo-on-danger)]">
+        <Trash2 size={18} />
+        <span className="text-[10px] font-black uppercase tracking-wide">Quitar</span>
+      </button>
+
+      <div ref={rowRef}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+        onClickCapture={e => { if (isOpen()) { e.preventDefault(); e.stopPropagation(); close(); } }}
+        className="relative bg-nodo-card border border-nodo-line rounded-[20px] shadow-sm p-3 flex flex-col gap-2.5 select-none"
+        style={{ touchAction: 'pan-y' }}>
+        <div className="flex items-center gap-3">
+          {r.item_image_url
+            ? <button onClick={() => onZoom({ src: r.item_image_url!, title: r.item_title })}
+                className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 active:scale-95 transition-transform group">
+                <img src={r.item_image_url} className="w-full h-full object-cover" alt="" draggable={false} />
+                <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-active:bg-black/25 transition-colors">
+                  <Maximize2 size={13} className="text-white opacity-0 group-active:opacity-100" />
+                </span>
+              </button>
+            : <div className="w-12 h-12 rounded-xl bg-nodo-inset flex items-center justify-center text-nodo-dim shrink-0"><Package size={18} /></div>}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-nodo-ink truncate">{r.item_title}</p>
+            {/* Más de una unidad cambia lo que hay que comprar y lo que hay que cobrar:
+                se marca, no se deduce de un "2u" gris del mismo tamaño que el nombre. */}
+            <p className="text-xs text-nodo-sub truncate flex items-center gap-1.5">
+              <span className="truncate">{r.client_name}</span>
+              {r.quantity > 1 && (
+                <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-nodo-ink text-nodo-canvas font-black text-[10px] tabular-nums">
+                  ×{r.quantity}
+                </span>
+              )}
+            </p>
+            {sale != null && (
+              <p className="text-[11px] font-bold tabular-nums mt-0.5">
+                <span className="text-nodo-ink">Venta {fmtGTQ(sale)}</span>
+                {cost != null
+                  ? <span className="text-nodo-sub"> · Costo {fmtGTQ(cost)}</span>
+                  : <>
+                      {' · '}
+                      {/* Antes era un reproche sin salida. Ahora es la puerta al arreglo. */}
+                      <button onClick={onFixCost}
+                        className="text-nodo-warn-tx underline underline-offset-2 active:scale-95 transition-transform">
+                        poner lo que costó
+                      </button>
+                    </>}
+              </p>
+            )}
+          </div>
+          <span className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-black ${meta.cls}`}>{meta.emoji} {meta.label}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {r.item_amazon_url && (
+            <a href={r.item_amazon_url} target="_blank" rel="noopener" draggable={false}
+              className="h-9 px-3 rounded-xl bg-nodo-pastel-yellow text-amber-700 dark:text-amber-300 text-xs font-black flex items-center gap-1 active:scale-95">
+              <Tag size={13} /> Comprar
+            </a>
+          )}
+          {whatsapp && (
+            <a href={waConfirmLink(r.client_phone, r)} target="_blank" rel="noopener" draggable={false}
+              className="h-9 px-3 rounded-xl bg-nodo-success-bg text-nodo-success-tx text-xs font-black flex items-center gap-1 active:scale-95">
+              <MessageCircle size={15} /> Confirmar
+            </a>
+          )}
+          <div className="flex-1" />
+          {!['entregada', 'cancelada', 'no_disponible'].includes(r.status) && (
+            <button onClick={() => onMove(r, 'cancelada')} disabled={busy}
+              className="h-9 px-3 rounded-xl bg-nodo-inset text-nodo-sub text-xs font-bold active:scale-95 disabled:opacity-40">
+              <X size={14} />
+            </button>
+          )}
+          {next && (
+            <button onClick={() => onMove(r, next)} disabled={busy}
+              className="h-9 px-3 rounded-xl bg-nodo-primary text-nodo-on-primary text-xs font-black flex items-center gap-1 active:scale-95 disabled:opacity-40">
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <>{RES_META[next].emoji} {RES_META[next].label} <ArrowRight size={13} /></>}
+            </button>
+          )}
+        </div>
       </div>
-    </BottomSheet>
+    </div>
   );
 }
 
@@ -2225,7 +2669,7 @@ function ClientsSheet({ open, onClose, reservations, flash }: {
       {zoom && <ImageLightbox src={zoom.src} title={zoom.title} onClose={() => setZoom(null)} />}
       <div className="flex flex-col gap-2">
         {clients.length === 0 && (
-          <div className="nodo-empty-state py-10"><Users size={30} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-dim">Todavía no tenés clientes</p></div>
+          <div className="nodo-empty-state py-10"><Users size={30} className="text-nodo-dim mb-2" /><p className="text-sm font-bold text-nodo-ink">Todavía no tenés clientes</p></div>
         )}
         {clients.map(c => {
           const isOpen = expanded === c.key;
@@ -2438,7 +2882,7 @@ function CouponsSheet({ open, onClose, coupons, markupPct, publicUrl, totalRedee
       {view === 'list' ? (
         <div className="flex flex-col gap-3">
           {coupons.length > 0 && (
-            <div className="nodo-card p-4 bg-nodo-primary-soft border-none flex items-center gap-3">
+            <div className="rounded-nodo-md p-4 bg-nodo-primary-soft flex items-center gap-3">
               <Ticket size={22} className="text-nodo-primary shrink-0" />
               <div className="min-w-0">
                 <p className="text-sm font-black text-nodo-ink">{activeN} activo{activeN !== 1 ? 's' : ''} · {totalRedeemed} canjeado{totalRedeemed !== 1 ? 's' : ''}</p>
@@ -2528,7 +2972,7 @@ function CouponsSheet({ open, onClose, coupons, markupPct, publicUrl, totalRedee
                   <p className={`text-2xl font-black tabular-nums leading-none mt-0.5 ${impact.belowCost ? 'text-nodo-danger-tx' : 'text-nodo-success-tx'}`}>Q{impact.keep.toFixed(0)}</p>
                 </div>
               </div>
-              <div className="h-2.5 rounded-full bg-nodo-line overflow-hidden">
+              <div className="h-2.5 rounded-full bg-nodo-raised overflow-hidden">
                 <div className={`h-full rounded-full origin-left transition-transform duration-300 ${impact.ratio > 0.5 ? 'bg-nodo-success-tx' : impact.ratio > 0 ? 'bg-nodo-warn-tx' : 'bg-nodo-danger-tx'}`}
                   style={{ transform: `scaleX(${Math.max(0.02, Math.min(1, impact.ratio))})` }} />
               </div>
@@ -2605,7 +3049,7 @@ function CouponsSheet({ open, onClose, coupons, markupPct, publicUrl, totalRedee
                   ))}
                 </div>
               </div>
-              <div className="flex items-center justify-between nodo-card p-3 bg-nodo-inset">
+              <div className="flex items-center justify-between rounded-nodo-md border border-nodo-line p-3 bg-nodo-inset">
                 <div>
                   <p className="text-sm font-black text-nodo-ink">Usos por cliente</p>
                   <p className="text-[11px] text-nodo-sub">Cuántas veces lo puede canjear una misma persona</p>

@@ -44,6 +44,10 @@ export default {
     				'warn-bg':    'var(--nodo-warn-bg)',
     				'warn-bd':    'var(--nodo-warn-bd)',
     				'warn-tx':    'var(--nodo-warn-tx)',
+    				// Tinta sobre el *-bg del propio estado (los *-tx son para canvas)
+    				'danger-ink':  'var(--nodo-danger-ink)',
+    				'success-ink': 'var(--nodo-success-ink)',
+    				'warn-ink':    'var(--nodo-warn-ink)',
     				// Manual de Diseño — Primary dinámico (= tenantColor desde Configuración)
     				primary:          'var(--nodo-primary)',
     				'primary-soft':   'var(--nodo-primary-soft)',

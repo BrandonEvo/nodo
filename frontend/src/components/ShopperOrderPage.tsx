@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Loader2, Package, MessageCircle, Minus, Plus, Trash2, ShoppingBag, Plane,
-  X, RefreshCw, Ticket, Check, Sparkles, ArrowRight,
+  X, RefreshCw, Ticket, Check, Sparkles, ArrowRight, Info,
 } from 'lucide-react';
 import { haptic } from '@/utils/haptic';
 import {
@@ -64,6 +64,7 @@ export function ShopperOrderPage({ orderToken }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
   const autoTried = useRef(false);
 
@@ -103,12 +104,26 @@ export function ShopperOrderPage({ orderToken }: Props) {
   const theme = order?.theme_color;
   const rootStyle = theme ? ({ ['--nodo-primary' as any]: theme }) : undefined;
 
+  // Un rechazo del backend (se agotó, el shopper ya lo confirmó) tiene que VERSE. Antes
+  // se tragaba en silencio: el cliente tocaba «+», no pasaba nada, y volvía a tocar —
+  // los 409 en fila del log son exactamente eso. Además recargamos: si el «+» estaba
+  // habilitado con datos viejos, la pantalla tiene que ponerse al día sola.
   const act = async (fn: () => Promise<PublicShopperOrder>, id: string) => {
     setBusy(id);
     try { setOrder(await fn()); haptic.tap(); }
-    catch { /* mantiene estado */ }
+    catch (e) {
+      haptic.reject();
+      setNotice(errMsg(e) || 'No se pudo actualizar tu pedido. Probá de nuevo.');
+      await load();
+    }
     finally { setBusy(null); }
   };
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-nodo-canvas"><Loader2 className="w-8 h-8 animate-spin text-nodo-sub" /></div>;
   if (error || !order) return (
@@ -135,6 +150,13 @@ export function ShopperOrderPage({ orderToken }: Props) {
           .ot-move { transition: none; }
         }
       `}</style>
+      {notice && (
+        <div className="fixed top-4 right-4 left-4 sm:left-auto z-[70] flex items-center gap-3 bg-nodo-warn-bg border border-nodo-warn-bd text-nodo-warn-tx text-sm font-bold px-4 py-3 rounded-2xl shadow-lg sm:max-w-xs">
+          <Info size={16} className="shrink-0" />
+          <span className="flex-1">{notice}</span>
+          <button onClick={() => setNotice(null)} aria-label="Cerrar"><X size={14} /></button>
+        </div>
+      )}
       {celebrate && (
         <div className="fixed inset-0 z-[65] pointer-events-none overflow-hidden">
           {Array.from({ length: 16 }).map((_, i) => (
@@ -190,7 +212,7 @@ export function ShopperOrderPage({ orderToken }: Props) {
         {/* Líneas */}
         <div className="flex flex-col gap-3">
           {order.lines.map(l => (
-            <OrderLine key={l.id} line={l} busy={busy === l.id}
+            <OrderLine key={l.id} line={l} busy={busy === l.id} catalogToken={order.catalog_token}
               onQty={(q) => act(() => svc.updateOrderLine(orderToken, l.id, q), l.id)}
               onRemove={() => act(() => svc.deleteOrderLine(orderToken, l.id), l.id)}
               onSwap={(niid) => act(() => svc.swapOrderLine(orderToken, l.id, niid), l.id)}
@@ -230,12 +252,19 @@ export function ShopperOrderPage({ orderToken }: Props) {
   );
 }
 
-function OrderLine({ line, busy, onQty, onRemove, onSwap, onDismiss }: {
-  line: PublicShopperOrderLine; busy: boolean;
+function OrderLine({ line, busy, catalogToken, onQty, onRemove, onSwap, onDismiss }: {
+  line: PublicShopperOrderLine; busy: boolean; catalogToken?: string | null;
   onQty: (q: number) => void; onRemove: () => void; onSwap: (id: string) => void; onDismiss: () => void;
 }) {
   const isOff = line.status === 'no_disponible' || line.status === 'cancelada';
   const stepIdx = STEP_IDX[line.status] ?? 0;
+
+  // `stock_available` ya incluye lo que esta línea tiene apartado: es el techo REAL de
+  // esta línea. Pieza única = el techo es 1, y ahí el «+» no es un botón deshabilitado
+  // sino un botón que no debería existir: promete algo que no hay.
+  const unique = line.stock_available <= 1 && !line.is_made_to_order;
+  const atMax = line.quantity >= line.stock_available;
+  const showStepper = line.editable && !unique;
 
   return (
     <div className={`nodo-card p-3 flex flex-col gap-3 ${isOff ? 'opacity-90' : ''}`}>
@@ -244,22 +273,62 @@ function OrderLine({ line, busy, onQty, onRemove, onSwap, onDismiss }: {
           : <div className="w-14 h-14 rounded-xl bg-nodo-inset flex items-center justify-center text-nodo-dim shrink-0"><Package size={20} /></div>}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-nodo-ink line-clamp-2 leading-tight">{line.item_title}</p>
-          {line.item_price_gtq != null && <p className="text-sm font-black text-nodo-ink tabular-nums">{fmtQ(line.item_price_gtq * line.quantity)}</p>}
+          {line.item_price_gtq != null && (
+            <>
+              <p className="text-sm font-black text-nodo-ink tabular-nums">{fmtQ(line.item_price_gtq * line.quantity)}</p>
+              {/* Más de uno se dice con todas las letras: el total solo no delata que
+                  son 2, y el cliente se entera al pagar. */}
+              {line.quantity > 1 && (
+                <p className="text-[11px] font-bold text-nodo-primary tabular-nums">
+                  {line.quantity} unidades · {fmtQ(line.item_price_gtq)} c/u
+                </p>
+              )}
+            </>
+          )}
         </div>
-        {line.editable ? (
+        {showStepper ? (
           <div className="flex items-center gap-1.5 shrink-0">
             <button onClick={() => line.quantity > 1 ? onQty(line.quantity - 1) : onRemove()} disabled={busy}
               className="w-8 h-8 rounded-lg bg-nodo-inset border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 disabled:opacity-40">
               {line.quantity > 1 ? <Minus size={13} /> : <Trash2 size={13} />}
             </button>
             <span className="w-6 text-center text-sm font-black text-nodo-ink tabular-nums">{line.quantity}</span>
-            <button onClick={() => onQty(line.quantity + 1)} disabled={busy || line.quantity >= line.stock_available}
+            <button onClick={() => onQty(line.quantity + 1)} disabled={busy || atMax}
               className="w-8 h-8 rounded-lg bg-nodo-ink flex items-center justify-center text-nodo-canvas active:scale-90 disabled:opacity-40">
               <Plus size={13} />
             </button>
           </div>
+        ) : line.editable ? (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="px-2 py-1 rounded-lg bg-nodo-pastel-lavender text-[10px] font-black text-violet-700 dark:text-violet-300">ÚNICO</span>
+            <button onClick={onRemove} disabled={busy} aria-label="Quitar del pedido"
+              className="w-8 h-8 rounded-lg bg-nodo-inset border border-nodo-line flex items-center justify-center text-nodo-ink active:scale-90 disabled:opacity-40">
+              <Trash2 size={13} />
+            </button>
+          </div>
         ) : <span className="text-xs font-bold text-nodo-sub shrink-0">×{line.quantity}</span>}
       </div>
+
+      {/* Por qué no podés sumar más. Sin esto el tope es un botón gris sin explicación
+          y el cliente lo toca hasta que se cansa. */}
+      {line.editable && atMax && (
+        <div className="rounded-xl bg-nodo-inset px-3 py-2 flex items-center gap-2">
+          <Info size={13} className="text-nodo-sub shrink-0" />
+          <p className="text-[11px] font-semibold text-nodo-sub flex-1">
+            {line.is_made_to_order
+              ? `Máximo ${line.stock_available} por pedido de este producto.`
+              : unique
+                ? 'Es el único que hay. Ya es tuyo 🙌'
+                : `Ya apartaste los ${line.stock_available} que quedaban.`}
+            {!line.is_made_to_order && catalogToken && ' ¿Querés algo más? Buscalo en el catálogo.'}
+          </p>
+          {!line.is_made_to_order && catalogToken && (
+            <a href={`/catalogo/${catalogToken}`} className="shrink-0 text-[11px] font-black text-nodo-primary flex items-center gap-0.5">
+              Ver <ArrowRight size={11} />
+            </a>
+          )}
+        </div>
+      )}
 
       {!isOff && <OrderTrack stepIdx={stepIdx} />}
 

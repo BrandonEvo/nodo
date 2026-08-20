@@ -112,6 +112,7 @@ export function ShopperCatalogPage({ token }: Props) {
   const tickRef = useRef<() => void>(() => {});
   const lastFetch = useRef(0);
   const sheetOpen = useRef(false);
+  const openItemRef = useRef<string | null>(null);    // ítem del sheet de reserva, para refrescarlo solo
   const dirty = useRef(false);                        // cambió con el sheet abierto → aplicar al cerrar
   const loadedOnce = useRef(false);
   const catRef = useRef<PublicShopperCatalog | null>(null);
@@ -190,6 +191,23 @@ export function ShopperCatalogPage({ token }: Props) {
     } catch { /* el poll sigue vivo */ }
   }, [token, applyMerge]);
 
+  // Con un sheet abierto los merges se difieren para no correr la grilla bajo el dedo,
+  // pero el ítem que el cliente está por apartar es justo el que NO puede quedar
+  // congelado: mientras escribe su nombre y su teléfono, otro puede llevarse la última
+  // unidad. Se parcha sólo esa card — la grilla sigue quieta y el merge completo espera
+  // al cierre. El POST sigue siendo la autoridad (el backend lo resuelve con FOR UPDATE);
+  // esto le evita al cliente tipear sus datos para chocar contra un "ya no queda".
+  const refreshOpenItem = useCallback(async () => {
+    const id = openItemRef.current;
+    if (!id) return;
+    try {
+      const a = await svc.getItemAvailability(token, id);
+      setReserveItem(prev => (prev && prev.id === id
+        ? { ...prev, remaining: a.remaining ?? null, closed: a.closed, stock_available: a.stock_available }
+        : prev));
+    } catch { /* el loop sigue; el POST sigue siendo la autoridad */ }
+  }, [token]);
+
   // Primer paint: siembra cat + v + orden sin animar; luego arranca el poller.
   useEffect(() => {
     let alive = true;
@@ -232,12 +250,14 @@ export function ShopperCatalogPage({ token }: Props) {
       closesRef.current = toMs(p.closes_at);
       if (p.live && !wasLiveNow && loadedOnce.current) { flash('🔴 ¡La tienda abrió!'); haptic.confirm(); }
       if (vRef.current != null && p.v !== vRef.current) {
-        if (sheetOpen.current) dirty.current = true;          // no tocar la lista bajo el sheet
-        else await mergeFetch(p.v);
+        if (sheetOpen.current) {                              // no tocar la lista bajo el sheet…
+          dirty.current = true;
+          await refreshOpenItem();                            // …pero sí el ítem que está por apartar
+        } else await mergeFetch(p.v);
       }
     } catch { /* swallow; el loop sigue */ }
     finally { schedule(); }
-  }, [token, flash, mergeFetch, schedule]);
+  }, [token, flash, mergeFetch, schedule, refreshOpenItem]);
   useEffect(() => { tickRef.current = tick; }, [tick]);
 
   // Arranca el loop + wake por Page Visibility / focus (con catch-up dedupeado a 3s).
@@ -250,12 +270,18 @@ export function ShopperCatalogPage({ token }: Props) {
       schedule();
     };
     const onHide = () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    // `pageshow` con persisted: iOS restaura la página entera del bfcache al volver
+    // desde otra app o con el gesto de atrás. La pestaña ya estaba "visible", así que
+    // ni visibilitychange ni focus disparan y el catálogo se quedaba como estaba.
+    const onShow = (e: PageTransitionEvent) => { if (e.persisted) wake(); };
     document.addEventListener('visibilitychange', wake);
     window.addEventListener('focus', wake);
+    window.addEventListener('pageshow', onShow);
     window.addEventListener('pagehide', onHide);
     return () => {
       document.removeEventListener('visibilitychange', wake);
       window.removeEventListener('focus', wake);
+      window.removeEventListener('pageshow', onShow);
       window.removeEventListener('pagehide', onHide);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
@@ -268,6 +294,15 @@ export function ShopperCatalogPage({ token }: Props) {
     sheetOpen.current = blocked;
     if (!blocked && dirty.current) { dirty.current = false; void mergeFetch(); }
   }, [reserveItem, tourOpen, crossSell, mergeFetch]);
+
+  // Disponibilidad al abrir el sheet: el dato de la card puede venir de hace 8s (30s con
+  // la tienda cerrada) y es exactamente el que el cliente está por apartar. Depende del
+  // id y no del objeto, así que el propio refresco no se vuelve a disparar a sí mismo.
+  const openId = reserveItem?.id ?? null;
+  useEffect(() => {
+    openItemRef.current = openId;
+    if (openId) void refreshOpenItem();
+  }, [openId, refreshOpenItem]);
 
   useEffect(() => {
     if (!orderToken) return;
@@ -941,12 +976,17 @@ function ReserveSheet({ item, onClose, remembered, busy, onSubmit }: {
   useEffect(() => { if (item) { setName(remembered?.name || ''); setPhone(remembered?.phone || ''); } }, [item, remembered]);
   const valid = name.trim().length > 1 && phone.replace(/\D/g, '').length >= 8;
   const isLive = item?.listing === 'live';
+  // El stock del sheet se refresca solo mientras está abierto. Si se acabó mientras el
+  // cliente escribía, el botón se apaga acá: mandarlo igual sólo cambia el momento del
+  // "no queda" por uno peor, después de que dio su nombre y su teléfono.
+  const soldOut = item != null && (item.closed || item.remaining === 0);
   return (
     <BottomSheet open={item != null} onClose={onClose} title={isLive ? 'Apartalo antes de que cierre' : 'Apartá tu producto'}
       footer={
-        <button onClick={() => valid && onSubmit(name.trim(), phone.trim())} disabled={!valid || busy}
+        <button onClick={() => valid && !soldOut && onSubmit(name.trim(), phone.trim())} disabled={!valid || busy || soldOut}
           className="w-full h-14 rounded-2xl bg-nodo-primary text-nodo-on-primary font-black active:scale-[0.97] transition-transform disabled:opacity-30 flex items-center justify-center gap-2">
-          {busy ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} {isLive ? 'APARTAR ⚡' : 'APARTAR'}
+          {busy ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+          {soldOut ? 'YA NO QUEDA' : isLive ? 'APARTAR ⚡' : 'APARTAR'}
         </button>
       }>
       <div className="flex flex-col gap-4">
@@ -957,6 +997,14 @@ function ReserveSheet({ item, onClose, remembered, busy, onSubmit }: {
               <p className="text-sm font-bold text-nodo-ink line-clamp-2">{item.title}</p>
               {item.price_gtq != null && <p className="text-sm font-black text-nodo-ink tabular-nums">{fmtQ(item.price_gtq)}</p>}
             </div>
+          </div>
+        )}
+        {soldOut && (
+          <div className="flex items-center gap-2 rounded-nodo-md bg-nodo-warn-bg border border-nodo-warn-bd p-3">
+            <Flame size={16} className="text-nodo-warn-tx shrink-0" />
+            <p className="text-xs font-bold text-nodo-warn-tx">
+              Se acabó en este momento. Mirá el resto del catálogo, hay más.
+            </p>
           </div>
         )}
         <div><label className="nodo-label">¿Cómo te llamás?</label><input value={name} onChange={e => setName(e.target.value)} placeholder="Nombre y apellido" className="nodo-input" autoFocus /></div>

@@ -12,6 +12,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 import httpx
 from bs4 import BeautifulSoup
+
+# Amazon no mira sólo el User-Agent: lee el handshake TLS y el perfil HTTP/2. httpx
+# (OpenSSL de Python) tiene una huella inconfundible de bot, así que devolvía la página
+# anti-bot aunque los headers dijeran "Chrome". curl_cffi imita la huella del navegador
+# de verdad. El import es tolerante para no tumbar el arranque si la imagen todavía no
+# trae la dependencia — sin ella, cache y relay siguen sirviendo.
+try:
+    from curl_cffi.requests import AsyncSession as CurlSession, RequestsError
+except ImportError:  # pragma: no cover
+    CurlSession = None
+    RequestsError = Exception
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,12 +39,9 @@ router = APIRouter(tags=["Amazon"])
 # Amazon bloquea caemos a la entrada vieja como fallback (dato viejo > nada).
 _CACHE_TTL_HOURS = 24
 
-_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
-]
+# Perfiles de navegador que curl_cffi reproduce completos (TLS + HTTP/2 + headers).
+# Se rota entre intentos: cada uno es una "máquina" distinta para Amazon.
+_IMPERSONATE = ["chrome124", "chrome131", "safari180"]
 
 # Selectores ordenados del más específico (buybox actual) al más genérico.
 # El primero que devuelva un número válido gana.
@@ -101,14 +109,24 @@ def _extract_asin(url_or_asin: str) -> str | None:
 _SHORTLINK_HOSTS = ("a.co", "amzn.to", "amzn.eu", "amzn.com", "amzn.asia")
 
 
-async def _resolve_shortlink(url: str, headers: dict) -> str | None:
-    """Sigue el redirect de un link corto de Amazon y extrae el ASIN del destino."""
-    timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
+async def _resolve_shortlink(url: str) -> str | None:
+    """Sigue el redirect de un link corto de Amazon y extrae el ASIN del destino.
+
+    Es el caso normal en el teléfono: 'Compartir' en la app de Amazon da un a.co/d/…
+    """
+    if CurlSession is None:
+        return None
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
-            resp = await client.get(url, headers=headers)
-            return _extract_asin(str(resp.url))
-    except (httpx.RequestError, httpx.TimeoutException):
+        async with CurlSession(impersonate=random.choice(_IMPERSONATE), timeout=15) as s:
+            resp = await s.get(url, headers=_EXTRA_HEADERS)
+            asin = _extract_asin(str(resp.url))
+            if asin:
+                return asin
+            # A veces el corto aterriza en una URL sin el ASIN a la vista: sacarlo del HTML.
+            m = (re.search(r'"asin"\s*:\s*"(B0[A-Z0-9]{8})"', resp.text, re.I)
+                 or re.search(r'id="ASIN"[^>]*value="(B0[A-Z0-9]{8})"', resp.text))
+            return m.group(1) if m else None
+    except RequestsError:
         return None
 
 
@@ -207,27 +225,16 @@ class ScrapeResponse(BaseModel):
     description: str | None = None
 
 
-def _browser_headers() -> dict:
-    """Headers de un Chrome real (incluye sec-ch-ua/sec-fetch) para no parecer bot."""
-    return {
-        "User-Agent": random.choice(_USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": "https://www.google.com/",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-        "Sec-Fetch-User": "?1",
-        "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-    }
+# El perfil impersonado ya manda User-Agent, Accept, Accept-Encoding y sec-ch-ua
+# coherentes con su huella TLS. Pisar esos headers delata el disfraz, así que sólo se
+# agrega lo que traería alguien que llega desde una búsqueda.
+_EXTRA_HEADERS = {
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.google.com/",
+}
 
 
-def _is_blocked(r: httpx.Response) -> bool:
+def _is_blocked(r) -> bool:
     """True si Amazon devolvió una página anti-bot (challenge/captcha) en vez del producto."""
     if r.status_code != 200:
         return True
@@ -336,6 +343,10 @@ async def _try_relay(url: str) -> ScrapeResponse | None:
         )
     if r.status_code == 422:
         raise HTTPException(status_code=422, detail="No se pudo extraer el ASIN de la URL.")
+    if r.status_code == 404:
+        # El relay ya confirmó que el producto no existe: reintentarlo acá sería regalar
+        # 15s para llegar al mismo 404.
+        raise HTTPException(status_code=404, detail="Ese producto ya no está en Amazon. Revisá el enlace.")
     return None  # 503/otro → fallback a scraping directo
 
 
@@ -345,15 +356,19 @@ async def scrape_amazon(
     body: ScrapeRequest, request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    base_headers = _browser_headers()
+    # Compartir desde la app de Amazon pega texto, no una URL pelada
+    # ("Mirá esto en Amazon: https://a.co/d/xyz"): quedarse con el enlace.
+    raw = body.url.strip()
+    m_url = re.search(r"https?://\S+", raw)
+    link = m_url.group(0).rstrip(").,;\"'") if m_url else raw
 
     # 1. Resolver ASIN localmente (para la cache). Links cortos → seguir el redirect.
-    asin = _extract_asin(body.url)
+    asin = _extract_asin(link)
     if not asin:
-        host = (urllib.parse.urlparse(body.url.strip()).hostname or "").lower()
+        host = (urllib.parse.urlparse(link).hostname or "").lower()
         host = host[4:] if host.startswith("www.") else host
         if host in _SHORTLINK_HOSTS:
-            asin = await _resolve_shortlink(body.url.strip(), base_headers)
+            asin = await _resolve_shortlink(link)
 
     # 2. Cache FRESCA → devolver ya, sin pegarle a Amazon (esquiva el 503 anti-bot).
     #    Un scrape exitoso de cualquier tenant sirve a todos.
@@ -361,8 +376,8 @@ async def scrape_amazon(
     if cached is not None and cached.updated_at >= _now() - timedelta(hours=_CACHE_TTL_HOURS):
         return await _cache_serve(session, cached)
 
-    # 3. Relay residencial (Amazon bloquea la IP del datacenter). Éxito → cachear.
-    relayed = await _try_relay(body.url)
+    # 3. Relay residencial (si el dueño lo tiene prendido). Éxito → cachear.
+    relayed = await _try_relay(link)
     if relayed is not None:
         await _cache_upsert(session, relayed, source="relay")
         return relayed
@@ -370,25 +385,27 @@ async def scrape_amazon(
     if not asin:
         raise HTTPException(status_code=422, detail="No se pudo extraer el ASIN de la URL.")
 
+    if CurlSession is None:
+        raise HTTPException(status_code=503,
+                            detail="El lector de Amazon no está disponible. Cargá el producto a mano.")
+
     product_url = f"https://www.amazon.com/dp/{asin}"
-    timeout = httpx.Timeout(connect=6.0, read=12.0, write=6.0, pool=6.0)
     last_detail = "Amazon bloqueó la solicitud (anti-bot)."
+    missing = 0   # veces que Amazon dijo 404: el producto ya no existe, no es bloqueo
 
     for attempt in range(_MAX_ATTEMPTS):
-        # User-Agent distinto por intento; sesión/cookies frescas (un intento
-        # bloqueado deja cookies marcadas, por eso un cliente nuevo cada vez).
-        headers = {**base_headers, "User-Agent": random.choice(_USER_AGENTS)}
+        # Perfil distinto por intento; sesión/cookies frescas (un intento bloqueado
+        # deja cookies marcadas, por eso una sesión nueva cada vez).
         try:
-            async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
+            async with CurlSession(impersonate=random.choice(_IMPERSONATE), timeout=25) as client:
                 # 1. Homepage → establece sesión
-                await client.get("https://www.amazon.com/", headers=headers)
+                await client.get("https://www.amazon.com/", headers=_EXTRA_HEADERS)
                 await asyncio.sleep(random.uniform(0.5, 1.4))
 
                 # 2. Zip de USA → buybox y precios en USD
                 await client.post(
                     "https://www.amazon.com/portal-migration/hz/glow/address-change",
                     headers={
-                        **headers,
                         "Content-Type": "application/x-www-form-urlencoded",
                         "x-requested-with": "XMLHttpRequest",
                         "Accept": "*/*",
@@ -400,11 +417,10 @@ async def scrape_amazon(
                 await asyncio.sleep(random.uniform(0.5, 1.4))
 
                 # 3. Producto
-                r = await client.get(product_url, headers=headers)
-        except httpx.TimeoutException:
-            last_detail = "Amazon tardó demasiado en responder."
-        except httpx.RequestError:
-            last_detail = "Error de red al conectar con Amazon."
+                r = await client.get(product_url, headers=_EXTRA_HEADERS)
+        except RequestsError as exc:
+            last_detail = "Amazon tardó demasiado en responder." if "timed out" in str(exc).lower() \
+                else "Error de red al conectar con Amazon."
         else:
             if not _is_blocked(r):
                 soup = BeautifulSoup(r.text, "html.parser")
@@ -417,11 +433,19 @@ async def scrape_amazon(
                                       image_url=image, url=product_url, description=description)
                 await _cache_upsert(session, resp, source="direct")   # sirve a los demás tenants
                 return resp
+            if r.status_code == 404:
+                missing += 1
             last_detail = f"Amazon devolvió una página anti-bot (status {r.status_code})."
 
         # Backoff incremental antes de reintentar (no tras el último intento)
         if attempt < _MAX_ATTEMPTS - 1:
             await asyncio.sleep(random.uniform(1.2, 2.5) * (attempt + 1))
+
+    # Un 404 en cada intento no es bloqueo: ese producto ya no está en Amazon. Decirlo,
+    # en vez de mandar al dueño a reintentar algo que nunca va a salir.
+    if missing == _MAX_ATTEMPTS:
+        raise HTTPException(status_code=404,
+                            detail="Ese producto ya no está en Amazon. Revisá el enlace.")
 
     # Amazon bloqueó todo. Si había una entrada vieja en cache, servirla (dato viejo > 503:
     # el dueño ve nombre/imagen/descripción y ajusta el precio a mano).

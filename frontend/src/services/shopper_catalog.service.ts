@@ -194,6 +194,13 @@ export interface PublicShopperPulse {
   closes_at?: string | null;
 }
 
+export interface PublicShopperItemAvailability {
+  id: string;
+  remaining?: number | null;
+  closed: boolean;
+  stock_available: number;
+}
+
 export interface ShopperReservation {
   id: string;
   tenant_id: string;
@@ -227,6 +234,7 @@ export interface ShopperReservation {
   item_image_url?: string | null;
   item_price_gtq?: number | null;
   item_amazon_url?: string | null;
+  item_cost_gtq?: number | null;
 }
 
 export interface PublicShopperReservation {
@@ -255,6 +263,7 @@ export interface PublicShopperOrderLine {
   status: ShopperResStatus;
   editable: boolean;
   stock_available: number;
+  is_made_to_order: boolean;
   expires_at: string;
   created_at: string;
   resolution?: string | null;
@@ -457,6 +466,11 @@ export const shopperCatalogService = {
     },
   ): Promise<ShopperReservation> =>
     api.patch(`${BASE}/reservations/${id}`, data).then(r => r.data),
+  // Quita la línea de la bandeja Y de los indicadores (el backend la desactiva y le
+  // devuelve al producto el stock que tenía tomado). No hay restore: el Deshacer vive
+  // en el front, en la ventana previa a que salga el request.
+  deleteReservation: (id: string): Promise<void> =>
+    api.delete(`${BASE}/reservations/${id}`).then(() => undefined),
   reservationSuggestions: (id: string): Promise<ShopperCatalogItem[]> =>
     api.get(`${BASE}/reservations/${id}/suggestions`).then(r => r.data),
   markNotified: (id: string): Promise<ShopperReservation> =>
@@ -468,6 +482,11 @@ export const shopperCatalogService = {
 
   getPulse: (token: string): Promise<PublicShopperPulse> =>
     publicApi.get(`${BASE}/public/${token}/pulse`).then(r => r.data),
+
+  // ¿Todavía queda? Unos bytes, contra los cientos de KB que pesa el catálogo entero
+  // con las fotos embebidas. Para el sheet de reserva abierto.
+  getItemAvailability: (token: string, itemId: string): Promise<PublicShopperItemAvailability> =>
+    publicApi.get(`${BASE}/public/${token}/item/${itemId}/availability`).then(r => r.data),
   createReservation: (
     publicToken: string,
     itemId: string,

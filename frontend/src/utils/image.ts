@@ -1,37 +1,59 @@
 /**
  * Redimensiona/comprime una imagen del usuario a un data URI ligero, sin backend
- * ni almacenamiento externo (se guarda en Tenant.logo_url, columna Text).
- * Preserva transparencia (WebP con fallback a PNG) — ideal para logos.
+ * ni almacenamiento externo (se guarda en columnas Text: Tenant.logo_url, la foto
+ * del producto del shopper). Como el resultado viaja dentro del JSON del request,
+ * todo lo que se mande al backend debe pasar un `maxBytes`.
  */
 export interface ResizeOptions {
   /** Lado máximo (px) del resultado. El aspecto se conserva. */
   maxSize?: number;
-  /** Calidad WebP 0–1. */
+  /** Calidad de compresión 0–1. */
   quality?: number;
+  /**
+   * Tope de caracteres del data URI. Si se pasa, se recomprime hasta entrar.
+   * Obligatorio para todo lo que viaje dentro de un JSON al backend.
+   */
+  maxBytes?: number;
+  /**
+   * `true` para fotos de cámara/galería: sin transparencia, comprime de verdad.
+   * `false` (default) para logos y gráficos, donde el alpha importa.
+   */
+  photo?: boolean;
 }
 
-const DEFAULTS: Required<ResizeOptions> = { maxSize: 320, quality: 0.92 };
+const DEFAULTS: Required<Omit<ResizeOptions, 'maxBytes'>> = {
+  maxSize: 320, quality: 0.92, photo: false,
+};
 
 /** Carga un File como HTMLImageElement (revoca el object URL al terminar). */
 function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      // Safari dispara `onload` con 0×0 cuando no supo decodificar el archivo (típico
+      // en HEIC de iPhone). Sin este chequeo el canvas sale de 1×1 y el producto se
+      // publica con una imagen invisible, sin un solo error por ningún lado.
+      if (!img.naturalWidth || !img.naturalHeight) reject(new Error('No se pudo leer la imagen.'));
+      else resolve(img);
+    };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen.')); };
     img.src = url;
   });
 }
 
 /**
- * Devuelve un data URI (WebP o PNG) escalado a `maxSize`. Lanza si el archivo
- * no es imagen o si el navegador no puede procesarla.
+ * Dibuja la imagen escalada y la codifica en el mejor formato que el navegador
+ * REALMENTE produzca.
+ *
+ * `toDataURL('image/webp')` no falla cuando el navegador no sabe escribir WebP:
+ * devuelve PNG en silencio. Safari de iOS es ese caso, y un PNG no obedece
+ * `quality` — la misma foto que en Mac pesaba 29 KB salía en ~1 MB desde el
+ * teléfono. Para fotos el fallback correcto es JPEG, que sí comprime; PNG sólo
+ * se justifica cuando hay que conservar transparencia (logos).
  */
-export async function fileToResizedDataUrl(file: File, opts: ResizeOptions = {}): Promise<string> {
-  const { maxSize, quality } = { ...DEFAULTS, ...opts };
-  if (!file.type.startsWith('image/')) throw new Error('El archivo no es una imagen.');
-
-  const img = await loadImage(file);
+function render(img: HTMLImageElement, maxSize: number, quality: number, photo: boolean): string {
   const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
   const w = Math.max(1, Math.round(img.width * scale));
   const h = Math.max(1, Math.round(img.height * scale));
@@ -42,12 +64,44 @@ export async function fileToResizedDataUrl(file: File, opts: ResizeOptions = {})
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('No se pudo procesar la imagen.');
   ctx.imageSmoothingQuality = 'high';
+  // JPEG no tiene canal alfa: sin este fondo, lo transparente se revela negro.
+  if (photo) {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, w, h);
+  }
   ctx.drawImage(img, 0, 0, w, h);
 
-  // WebP conserva transparencia y pesa menos; si el navegador no lo soporta,
-  // toDataURL devuelve otro tipo → usamos PNG (también con alpha).
   const webp = canvas.toDataURL('image/webp', quality);
-  return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png');
+  if (webp.startsWith('data:image/webp')) return webp;
+  return photo ? canvas.toDataURL('image/jpeg', quality) : canvas.toDataURL('image/png');
+}
+
+// Recortes sucesivos cuando el resultado no entra en `maxBytes`: primero la calidad
+// (casi invisible en una foto de producto) y sólo después la resolución, que sí se nota.
+const SHRINK: ReadonlyArray<readonly [scale: number, quality: number]> = [
+  [1, 0.7], [1, 0.55], [0.8, 0.5], [0.6, 0.45],
+];
+
+/**
+ * Devuelve un data URI escalado a `maxSize`, recortado hasta entrar en `maxBytes` si
+ * se pidió. Si ni el último recorte alcanza devuelve igual el más chico que consiguió:
+ * bloquear al dueño por una foto es peor que dejar que el backend rechace el request
+ * con un mensaje que se entiende. Lanza si el archivo no es imagen o no se puede leer.
+ */
+export async function fileToResizedDataUrl(file: File, opts: ResizeOptions = {}): Promise<string> {
+  const { maxSize, quality, photo } = { ...DEFAULTS, ...opts };
+  const { maxBytes } = opts;
+  if (!file.type.startsWith('image/')) throw new Error('El archivo no es una imagen.');
+
+  const img = await loadImage(file);
+  let out = render(img, maxSize, quality, photo);
+  if (!maxBytes) return out;
+
+  for (const [k, q] of SHRINK) {
+    if (out.length <= maxBytes) break;
+    out = render(img, Math.round(maxSize * k), Math.min(quality, q), photo);
+  }
+  return out;
 }
 
 /** Carga un data URI como imagen; resuelve null si no se puede (logo corrupto). */
